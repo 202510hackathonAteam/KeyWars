@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import "../styles/Login.css";
+import "./Login.css";
 
 // Loginという名前でコンポーネント化
 export default function Login() {

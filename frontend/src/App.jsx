@@ -1,8 +1,12 @@
-import React from "react";
-import Login from "../src/assets/components/Login";
+// src/App.jsx
+import AppRoutes from "./routes";
 
 function App() {
-  return <Login />;
+  return (
+    <div>
+      <AppRoutes />
+    </div>
+  );
 }
 
 export default App;
