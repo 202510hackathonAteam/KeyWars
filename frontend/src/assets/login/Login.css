@@ -100,7 +100,7 @@
   outline: none;
 }
 
-input[type="text"]:focus {
+input:focus {
   border-color: #ffcc00;
   box-shadow: 0 0 10px #ffaa00;
 }
