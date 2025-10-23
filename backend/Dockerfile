@@ -1,16 +1,16 @@
 FROM golang:1.25.2-alpine3.22
 
-# コンテナ内の作業ディレクトリを/appに設定
 WORKDIR /app
 
-# airインストール
+COPY go.mod go.sum ./
+RUN go mod download
+
 RUN go install github.com/air-verse/air@latest
 
-# COPY go.mod go.sum ./
-# RUN go mod download
+COPY . .
 
-# アプリケーションコードをコピー
-COPY ./app /app
+COPY wait-for.sh /wait-for.sh
+RUN chmod +x /wait-for.sh
 
-# Goアプリケーションを実行
-CMD ["air"]
+ENV GO111MODULE=on
+CMD ["/wait-for.sh", "db", "3306", "air", "-c", ".air.toml"]
