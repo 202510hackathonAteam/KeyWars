@@ -14,11 +14,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import './index.css'
 import './App.css'
-// import "./assets/home/Home.css";
-// import "./assets/login/Login.css";
-// import "./assets/signup/Signup.css";
-// import "./assets/buttle/Buttle.css";
-// import "./assets/result/Result.css";
+
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>

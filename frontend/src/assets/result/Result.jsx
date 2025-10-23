@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import "./Result.css";
+// import "./Result.css";
 
 const Result = ({ result = "victory" }) => {
   const navigate = useNavigate();
