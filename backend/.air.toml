@@ -1,0 +1,24 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o ./tmp/main ./cmd/server"
+bin = "tmp/main"
+include_ext = ["go"]
+exclude_dir = ["tmp"]
+log = "build.log"
+env = [
+  "GO111MODULE=on",
+  "GOWORK=off",
+  "GOMOD=/app/go.mod",
+  "GOFLAGS=-mod=mod"
+]
+
+[color]
+build = "yellow"
+main  = "magenta"
+runner = "green"
+watcher = "cyan"
+
+[log]
+time = true
