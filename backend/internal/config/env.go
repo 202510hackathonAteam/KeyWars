@@ -2,23 +2,25 @@ package config
 
 import (
 	"os"
+	"log"
 )
 
 func Load() Config {
 	return Config {
 		DB: DBConfig{
-			User: getEnvOrDefault("MYSQL_USER", "root"),
-			Password: getEnvOrDefault("MYSQL_PASSWORD", ""),
-			Host: getEnvOrDefault("MYSQL_HOST", "db"),
-			Port: getEnvOrDefault("MYSQL_PORT", "3306"),
-			Name: getEnvOrDefault("MYSQL_DB", "db"),
+			User: mustEnv("MYSQL_USER"),
+			Password: mustEnv("MYSQL_PASSWORD"),
+			Host: mustEnv("MYSQL_HOST"),
+			Port: mustEnv("MYSQL_PORT"),
+			Name: mustEnv("MYSQL_DATABASE"),
 		},
 	}
 }
 
-func getEnvOrDefault(key, defaultValue string) string {
-	if value, exists := os.LookupEnv(key); exists {
-		return value
+func mustEnv(key string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		log.Fatalf("missing required env: %s", key)
 	}
-	return defaultValue
+	return value
 }
