@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -11,16 +12,49 @@ import (
 
 	"keywars/backend/internal/app"
 	"keywars/backend/internal/config"
+
+	"keywars/backend/internal/service/realtime"
+	ws "keywars/backend/internal/transport/websocket"
+
+	"github.com/labstack/echo/v4"
 )
 
 func main() {
 	cfg := config.Load()
+	fmt.Println("=== Config Check ===")
+	fmt.Printf("User: %s\n", cfg.DB.User)
+	fmt.Printf("Password: %s\n", cfg.DB.Password)
+	fmt.Printf("Host: %s\n", cfg.DB.Host)
+	fmt.Printf("Port: %s\n", cfg.DB.Port)
+	fmt.Printf("Name: %s\n", cfg.DB.Name)
+	fmt.Printf("Server Port: %s\n", cfg.Server.Port)
+	fmt.Printf("DSN: %s\n", cfg.DB.DSN())
 
 	server, err := app.New(&cfg)
 	if err != nil {
 		log.Fatalf("failed to init app: %v", err)
 	}
 	e := server.Echo
+
+	// ====== WebSocket配線 ======
+	// Hub（room管理）
+	hub := ws.NewHub()
+
+	// RealtimeService（ここは好きな実装に差し替え）
+	rtSvc := realtime.New()
+
+	// チケット検証（本番はJWT実装に差し替え）
+	verifier := ws.DevTicket{}
+
+	wsHandler := &ws.Handler{
+		Hub:      hub,
+		Svc:      rtSvc,
+		Verifier: verifier,
+	}
+
+	// Echoにマウント（Anyにしておくとプロキシ環境でも融通が利く）
+	e.Any("/ws", echo.WrapHandler(wsHandler))
+	// ====== ここまで ======
 
 	port := cfg.Server.Port
 	if port == "" {
