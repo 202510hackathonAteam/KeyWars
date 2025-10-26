@@ -10,6 +10,7 @@ import (
 // アプリ全体で使用するリポジトリ群を一括で初期化・注入する際に利用。
 type Repos struct {
 	User repository.UserRepository
+	// 下に他のリポジトリを追加していく
 }
 
 // New は、*gorm.DB を受け取り Repos 構造体を生成。

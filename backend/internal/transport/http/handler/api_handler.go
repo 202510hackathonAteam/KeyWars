@@ -8,6 +8,7 @@ import (
 // 各機能のハンドラ（Auth など）を保持し、ルータから呼び出される。
 type API struct {
 	Auth *AuthHandler
+  // 下に他のハンドラーを追加していく
 }
 
 // New は、service 層の集約を受け取り、API 構造体を生成。
