@@ -4,14 +4,19 @@ import (
 	"keywars/backend/internal/domain/repository"
 )
 
+// AuthService は、認証関連ユースケースのインターフェースの定義。
 type AuthService interface {
 	// 将来的には Login, Register などを追加していく
 }
 
 // authService は AuthService インターフェースの具象実装。
-type authService struct{}
+type authService struct{
+	users repository.UserRepository
+}
 
-// NewAuthService は AuthService のコンストラクタ。
+// NewAuthService は UserRepository を受け取り、AuthServiceを生成。
 func NewAuthService(users repository.UserRepository) AuthService {
-	return &authService{}
+	return &authService{
+		users: users,
+	}
 }
