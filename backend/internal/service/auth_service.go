@@ -11,12 +11,12 @@ type AuthService interface {
 
 // authService は AuthService インターフェースの具象実装。
 type authService struct{
-	users repository.UserRepository
+	user repository.UserRepository
 }
 
 // NewAuthService は UserRepository を受け取り、AuthServiceを生成。
-func NewAuthService(users repository.UserRepository) AuthService {
+func NewAuthService(user repository.UserRepository) AuthService {
 	return &authService{
-		users: users,
+		user: user,
 	}
 }
