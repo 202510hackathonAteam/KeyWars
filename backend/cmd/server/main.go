@@ -13,24 +13,20 @@ import (
 	"keywars/backend/internal/config"
 )
 
+// main は、アプリケーションのエントリーポイント。
+// 設定読み込み・サーバ初期化・Graceful シャットダウン制御を担当。
 func main() {
+	// 設定ファイルの読み込み
 	cfg := config.Load()
 
+	// アプリケーションサーバーの初期化
 	server, err := app.New(&cfg)
 	if err != nil {
 		log.Fatalf("failed to init app: %v", err)
 	}
 	e := server.Echo
 
-	port := cfg.Server.Port
-	if port == "" {
-		if v := os.Getenv("PORT"); v != "" {
-			port = v
-		} else {
-			port = "8080"
-		}
-	}
-
+	// シグナル受信用チャネルの初期化
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 
@@ -44,8 +40,9 @@ func main() {
 		}
 	}()
 
-	// サーバーを起動する（Gracefulシャットダウン時の ErrServerClosed は無視する）
-	if err := e.Start(":" + port); err != nil && err != http.ErrServerClosed {
+	// サーバー起動
+	// Graceful シャットダウン時の ErrServerClosed は正常終了として扱う。
+	if err := e.Start(":8080"); err != nil && err != http.ErrServerClosed {
 		e.Logger.Fatalf("start error: %v", err)
 	}
 }
