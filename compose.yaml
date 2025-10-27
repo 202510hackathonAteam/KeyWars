@@ -17,6 +17,9 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    # backend/internal/domain/entity/ にモデル構造体（例: user.go）が作成されたら、
+    # cmd/migrate/main.go 内の AutoMigrate 対象をコメント解除して実行する
+    # command: go run ./cmd/migrate
     ports:
       - "8080:8080"
     volumes:
@@ -24,7 +27,8 @@ services:
     env_file:
       - .env
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
   frontend:
     build:

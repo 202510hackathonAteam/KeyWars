@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -12,23 +11,13 @@ import (
 
 	"keywars/backend/internal/app"
 	"keywars/backend/internal/config"
-
-	"keywars/backend/internal/service/realtime"
-	ws "keywars/backend/internal/transport/websocket"
-
-	"github.com/labstack/echo/v4"
 )
 
+// main は、アプリケーションのエントリーポイント。
+// 設定読み込み・サーバ初期化・Graceful シャットダウン制御を担当。
 func main() {
+	// 設定ファイルの読み込み
 	cfg := config.Load()
-	fmt.Println("=== Config Check ===")
-	fmt.Printf("User: %s\n", cfg.DB.User)
-	fmt.Printf("Password: %s\n", cfg.DB.Password)
-	fmt.Printf("Host: %s\n", cfg.DB.Host)
-	fmt.Printf("Port: %s\n", cfg.DB.Port)
-	fmt.Printf("Name: %s\n", cfg.DB.Name)
-	fmt.Printf("Server Port: %s\n", cfg.Server.Port)
-	fmt.Printf("DSN: %s\n", cfg.DB.DSN())
 
 	server, err := app.New(&cfg)
 	if err != nil {
@@ -36,35 +25,7 @@ func main() {
 	}
 	e := server.Echo
 
-	// ====== WebSocket配線 ======
-	// Hub（room管理）
-	hub := ws.NewHub()
-
-	// RealtimeService（ここは好きな実装に差し替え）
-	rtSvc := realtime.New()
-
-	// チケット検証（本番はJWT実装に差し替え）
-	verifier := ws.DevTicket{}
-
-	wsHandler := &ws.Handler{
-		Hub:      hub,
-		Svc:      rtSvc,
-		Verifier: verifier,
-	}
-
-	// Echoにマウント（Anyにしておくとプロキシ環境でも融通が利く）
-	e.Any("/ws", echo.WrapHandler(wsHandler))
-	// ====== ここまで ======
-
-	port := cfg.Server.Port
-	if port == "" {
-		if v := os.Getenv("PORT"); v != "" {
-			port = v
-		} else {
-			port = "8080"
-		}
-	}
-
+	// シグナル受信用チャネルの初期化
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 
@@ -78,8 +39,9 @@ func main() {
 		}
 	}()
 
-	// サーバーを起動する（Gracefulシャットダウン時の ErrServerClosed は無視する）
-	if err := e.Start(":" + port); err != nil && err != http.ErrServerClosed {
+	// サーバー起動
+	// Graceful シャットダウン時の ErrServerClosed は正常終了として扱う。
+	if err := e.Start(":8080"); err != nil && err != http.ErrServerClosed {
 		e.Logger.Fatalf("start error: %v", err)
 	}
 }
