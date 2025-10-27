@@ -12,6 +12,8 @@
   例）`internal/service/auth_service.go` → `package service`
 - 命名は複数形のエンドポイントに合わせる（例：`/matches` → `MatchesHandler`）。
 
+<br>
+
 ## 新しいService／Handlerを追加する方法
 ### 1. Serviceを追加する
 1. `internal/service/` に、`<feature>_service.go` を新規作成。  
@@ -129,6 +131,8 @@
     v1.GET("/matches", api.Matches.GetMatches) // ← どちらかに追加
     ```
 
+<br>
+
 ## モデル定義の自動マイグレーション有効にする方法
 `cmd/migrate/main.go` の`AutoMigrate` 呼び出しに、新しく追加したモデル構造体を追記します。
 ```go
@@ -139,6 +143,8 @@ if err := gormDB.AutoMigrate(
   log.Fatalf("failed to migrate: %v", err)
 }
 ```
+
+<br>  
 
 ## 必須ではない環境変数とカスタマイズ方法
 `.env.example` に記載がない一部の変数も、挙動を変更したい場合に利用できます。 
@@ -158,9 +164,13 @@ if err := gormDB.AutoMigrate(
 - `CORS_ALLOWED_ORIGINS` は、フロントエンドのURLを明示的に許可したい場合に設定します。  
   （未設定時はワイルドカード `*` が使用され、全てのオリジンからのアクセスを許可します）  
 
+<br>
+
 ## ヘルスチェック
 - /healthz（公開）…起動確認用  
   （例： [http://localhost:8080/healthz](http://localhost:8080/healthz) ）
+
+<br>
 
 ## ディレクトリ構成
 ```text
@@ -191,5 +201,3 @@ backend/
 ├─ migrations/     # DBマイグレーションSQL（テーブル作成や変更）
 └─ wait-for.sh     # DBなどの依存サービス起動を待機するスクリプト
 ```
-
-SERVER_PORT問題うまくいったか？
