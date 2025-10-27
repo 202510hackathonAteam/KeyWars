@@ -42,7 +42,7 @@
       }
     }
     ```
-2. `internal/domain/repository/` に必要なリポジトリIFを追加（存在しない場合）。  
+2. `internal/domain/repository/` に必要なリポジトリインターフェースを追加（存在しない場合）。  
     新しいリポジトリは、以下のようにインターフェースを最低限用意します。
     ```go
     package repository
@@ -51,6 +51,43 @@
     // あとでメソッドを追加。
     type XxxRepository interface {}
     ```
+3. もし SQL を使う場合は、`internal/infra/repository/sql/` に以下を追加します。
+    - `repository.go`：SQL系リポジトリの集約と初期化を行う。
+      ```go
+      // 
+      type Repos struct {
+        User repository.UserRepository
+        Match repository.MatchRepository // ← 追加
+      }
+
+      func New(db *gorm.DB) *Repos {
+        return &Repos{
+          User: NewUserRepo(db),
+          Match: NewMatchRepo(db), // ← 追加
+        }
+      }
+      ```
+    - `<feature>_repository.go`：各機能ごとの具体的なリポジトリ実装を記述する。
+      ```go
+      package sql
+
+      import (
+        "gorm.io/gorm"
+        "keywars/backend/internal/domain/repository"
+      )
+
+      // xxxRepo は、domain 層の XxxRepository を GORM を用いて実装した構造体の定義。
+      // データベース操作を担当し、domain 層からの要求を SQL に変換して処理。
+      type xxxRepo struct {
+        db *gorm.DB
+      }
+
+      // NewXxxRepo は、*gorm.DB を受け取り xxxRepo を生成。
+      // domain/repository.XxxRepository インターフェースを実装した具体型を返却。
+      func NewXxxRepo(db *gorm.DB) repository.XxxRepository {
+        return &xxxRepo{db: db}
+      }
+      ```
 3. `internal/app/app.go` の `Repos` にリポジトリを追加。
     ```go
     repos := sqlrepository.Repos {
