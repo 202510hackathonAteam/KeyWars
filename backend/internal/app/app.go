@@ -33,29 +33,29 @@ func New(config *config.Config) (*Server, error) {
 	e.Use(echomiddleware.Recover())
 	e.Use(echomiddleware.RequestID())
 
-	// --- DB接続の初期化 ---
+	// DB接続の初期化
 	gormDB, err := db.New(config.DB)
 	if err != nil {
 		return nil, err
 	}
 
-	// --- Repository 層の初期化 ---
+	// Repository 層の初期化
 	repos := sqlrepository.Repos {
 		User: sqlrepository.NewUserRepo(gormDB),
 		// 下に追加していく
 	}
 
-	// --- JWT 認証ハンドラの初期化 ---
+	// JWT 認証ハンドラの初期化
 	jwtHandler := auth.NewJWTHandler(auth.JWTConfig{
 		IssuerName: "keywars",
 		HMACSecretKey: []byte(os.Getenv("JWT_SECRET")),
 		AccessTokenTTL: 24 * time.Hour,
 	})
 
-	// --- 認証ミドルウェアの設定 ---
+	// 認証ミドルウェアの設定
 	authMiddleware := httpmiddleware.NewAuthenticationMiddleware(jwtHandler)
 
-	// --- CORS 設定（環境変数で許可オリジンを指定可能）---
+	// CORS 設定（環境変数で許可オリジンを指定可能）
 	if origin := os.Getenv("CORS_ALLOWED_ORIGIN"); origin != "" {
 		e.Use(echomiddleware.CORSWithConfig(echomiddleware.CORSConfig{
 			AllowOrigins: []string{origin},
@@ -65,13 +65,13 @@ func New(config *config.Config) (*Server, error) {
 		}))
 	}
 
-	// --- Service 層の初期化 ---
+	// Service 層の初期化
 	services := service.Services{
 		Auth: service.NewAuthService(repos.User),
 		// 下に追加していく
 	}
 
-	// --- ハンドラ群とルータの設定 ---
+	// ハンドラ群とルータの設定
 	api := handler.New(services)
 	router.SetupRouter(e, api, authMiddleware)
 

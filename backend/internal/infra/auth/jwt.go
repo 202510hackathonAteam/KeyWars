@@ -27,10 +27,10 @@ func NewJWTHandler(config JWTConfig) *JWTHandler {
 // GenerateAccessToken は、userID を Subject に埋め込んだアクセストークンの生成。
 // トークン文字列と有効期限を返却。署名に失敗した場合はエラーを返す。
 func (h *JWTHandler) GenerateAccessToken(userID string) (tokenString string, expiresAt time.Time, err error) {
-	// --- トークンの有効期限を設定 ---
+	// トークンの有効期限を設定
 	expiresAt = time.Now().Add(h.Config.AccessTokenTTL)
 
-	// --- JWT クレームの作成 ---
+	// JWT クレームの作成
 	claims := jwt.RegisteredClaims{
 		Subject: userID,
 		Issuer: h.Config.IssuerName,
@@ -39,7 +39,7 @@ func (h *JWTHandler) GenerateAccessToken(userID string) (tokenString string, exp
 		// 必要に応じて Audience / NotBefore なども追加
 	}
 
-	// --- HMAC 署名によるトークン生成 ---
+	// HMAC 署名によるトークン生成
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, err = token.SignedString(h.Config.HMACSecretKey)
 	if err != nil {
@@ -55,7 +55,7 @@ func (h *JWTHandler) GenerateAccessToken(userID string) (tokenString string, exp
 func (h *JWTHandler) VerifyAccessToken(tokenString string) (string, error) {
 	var claims jwt.RegisteredClaims
 
-	// --- トークンの解析と署名検証 ---
+	// トークンの解析と署名検証
 	parsedToken, err := jwt.ParseWithClaims(tokenString, &claims, func(token *jwt.Token) (interface{}, error) {
 		// 署名方式の検証（HMACSecretKey 以外は拒否）
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -70,7 +70,7 @@ func (h *JWTHandler) VerifyAccessToken(tokenString string) (string, error) {
 		return "", errors.New("invalid token")
 	}
 
-	// --- クレーム内容の検証 ---
+	// クレーム内容の検証
 	if claims.Issuer != h.Config.IssuerName {
 		return "", errors.New("invalid issuer")
 	}

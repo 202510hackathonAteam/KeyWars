@@ -37,13 +37,13 @@ func defaultDBConnectionConfig() DBConnectionConfig {
 // オプションで接続プール設定を上書き可能。
 // 接続確認 (Ping) に失敗した場合はエラーを返却。
 func New(dbSettings config.DBConfig, poolSettings ...DBConnectionConfig) (*gorm.DB, error) {
-	// --- 接続プール設定の読み込み（引数指定がなければデフォルト値を使用）---
+	// 接続プール設定の読み込み（引数指定がなければデフォルト値を使用）
 	connectionSettings := defaultDBConnectionConfig()
 	if len(poolSettings) > 0 {
 		connectionSettings = poolSettings[0]
 	}
 
-	// --- 接続プール設定の読み込み（引数指定がなければデフォルト値を使用）---
+	// 接続プール設定の読み込み（引数指定がなければデフォルト値を使用）
 	gormDB, err := gorm.Open(mysql.Open(dbSettings.DSN()), &gorm.Config{
 		Logger: logger.Default.LogMode(connectionSettings.LogLevel),
 	})
@@ -51,7 +51,7 @@ func New(dbSettings config.DBConfig, poolSettings ...DBConnectionConfig) (*gorm.
 		return nil, err
 	}
 
-	// --- SQL DB の取得とプール設定 ---
+	// SQL DB の取得とプール設定
 	sqlDB, err := gormDB.DB()
 	if err != nil {
 		return nil, err
@@ -65,7 +65,7 @@ func New(dbSettings config.DBConfig, poolSettings ...DBConnectionConfig) (*gorm.
 		sqlDB.SetConnMaxIdleTime(connectionSettings.ConnectionIdleTime)
 	}
 
-	// --- 接続確認処理（最大 60 秒間リトライ）---
+	// 接続確認処理（最大 60 秒間リトライ）
   deadline := time.Now().Add(60 * time.Second)
   for {
     ctx, cancel := context.WithTimeout(context.Background(), connectionSettings.PingTimeout)

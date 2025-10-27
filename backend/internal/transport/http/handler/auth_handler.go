@@ -17,7 +17,7 @@ func NewAuthHandler(service service.AuthService) *AuthHandler {
 	return &AuthHandler{authService: service}
 }
 
-// --- 一時的な動作確認用エンドポイント --- //
+// 一時的な動作確認用エンドポイント
 func (h *AuthHandler) Hello(ctx echo.Context) error {
 	return ctx.String(http.StatusOK, "Hello, Echo is working!")
 }

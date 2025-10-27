@@ -16,17 +16,17 @@ import (
 // main は、アプリケーションのエントリーポイント。
 // 設定読み込み・サーバ初期化・Graceful シャットダウン制御を担当。
 func main() {
-	// --- 設定ファイルの読み込み ---
+	// 設定ファイルの読み込み
 	cfg := config.Load()
 
-	// --- アプリケーションサーバーの初期化 ---
+	// アプリケーションサーバーの初期化
 	server, err := app.New(&cfg)
 	if err != nil {
 		log.Fatalf("failed to init app: %v", err)
 	}
 	e := server.Echo
 
-	// --- ポート番号の決定 ---
+	// ポート番号の決定
 	port := cfg.Server.Port
 	if port == "" {
 		port = os.Getenv("SERVER_PORT")
@@ -35,7 +35,7 @@ func main() {
 		port = "8080"
 	}
 
-	// --- シグナル受信用チャネルの初期化 ---
+	// シグナル受信用チャネルの初期化
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 
@@ -49,7 +49,7 @@ func main() {
 		}
 	}()
 
-	// --- サーバー起動 ---
+	// サーバー起動
 	// Graceful シャットダウン時の ErrServerClosed は正常終了として扱う。
 	if err := e.Start(":" + port); err != nil && err != http.ErrServerClosed {
 		e.Logger.Fatalf("start error: %v", err)

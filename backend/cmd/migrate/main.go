@@ -11,16 +11,16 @@ import (
 // main は、データベースの自動マイグレーションを実行するエントリーポイント。
 // internal/domain/entity に定義された構造体をもとにテーブルを作成・更新。
 func main() {
-	// --- 設定ファイルの読み込み ---
+	// 設定ファイルの読み込み
 	cfg := config.Load()
 
-	// --- DB接続の初期化 ---
+	// DB接続の初期化
 	gormDB, err := db.New(cfg.DB)
 	if err != nil {
 		log.Fatalf("failed to connect database: %v", err)
 	}
 
-	// --- 自動マイグレーションの実行 ---
+	// 自動マイグレーションの実行
 	if err := gormDB.AutoMigrate(
 		// モデル作成後、コメントアウトを解除する
 		// &entity.User{},
