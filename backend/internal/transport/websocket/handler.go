@@ -13,9 +13,16 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// roomTicket を検証して UID / Room を取り出す疎結合IF
+const (
+	readLimit    = 1 << 20
+	pongWait     = 60 * time.Second
+	writeWait    = 10 * time.Second
+	pingInterval = 25 * time.Second
+	sendBufSize  = 256
+)
+
 type TicketVerifier interface {
-	VerifyRoomTicket(ctx context.Context, token string) (uid string, room string, err error)
+	VerifyRoomTicket(ctx context.Context, token string) (uid, room string, err error)
 }
 
 type Handler struct {
@@ -25,12 +32,10 @@ type Handler struct {
 }
 
 var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		// TODO: 本番は許可するオリジンを限定
-		return true
-	},
+	ReadBufferSize:    1024,
+	WriteBufferSize:   1024,
+	EnableCompression: true,
+	CheckOrigin:       func(r *http.Request) bool { return true }, // 本番は限定
 }
 
 type inMsg struct {
@@ -42,6 +47,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// --- 認証（roomTicket 必須） ---
+	if h.Verifier == nil {
+		http.Error(w, "server verifier not configured", http.StatusServiceUnavailable)
+		return
+	}
 	token := r.URL.Query().Get("token")
 	if token == "" {
 		http.Error(w, "token is required", http.StatusBadRequest)
@@ -56,48 +65,45 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// --- Upgrade ---
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Println("upgrade:", err)
+		log.Println("[ws] upgrade error:", err)
 		return
 	}
-	defer conn.Close()
+	// conn.Close() は writer 側で行う（CloseMessage送信のため）
 
 	cli := &client{
 		uid:  uid,
 		room: room,
-		send: make(chan []byte, 64),
+		send: make(chan []byte, sendBufSize),
 	}
 
 	// --- Join ---
-	if err := h.Hub.Join(ctx, room, cli); err != nil {
-		if errors.Is(err, ErrRoomFull) {
-			_ = conn.WriteControl(websocket.CloseMessage,
-				websocket.FormatCloseMessage(websocket.CloseTryAgainLater, "room full"),
-				time.Now().Add(2*time.Second))
+	if h.Hub != nil {
+		if err := h.Hub.Join(ctx, room, cli); err != nil {
+			if errors.Is(err, ErrRoomFull) {
+				_ = conn.WriteControl(websocket.CloseMessage,
+					websocket.FormatCloseMessage(websocket.CloseTryAgainLater, "room full"),
+					time.Now().Add(writeWait))
+			}
+			_ = conn.Close()
+			return
 		}
-		return
-	}
-	defer func() {
-		_ = h.Hub.Leave(ctx, cli)
-		h.Svc.OnDisconnect(ctx, uid, room)
-	}()
-
-	// --- 接続直後の初期メッセージ（必要なら） ---
-	if rep, err := h.Svc.OnConnect(ctx, uid, room); err == nil && rep != nil {
-		_ = cli.SendJSON(ctx, rep)
 	}
 
-	// --- writer goroutine（Ping込み） ---
+	// --- writer goroutine（Ping込み）を先に起動 ---
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		ticker := time.NewTicker(25 * time.Second) // Ping間隔
+		defer conn.Close()
+
+		ticker := time.NewTicker(pingInterval)
 		defer ticker.Stop()
 
 		for {
 			select {
 			case msg, ok := <-cli.send:
-				_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+				_ = conn.SetWriteDeadline(time.Now().Add(writeWait))
 				if !ok {
+					// close frame を送って終了
 					_ = conn.WriteMessage(websocket.CloseMessage, []byte{})
 					return
 				}
@@ -114,42 +120,69 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 
 			case <-ticker.C:
-				_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+				_ = conn.SetWriteDeadline(time.Now().Add(writeWait))
 				if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 					return
 				}
-
 			case <-ctx.Done():
+				// サーバ都合で閉じる
+				_ = conn.WriteControl(websocket.CloseMessage,
+					websocket.FormatCloseMessage(websocket.CloseServiceRestart, "server stopping"),
+					time.Now().Add(writeWait))
 				return
 			}
 		}
 	}()
 
+	// --- 接続直後の初期メッセージ（writer 起動後に） ---
+	if h.Svc != nil {
+		if rep, err := h.Svc.OnConnect(ctx, uid, room); err == nil && rep != nil {
+			_ = cli.SendJSON(ctx, rep)
+		}
+	}
+
 	// --- reader ループ（Pong/ReadDeadline込み） ---
-	conn.SetReadLimit(1 << 20)
-	_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	conn.SetReadLimit(readLimit)
+	_ = conn.SetReadDeadline(time.Now().Add(pongWait))
 	conn.SetPongHandler(func(string) error {
-		_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		_ = conn.SetReadDeadline(time.Now().Add(pongWait))
 		return nil
 	})
 	conn.SetCloseHandler(func(code int, text string) error {
-		// 既定動作（Close送出）に任せる。必要ならログを追加。
+		// 必要ならログ
 		return nil
 	})
 
 	for {
 		_, data, err := conn.ReadMessage()
 		if err != nil {
-			// 切断（defer で OnDisconnect 済み）
-			return
+			break
 		}
 		var m inMsg
 		if err := json.Unmarshal(data, &m); err != nil {
+			// ここで軽いエラー応答を返してもOK
 			continue
 		}
-		rep, err := h.Svc.OnMessage(ctx, uid, room, m.Type, m.Body)
-		if err == nil && rep != nil {
-			_ = cli.SendJSON(ctx, rep)
+		if h.Svc != nil {
+			if rep, err := h.Svc.OnMessage(ctx, uid, room, m.Type, m.Body); err == nil && rep != nil {
+				_ = cli.SendJSON(ctx, rep)
+			}
+		}
+		if h.Svc == nil {
+			_ = cli.SendJSON(ctx, map[string]any{
+				"echo": string(data),
+			})
+			continue
 		}
 	}
+
+	// --- 終了処理 ---
+	if h.Hub != nil {
+		_ = h.Hub.Leave(ctx, cli) // 先にHubから外す
+	}
+	if h.Svc != nil {
+		h.Svc.OnDisconnect(ctx, uid, room)
+	}
+	_ = cli.Close() // send を閉じて writer 終了を促す
+	<-done          // writer の終了待ち（CloseMessage 送出）
 }
