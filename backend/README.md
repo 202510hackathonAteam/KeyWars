@@ -141,18 +141,17 @@ if err := gormDB.AutoMigrate(
 ```
 
 ## 必須ではない環境変数とカスタマイズ方法
-`.env.example` に記載がない一部の変数も、挙動を変更したい場合に利用できます。  
-特にサーバーのポート番号や CORS 設定は、開発・本番環境で異なる場合に設定してください。  
+`.env.example` に記載がない一部の変数も、挙動を変更したい場合に利用できます。 
+
 | 変数名 | デフォルト | 説明 |
 |--------|-------------|------|
-| `SERVER_PORT` | `8080` | サーバーの起動ポート番号。指定がない場合は 8080 番で起動します。 |
 | `CORS_ALLOWED_ORIGINS` | 空 | フロントエンドなどからのリクエストを許可するオリジンを指定します。複数指定する場合はカンマ区切りで記載。 |
 
 > 例：
 > ```bash
-> SERVER_PORT=8080
 > CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 > ```
+> ※ 指定がない場合は全てのオリジンからのリクエストが拒否されます。
 
 ### 補足
 - `SERVER_PORT` は、ローカル開発や本番デプロイ時にポート番号を切り替えたい場合に使用します。  
@@ -167,12 +166,30 @@ if err := gormDB.AutoMigrate(
 ```text
 backend/
 ├─ cmd/        # アプリの実行入口（server起動 / DBマイグレーション実行）
+│  ├─ migrate/     # DBマイグレーション専用の実行ディレクトリ
+│  └─ server/      # サーバー起動用の実行ディレクトリ
 ├─ internal/   # アプリ本体（外部からはimport不可）
 │  ├─ app/         # アプリ全体の初期化・依存関係の組み立て（DB→Service→Handler）
 │  ├─ config/      # 環境変数・設定ファイルの読み込み（Config構造体定義）
 │  ├─ service/     # ビジネスロジック層（アプリの振る舞い・ユースケースを記述）
 │  ├─ domain/      # データ構造と契約層（Entity定義、Repositoryインターフェース）
+│  │  ├─ entity/       # エンティティ定義（ユーザーなどのドメインモデルを記述）
+│  │  └─ repository/   # Repositoryインターフェース（契約のみを定義）
 │  ├─ infra/       # データアクセス層（DBやRedisなど外部リソースへの実装）
+│  │  ├─ auth/         # JWTなどの認証関連の実装
+│  │  ├─ db/           # データベース接続の初期化や管理を担当
+│  │  ├─ redis/        # Redis接続の初期化や共通処理を担当
+│  │  └─ repository/   # domainで定義したRepositoryの実装層
+│  │     ├─ redis/     # Redisを用いたRepositoryの実装
+│  │     └─ sql/       # SQL(GORM)を用いたRepositoryの実装
 │  └─ transport/   # 通信層（HTTPやWebSocketでリクエストを受ける部分）
-└─ migrations/     # DBマイグレーションSQL（テーブル作成や変更）
+│     ├─ http/         # HTTP通信関連の処理をまとめる
+│     │  ├─ handler/       # 各エンドポイントのハンドラを定義
+│     │  ├─ middleware/    # 認証・ログなどのHTTPミドルウェアを定義
+│     │  └─ router/        # ルーティング設定を定義
+│     └─ websocket/    # WebSocket通信関連の処理をまとめる
+├─ migrations/     # DBマイグレーションSQL（テーブル作成や変更）
+└─ wait-for.sh     # DBなどの依存サービス起動を待機するスクリプト
 ```
+
+SERVER_PORT問題うまくいったか？
