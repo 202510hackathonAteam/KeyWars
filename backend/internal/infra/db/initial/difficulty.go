@@ -2,13 +2,24 @@ package initial
 
 import (
 	"gorm.io/gorm"
-	"keywars/backend/internal/domain/entity"
 )
+
+// difficultyRow は、初期データ投入専用のDBモデル。
+type difficultyRow struct {
+	ID int `gorm:"column:id;primaryKey"`
+	DifficultyCode string `gorm:"column:difficulty_code"`
+	TimeLimitMs int `gorm:"column:time_limit_ms"`
+}
+
+// TableName は、GORM に使用させるテーブル名を明示的に指定。
+func (difficultyRow) TableName() string {
+	return "difficulties"
+}
 
 // loadDifficulties は、難易度マスターデータを初期投入する関数。
 func loadDifficulties(db *gorm.DB) error {
 	// 登録する初期データ一覧
-	difficulties := []entity.Difficulty{
+	difficulties := []difficultyRow{
 		{
 			ID: 1,
 			DifficultyCode: "easy",

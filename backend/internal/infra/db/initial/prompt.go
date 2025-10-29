@@ -2,13 +2,25 @@ package initial
 
 import (
 	"gorm.io/gorm"
-	"keywars/backend/internal/domain/entity"
 )
+
+// promptRow は、初期データ投入専用のDBモデル。
+type promptRow struct {
+	ID int `gorm:"column:id;primaryKey"`
+	DifficultyID int `gorm:"column:difficulty_id;foreignKey"`
+	PromptTextJa string `gorm:"column:prompt_text_ja"`
+	TargetRomaji string `gorm:"column:target_romaji"`
+}
+
+// TableName は、GORM に使用させるテーブル名を明示的に指定。
+func (promptRow) TableName() string {
+	return "prompts"
+}
 
 // loadPrompts は、お題（Prompt）の初期データを難易度ごとに登録する関数。
 func loadPrompts(db *gorm.DB) error {
 	// 登録対象の初期お題データ一覧
-	prompts := []entity.Prompt{
+	prompts := []promptRow{
 		// Easy
 		{
 			ID: 1,
