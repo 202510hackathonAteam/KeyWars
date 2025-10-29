@@ -18,6 +18,5 @@ COPY . .
 COPY wait-for.sh /wait-for.sh
 RUN chmod +x /wait-for.sh
 
-# 環境変数設定とアプリ起動コマンド
-ENV GO111MODULE=on
+# アプリ起動コマンド
 CMD ["/wait-for.sh", "db", "3306", "air", "-c", ".air.toml"]
