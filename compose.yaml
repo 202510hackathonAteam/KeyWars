@@ -14,6 +14,7 @@ services:
       timeout: 10s
       retries: 10
 
+  # スキーマ作成を行うコンテナ
   migrate:
     build:
       context: .
@@ -25,6 +26,7 @@ services:
         condition: service_healthy
     restart: "no"
 
+  # 初期データを投入するコンテナ
   seed:
     build:
       context: .
