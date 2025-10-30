@@ -4,7 +4,6 @@ import (
 	"strings"
 	"gorm.io/gorm"
 	"github.com/google/uuid"
-	"keywars/backend/internal/domain/entity"
 	"keywars/backend/internal/domain/repository"
 )
 
