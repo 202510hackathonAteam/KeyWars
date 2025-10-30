@@ -1,0 +1,34 @@
+-- ユーザー情報を管理するテーブル。
+CREATE TABLE users (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  user_name VARCHAR(255) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+
+-- 難易度マスタ。prompts から参照される。
+CREATE TABLE difficulties (
+  id INT AUTO_INCREMENT NOT NULL PRIMARY KEY,
+  difficulty_code VARCHAR(25) UNIQUE NOT NULL,
+  time_limit_ms INT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- お題テーブル。difficulties.id を外部キー参照。
+CREATE TABLE prompts (
+  id INT AUTO_INCREMENT NOT NULL PRIMARY KEY,
+  difficulty_id INT NOT NULL,
+  prompt_text_ja VARCHAR(255) NOT NULL,
+  target_romaji VARCHAR(255) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY `idx_prompts_difficulty_id` (`difficulty_id`),
+  CONSTRAINT `fk_prompts_difficulty`
+    FOREIGN KEY (`difficulty_id`)
+    REFERENCES `difficulties`(`id`)
+    ON UPDATE CASCADE
+    ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
