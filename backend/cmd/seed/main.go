@@ -5,11 +5,12 @@ import (
 
 	"keywars/backend/internal/config"
 	"keywars/backend/internal/infra/db"
-	"keywars/backend/internal/domain/entity"
+	"keywars/backend/internal/infra/db/initial"
 )
 
 // main は、データベースの自動マイグレーションを実行するエントリーポイント。
-// internal/domain/entity に定義された構造体をもとにテーブルを作成・更新。
+// internal/infra/db/initial 配下に定義されたマスタデータ（例: 難易度・お題など）を
+// データベースに登録します。
 func main() {
 	// 設定ファイルの読み込み
 	cfg := config.Load()
@@ -20,14 +21,9 @@ func main() {
 		log.Fatalf("failed to connect database: %v", err)
 	}
 
-	// 自動マイグレーションの実行
-	if err := gormDB.AutoMigrate(
-		// モデル作成後、コメントアウトを解除する
-		// &entity.User{},
-		// &entity.Prompt{},
-		// 下に他のテーブル構造体を追加していく
-	); err != nil {
-		log.Fatalf("failed to migrate: %v", err)
+	// 初期データ投入
+	if err := initial.LoadInitialData(gormDB); err != nil {
+		log.Fatalf("failed to load initial data: %v", err)
 	}
 
 	log.Println("Database migration completed successfully!")
