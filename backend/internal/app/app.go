@@ -11,11 +11,13 @@ import (
 	"keywars/backend/internal/config"
 	"keywars/backend/internal/infra/auth"
 	"keywars/backend/internal/infra/db"
+	redisx "keywars/backend/internal/infra/redis"
+	redisrepository "keywars/backend/internal/infra/repository/redis"
 	sqlrepository "keywars/backend/internal/infra/repository/sql"
+	"keywars/backend/internal/service"
 	"keywars/backend/internal/transport/http/handler"
 	httpmiddleware "keywars/backend/internal/transport/http/middleware"
 	"keywars/backend/internal/transport/http/router"
-	"keywars/backend/internal/service"
 )
 
 // Server は、アプリケーション全体の依存関係と Echo インスタンスを保持する構造体の定義。
@@ -39,16 +41,28 @@ func New(config *config.Config) (*Server, error) {
 		return nil, err
 	}
 
+	// Redisの初期化
+	rdb, err := redisx.NewRedis(config.Redis.Addr, config.Redis.Password, config.Redis.DB) // 例: "redis:6379", "", 0
+	if err != nil {
+		return nil, err
+	}
+
 	// Repository 層の初期化
-	repos := sqlrepository.Repos {
+	sqlrepos := sqlrepository.Repos{
 		User: sqlrepository.NewUserRepo(gormDB),
 		// 下に追加していく
 	}
 
+	// Redis 側（待機キュー / ラウンド状態）
+	redisrepos := redisrepository.Repos{
+		Queue: redisrepository.NewMatchQueueRepositoryRedis(rdb),
+		Round: redisrepository.NewRoundStateRepositoryRedis(rdb),
+	}
+
 	// JWT 認証ハンドラの初期化
 	jwtHandler := auth.NewJWTHandler(auth.JWTConfig{
-		IssuerName: "keywars",
-		HMACSecretKey: []byte(os.Getenv("JWT_SECRET")),
+		IssuerName:     "keywars",
+		HMACSecretKey:  []byte(os.Getenv("JWT_SECRET")),
 		AccessTokenTTL: 24 * time.Hour,
 	})
 
@@ -58,16 +72,18 @@ func New(config *config.Config) (*Server, error) {
 	// CORS 設定（環境変数で許可オリジンを指定可能）
 	if origin := os.Getenv("CORS_ALLOWED_ORIGIN"); origin != "" {
 		e.Use(echomiddleware.CORSWithConfig(echomiddleware.CORSConfig{
-			AllowOrigins: []string{origin},
-			AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch, http.MethodOptions},
-			AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
+			AllowOrigins:     []string{origin},
+			AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch, http.MethodOptions},
+			AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
 			AllowCredentials: true,
 		}))
 	}
 
 	// Service 層の初期化
 	services := service.Services{
-		Auth: service.NewAuthService(repos.User),
+		Auth:  service.NewAuthService(sqlrepos.User),
+		Match: service.NewMatchService(redisrepos.Queue, redisrepos.Round),
+		Round: service.NewRoundService(redisrepos.Round),
 		// 下に追加していく
 	}
 
