@@ -168,19 +168,6 @@
     v1.GET("/matches", api.Matches.GetMatches) // ← どちらかに追加
     ```
 
-<br>
-
-## モデル定義の自動マイグレーション有効にする方法
-`cmd/migrate/main.go` の`AutoMigrate` 呼び出しに、新しく追加したモデル構造体を追記します。
-```go
-if err := gormDB.AutoMigrate(
-  &entity.User{},
-  &entity.Prompt{}, // ← 新しいモデルをここに追加
-); err != nil {
-  log.Fatalf("failed to migrate: %v", err)
-}
-```
-
 <br>  
 
 ## 必須ではない環境変数とカスタマイズ方法
@@ -213,18 +200,19 @@ if err := gormDB.AutoMigrate(
 ```text
 backend/
 ├─ cmd/        # アプリの実行入口（server起動 / DBマイグレーション実行）
-│  ├─ migrate/     # DBマイグレーション専用の実行ディレクトリ
+│  ├─ seed/        # 初期データ投入用の実行ディレクトリ
 │  └─ server/      # サーバー起動用の実行ディレクトリ
 ├─ internal/   # アプリ本体（外部からはimport不可）
 │  ├─ app/         # アプリ全体の初期化・依存関係の組み立て（DB→Service→Handler）
 │  ├─ config/      # 環境変数・設定ファイルの読み込み（Config構造体定義）
 │  ├─ service/     # ビジネスロジック層（アプリの振る舞い・ユースケースを記述）
 │  ├─ domain/      # データ構造と契約層（Entity定義、Repositoryインターフェース）
-│  │  ├─ entity/       # エンティティ定義（ユーザーなどのドメインモデルを記述）
+│  │  ├─ entity/       # ビジネスルールの定義
 │  │  └─ repository/   # Repositoryインターフェース（契約のみを定義）
 │  ├─ infra/       # データアクセス層（DBやRedisなど外部リソースへの実装）
 │  │  ├─ auth/         # JWTなどの認証関連の実装
 │  │  ├─ db/           # データベース接続の初期化や管理を担当
+│  │  │  └─ initial/   # DBマイグレーション後の初期データの投入処理を担当
 │  │  ├─ redis/        # Redis接続の初期化や共通処理を担当
 │  │  └─ repository/   # domainで定義したRepositoryの実装層
 │  │     ├─ redis/     # Redisを用いたRepositoryの実装
