@@ -1,5 +1,12 @@
 node_modules/
+dist/
 
 tmp/
 .env
 .vscode
+
+*.tfstate
+*.tfstate.backup
+*.tfvars
+.terraform/
+.terraform.lock.hcl

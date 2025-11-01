@@ -1,14 +1,14 @@
 terraform {
   required_providers {
     google = {
-      source = "hashicorp/google"
+      source  = "hashicorp/google"
       version = "6.8.0"
     }
   }
 }
 
 provider "google" {
-  project = "var.project_id"
+  project = var.project_id
   region  = "asia-northeast1"
 }
 
@@ -16,11 +16,13 @@ provider "google" {
 resource "google_project_service" "enable_compute_api" {
   project = var.project_id
   service = "compute.googleapis.com"
+  disable_on_destroy = false
 }
 
 resource "google_project_service" "enable_DNS_api" {
   project = var.project_id
-  service = "dns.googleapis.com" 
+  service = "dns.googleapis.com"
+  disable_on_destroy = false
 }
 
 # VPC作成
@@ -54,26 +56,58 @@ resource "google_compute_subnetwork" "group3" {
 
 
 # CloudStrageバケット作成
-resource "google_storage_bucket" "assets" {
-  name = "${var.project_id}-bucket"
-  location = var.region
+resource "google_storage_bucket" "static" {
+  name                        = "${var.project_id}-bucket"
+  location                    = var.region
   uniform_bucket_level_access = true
-  storage_class = "STANDARD"
-  force_destroy = true # 削除時に中身も削除する
+  storage_class               = "STANDARD"
+  force_destroy               = true # 削除時に中身も削除する
   # デフォルトページ設定
   website {
-    main_page_suffix = "dist/index.html"
+    main_page_suffix = "index.html"
     not_found_page   = "404.html"
   }
 }
 
 # バケットへのアクセス権
 resource "google_storage_bucket_iam_member" "default" {
-  bucket = google_storage_bucket.assets.name
-	role   = "roles/storage.objectViewer" # 閲覧者ロール
-  member = "allUsers" # プリンシバル(対象範囲)
+  bucket = google_storage_bucket.static.name
+  role   = "roles/storage.objectViewer" # 閲覧者ロール
+  member = "allUsers"                   # プリンシバル(対象範囲)
 }
 
+# バケットにファイルアップロード
+resource "google_storage_bucket_object" "html" {
+  bucket = google_storage_bucket.static.id
+  for_each = fileset(var.frontend_static_path, "*.html")
+  name = each.value # GCS内でのファイル名
+  source = "${var.frontend_static_path}/${each.value}" # アップロードするファイルのパス
+  content_type = "text/html"
+}
+
+resource "google_storage_bucket_object" "css" {
+  bucket = google_storage_bucket.static.id
+  for_each = fileset(var.frontend_static_path, "assets/*.css")
+  name = each.value # GCS内でのファイル名
+  source = "${var.frontend_static_path}/${each.value}"
+  content_type = "text/css"
+}
+
+resource "google_storage_bucket_object" "js" {
+  bucket = google_storage_bucket.static.id
+  for_each = fileset(var.frontend_static_path, "assets/*.js")
+  name = each.value # GCS内でのファイル名
+  source = "${var.frontend_static_path}/${each.value}"
+  content_type = "application/javascript"
+}
+
+resource "google_storage_bucket_object" "svg" {
+  bucket = google_storage_bucket.static.id
+  for_each = fileset(var.frontend_static_path, "*.svg")
+  name = each.value # GCS内でのファイル名
+  source = "${var.frontend_static_path}/${each.value}"
+  content_type = "image/svg+xml"
+}
 
 ### HTTPS用ロードバランサ
 # 固定IPアドレス取得
@@ -83,10 +117,10 @@ resource "google_compute_global_address" "lb_ip" {
 
 # バックエンドバケット
 resource "google_compute_backend_bucket" "bucket1" {
-  name = "cs-bucket"
+  name        = "cs-bucket"
   description = "CloudStrage bucket"
-  bucket_name = google_storage_bucket.assets.name
-  enable_cdn = true
+  bucket_name = google_storage_bucket.static.name
+  enable_cdn  = true
 }
 
 # CloudRunはここに追加
@@ -94,15 +128,16 @@ resource "google_compute_backend_bucket" "bucket1" {
 # urlマップ(バックエンドルール)
 resource "google_compute_url_map" "default" {
   name = "url-map"
+  default_service = google_compute_backend_bucket.bucket1.id
   # 指定したドメインに対して、使用するpath_matcherを指定
   host_rule {
-    hosts = [ "keywars.jp" ]
+    hosts        = ["keywars.jp"]
     path_matcher = "allpaths"
   }
   # パスに応じて選択するバックエンドを指定
   path_matcher {
-    name = "allpaths"
-    default_service = google_compute_backend_bucket.bucket1.self_link # どれにも該当しないトラフィックの転送先
+    name            = "allpaths"
+    default_service = google_compute_backend_bucket.bucket1.id # どれにも該当しないトラフィックの転送先
 
     # 特定のパターンに合致する場合の転送先
     # path_rule {
@@ -120,26 +155,26 @@ resource "google_compute_url_map" "default" {
 # GoogleマネージドSSL証明書の発行
 resource "google_compute_managed_ssl_certificate" "default" {
   provider = google
-  name = "ssl-cert"
+  name     = "ssl-cert"
   managed {
-    domains = [ "keywars.jp" ]
+    domains = ["keywars.jp"]
   }
 }
 
 # HTTPS転送ターゲットプロキシ
 resource "google_compute_target_https_proxy" "default" {
-  name = "https_proxy"
-  url_map = google_compute_url_map.default.id
-  ssl_certificates = [ google_compute_managed_ssl_certificate.default.name ]
-  depends_on = [ google_compute_managed_ssl_certificate.default ]
+  name             = "https-proxy"
+  url_map          = google_compute_url_map.default.id
+  ssl_certificates = [google_compute_managed_ssl_certificate.default.name]
+  depends_on       = [google_compute_managed_ssl_certificate.default]
 }
 
 # フロントエンドルール
 resource "google_compute_global_forwarding_rule" "default" {
-  name = "forwarding-rule"
-  ip_address = google_compute_global_address.lb_ip.address
-  port_range = "443"
-  target = google_compute_target_https_proxy.default.self_link
+  name                  = "forwarding-rule"
+  ip_address            = google_compute_global_address.lb_ip.address
+  port_range            = "443"
+  target                = google_compute_target_https_proxy.default.self_link
   load_balancing_scheme = "EXTERNAL"
 }
 
@@ -149,37 +184,37 @@ resource "google_compute_url_map" "http_redirect" {
   name = "http-redirect-map"
   default_url_redirect {
     https_redirect = true
-    strip_query = false
+    strip_query    = false
   }
 }
 
 # HTTP転送ターゲットプロキシ
 resource "google_compute_target_http_proxy" "http_proxy" {
-  name = "http_proxy"
+  name    = "http-proxy"
   url_map = google_compute_url_map.http_redirect.self_link
 }
 
 # フロントエンドルール
 resource "google_compute_global_forwarding_rule" "http_rule" {
-  name = "http-forwarding-rule"
-  port_range = "80"
-  target = google_compute_target_http_proxy.http_proxy.self_link
-  ip_address = google_compute_global_address.lb_ip.address
+  name                  = "http-forwarding-rule"
+  port_range            = "80"
+  target                = google_compute_target_http_proxy.http_proxy.self_link
+  ip_address            = google_compute_global_address.lb_ip.address
   load_balancing_scheme = "EXTERNAL"
 }
 
 # DNSゾーン作成
-resource "google_dns_managed_zone" "zone" {
-  name = "${var.project_id}-zone"
-  dns_name = "keywars.jp."
-}
+# resource "google_dns_managed_zone" "zone" {
+#   name = "${var.project_id}-zone"
+#   dns_name = "keywars.jp."
+# }
 
 # Aレコード作成
 resource "google_dns_record_set" "A_record" {
-  name = google_dns_managed_zone.zone.dns_name
-  managed_zone = google_dns_managed_zone.zone.name
-  type = "A"
-  ttl = "300"
-  rrdatas = [ google_compute_global_address.lb_ip.address ]
+  name         = var.dns_record_name
+  managed_zone = var.dns_zone_name
+  type         = "A"
+  ttl          = "300"
+  rrdatas      = [google_compute_global_address.lb_ip.address]
 }
 
