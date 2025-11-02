@@ -18,32 +18,44 @@ import (
 	"keywars/backend/internal/service"
 )
 
+// Server は、アプリケーション全体の依存関係と Echo インスタンスを保持する構造体の定義。
 type Server struct {
 	Echo *echo.Echo
 }
 
+// New は、アプリケーションサーバーを初期化して Server を生成。
+// DB 接続、リポジトリ・サービス・ハンドラの依存注入、ルータ設定をまとめて実施。
 func New(config *config.Config) (*Server, error) {
+	// Echo 本体の初期化と共通ミドルウェア設定
 	e := echo.New()
 	e.HideBanner = true
 	e.Use(echomiddleware.Logger())
 	e.Use(echomiddleware.Recover())
 	e.Use(echomiddleware.RequestID())
 
+	// DB接続の初期化
 	gormDB, err := db.New(config.DB)
 	if err != nil {
 		return nil, err
 	}
 
-	repo := sqlrepository.New(gormDB)
+	// Repository 層の初期化
+	repos := sqlrepository.Repos {
+		User: sqlrepository.NewUserRepo(gormDB),
+		// 下に追加していく
+	}
 
+	// JWT 認証ハンドラの初期化
 	jwtHandler := auth.NewJWTHandler(auth.JWTConfig{
 		IssuerName: "keywars",
 		HMACSecretKey: []byte(os.Getenv("JWT_SECRET")),
 		AccessTokenTTL: 24 * time.Hour,
 	})
 
+	// 認証ミドルウェアの設定
 	authMiddleware := httpmiddleware.NewAuthenticationMiddleware(jwtHandler)
 
+	// CORS 設定（環境変数で許可オリジンを指定可能）
 	if origin := os.Getenv("CORS_ALLOWED_ORIGIN"); origin != "" {
 		e.Use(echomiddleware.CORSWithConfig(echomiddleware.CORSConfig{
 			AllowOrigins: []string{origin},
@@ -53,9 +65,14 @@ func New(config *config.Config) (*Server, error) {
 		}))
 	}
 
-	authService := service.NewAuthService(repo.User)
+	// Service 層の初期化
+	services := service.Services{
+		Auth: service.NewAuthService(repos.User),
+		// 下に追加していく
+	}
 
-	api := handler.New(authService)
+	// ハンドラ群とルータの設定
+	api := handler.New(services)
 	router.SetupRouter(e, api, authMiddleware)
 
 	return &Server{Echo: e}, nil

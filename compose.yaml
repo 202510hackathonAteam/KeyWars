@@ -1,4 +1,5 @@
 services:
+  # ※ 開発専用コンテナ。本番環境では RDS 等の外部DBを使用します。
   db:
     image: mysql:8.0.27
     env_file:
@@ -13,10 +14,36 @@ services:
       timeout: 10s
       retries: 10
 
+  # スキーマ作成を行うコンテナ
+  migrate:
+    build:
+      context: .
+      dockerfile: docker/migrate/Dockerfile
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  # 初期データを投入するコンテナ
+  seed:
+    build:
+      context: .
+      dockerfile: docker/seed/Dockerfile
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: docker/backend/Dockerfile
     ports:
       - "8080:8080"
     volumes:
@@ -26,6 +53,11 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      seed:
+        condition: service_completed_successfully
+    restart: unless-stopped
 
   frontend:
     build:
