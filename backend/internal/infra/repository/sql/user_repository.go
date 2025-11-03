@@ -1,10 +1,15 @@
 package sql
 
 import (
+	"context"
+	"errors"
 	"strings"
+
 	"gorm.io/gorm"
-	"github.com/google/uuid"
+	"github.com/go-sql-driver/mysql"
+
 	"keywars/backend/internal/domain/repository"
+	"keywars/backend/internal/infra/repository/sql/model"
 )
 
 // userRepo は、domain 層の UserRepository を GORM を用いて実装した構造体の定義。
@@ -13,46 +18,25 @@ type userRepo struct{
 	db *gorm.DB
 }
 
-// ダミー実装
 // NewUserRepo は、*gorm.DB を受け取り userRepo を生成。
 // domain/repository.UserRepository インターフェースを実装した具体型を返却。
 func NewUserRepo(db *gorm.DB) repository.UserRepository {
 	return &userRepo{db: db}
 }
 
-// Create は、Userエンティティをデータベースに新規登録。
-// UUIDの重複が発生した場合は、新しいUUIDを再生成して再試行する。
-func (repo *userRepo) Create(user *entity.User) error {
-	// ID が未設定の場合のみ UUID を自動生成
-	for {
-		repo.ensureUUID(user)
-
-		// INSERT（CREATE）処理を実行
-		err := repo.db.Create(user).Error
-		// 成功した場合は終了
-		if err == nil {
-			return nil
+// Create は新規ユーザーをデータベースに登録する処理。
+func (r *userRepo) Create(ctx context.Context, user *model.User) error {
+	// コンテキストを付与してユーザー情報を登録する処理。
+	if err := r.db.WithContext(ctx).Create(user).Error; err != nil {
+		// MySQL固有のエラー型を判定する処理。
+		var mysqlErr *mysql.MySQLError
+		if errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {
+			// user_name のユニーク制約違反を検出する処理。
+			if strings.Contains(strings.ToLower(mysqlErr.Message), "ux_users_user_name") {
+        return errors.New("user_name already exists")
+			}
 		}
-
-		// UUID 重複による一意制約エラーの場合のみ、再試行
-		if isDuplicateKeyError(err) {
-			user.ID = ""
-			continue
-		}
-
-		// その他のエラーはそのまま返却
 		return err
 	}
-}
-
-// ensureUUID は、ユーザーIDが空の場合にUUIDを自動生成して設定。
-func (repo *userRepo) ensureUUID(user *entity.User) {
-	if user.ID == "" {
-		user.ID = uuid.NewString()
-	}
-}
-
-// isDuplicateKeyError は、MySQLの一意制約違反エラーかどうかを判定。
-func isDuplicateKeyError(err error) bool {
-	return strings.Contains(err.Error(), "Duplicate entry")
+	return nil
 }

@@ -184,7 +184,6 @@
 > ※ 指定がない場合は全てのオリジンからのリクエストが拒否されます。
 
 ### 補足
-- `SERVER_PORT` は、ローカル開発や本番デプロイ時にポート番号を切り替えたい場合に使用します。  
 - `CORS_ALLOWED_ORIGINS` は、フロントエンドのURLを明示的に許可したい場合に設定します。  
   （未設定時はワイルドカード `*` が使用され、全てのオリジンからのアクセスを許可します）  
 
@@ -206,8 +205,7 @@ backend/
 │  ├─ app/         # アプリ全体の初期化・依存関係の組み立て（DB→Service→Handler）
 │  ├─ config/      # 環境変数・設定ファイルの読み込み（Config構造体定義）
 │  ├─ service/     # ビジネスロジック層（アプリの振る舞い・ユースケースを記述）
-│  ├─ domain/      # データ構造と契約層（Entity定義、Repositoryインターフェース）
-│  │  ├─ entity/       # ビジネスルールの定義
+│  ├─ domain/      # データ構造と契約層（Repositoryインターフェース）
 │  │  └─ repository/   # Repositoryインターフェース（契約のみを定義）
 │  ├─ infra/       # データアクセス層（DBやRedisなど外部リソースへの実装）
 │  │  ├─ auth/         # JWTなどの認証関連の実装
@@ -217,6 +215,7 @@ backend/
 │  │  └─ repository/   # domainで定義したRepositoryの実装層
 │  │     ├─ redis/     # Redisを用いたRepositoryの実装
 │  │     └─ sql/       # SQL(GORM)を用いたRepositoryの実装
+│  │        └─ model/  # DBテーブル構造に対応するGORMモデル定義
 │  └─ transport/   # 通信層（HTTPやWebSocketでリクエストを受ける部分）
 │     ├─ http/         # HTTP通信関連の処理をまとめる
 │     │  ├─ handler/       # 各エンドポイントのハンドラを定義
