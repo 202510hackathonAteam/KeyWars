@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Home from "./assets/home/Home";
 import Login from "./assets/login/Login";
 import Signup from "./assets/signup/Signup";
-import Buttle from "./assets/buttle/Buttle";
+import Battle from "./assets/battle/Battle";
 import Result from "./assets/result/Result"
 
 export default function AppRoutes() {
@@ -13,7 +13,7 @@ export default function AppRoutes() {
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
-        <Route path="/buttle" element={<Buttle />} />
+        <Route path="/battle" element={<Battle />} />
         <Route path="/result" element={<Result />} />
       </Routes>
     </BrowserRouter>

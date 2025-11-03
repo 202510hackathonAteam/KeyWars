@@ -1,5 +1,5 @@
 import React from "react";
-import "./Buttle.css";
+import "./Battle.css";
 
 export default function GamePage() {
   return (

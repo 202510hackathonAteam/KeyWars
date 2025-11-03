@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState } from "react";
 // import "./Home.css";
 
+
 export default function Home() {
   // 現在接続中かどうかを保持するstate(connectによって再描画される。)
   const [connected, setConnected] = useState(false);
@@ -9,11 +10,14 @@ export default function Home() {
   const wsRef = useRef(null);
   // Websocketの接続を担う関数 
   const connectWebSocket = () => {
-    // 固定の user_id を送る
+    // 固定の user_idとroom を送る
     const user_id = "user_1234";
+    const room = "match_10";
+    const token = `dev:${user_id}:${room}`;
 
     // WebSocketオブジェクト生成し、接続
-    const ws = new WebSocket(`ws://localhost:8080/ws?user_id=${user_id}`);
+    const ws = new WebSocket(`ws://localhost:8081/ws?token=${token}`);
+
     // 本番環境でhttpsが使えるなら、以下の方がいい
     // const ws = new WebSocket(`wss://localhost:8080/ws?user_id=${user_id}`);
 
@@ -23,7 +27,7 @@ export default function Home() {
       // stateを更新
       setConnected(true);
       // ここでバックエンドに初期メッセージを送ってもOK
-      ws.send(JSON.stringify({ type: "join", user_id }));
+      ws.send(JSON.stringify({ type: "join", user_id, room}));
     };
 
     ws.onmessage = (event) => {
