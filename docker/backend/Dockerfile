@@ -16,6 +16,7 @@ COPY backend/ .
 
 # DB 起動待機用スクリプトをコピーして実行権限を付与
 COPY docker/backend/wait-for.sh /wait-for.sh
+RUN sed -i 's/\r$//' /wait-for.sh
 RUN chmod +x /wait-for.sh
 
 # アプリ起動コマンド
