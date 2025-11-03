@@ -78,7 +78,7 @@ func New(config *config.Config) (*Server, error) {
 	api := handler.New(services)
 
 	// WebSocket ハブとハンドラをアプリ初期化の中で生成
-	hub := ws.NewHub() // or &ws.Hub{}
+	hub := ws.NewHub()
 	webSocketHandler := &ws.Handler{
 		Hub:      hub,
 		Verifier: ws.DevTicket{}, // 開発用トークン: dev:<userID>:<room>

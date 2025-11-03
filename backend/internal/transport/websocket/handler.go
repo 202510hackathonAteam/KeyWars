@@ -14,175 +14,201 @@ import (
 )
 
 const (
-	readLimit    = 1 << 20
-	pongWait     = 60 * time.Second
-	writeWait    = 10 * time.Second
+	// readLimit は 1 メッセージあたりの最大受信サイズ（バイト）。
+	readLimit = 1 << 20
+
+	// pongWait は最後の Pong 受信から次の Pong までの猶予時間。
+	pongWait = 60 * time.Second
+
+	// writeWait は各フレーム送信の書き込みタイムアウト。
+	writeWait = 10 * time.Second
+
+	// pingInterval はサーバ側からの Ping を送る間隔。
 	pingInterval = 25 * time.Second
-	sendBufSize  = 256
+
+	// sendBufSize は送信チャネルのバッファサイズ（メッセージ数）。
+	sendBufSize = 256
 )
 
+// TicketVerifier は、クエリ等で渡される「ルーム参加用トークン」を検証し、
+// ユーザーIDとルーム名を返す責務を持つ。
 type TicketVerifier interface {
-	VerifyRoomTicket(ctx context.Context, token string) (uid, room string, err error)
+	VerifyRoomTicket(ctx context.Context, token string) (userID, roomName string, err error)
 }
 
+// Handler は WebSocket エンドポイントのハンドラ。
+// - Hub: 接続の出入りとブロードキャストを司る
+// - Service: アプリ固有の接続/メッセージ/切断処理
+// - Verifier: 参加用トークンの検証
 type Handler struct {
 	Hub      *Hub
-	Svc      domain.RealtimeService
+	Service  domain.RealtimeService
 	Verifier TicketVerifier
 }
 
+// upgrader は HTTP から WebSocket へのアップグレード設定。
+// 本番では CheckOrigin の制約を強めること。
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:    1024,
 	WriteBufferSize:   1024,
 	EnableCompression: true,
-	CheckOrigin:       func(r *http.Request) bool { return true }, // 本番は限定
+	CheckOrigin:       func(_ *http.Request) bool { return true }, // 本番はオリジンを限定
 }
 
-type inMsg struct {
+// IncomingMessage はクライアントから受信するメッセージの基本スキーマ。
+type IncomingMessage struct {
 	Type string          `json:"type"`
 	Body json.RawMessage `json:"body"`
 }
 
-func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+// ServeHTTP は WebSocket エンドポイントのエントリポイント。
+// 1) トークン検証 → 2) Upgrade → 3) Hub への Join → 4) writer 起動 → 5) reader ループ → 6) クリーンアップ
+func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+	requestContext := request.Context()
 
-	// --- 認証（roomTicket 必須） ---
-	if h.Verifier == nil {
-		http.Error(w, "server verifier not configured", http.StatusServiceUnavailable)
+	// --- 1) 認証（roomTicket 必須） ---
+	if handler.Verifier == nil {
+		http.Error(writer, "server verifier not configured", http.StatusServiceUnavailable)
 		return
 	}
-	token := r.URL.Query().Get("token")
+	token := request.URL.Query().Get("token")
 	if token == "" {
-		http.Error(w, "token is required", http.StatusBadRequest)
+		http.Error(writer, "token is required", http.StatusBadRequest)
 		return
 	}
-	uid, room, err := h.Verifier.VerifyRoomTicket(ctx, token)
-	if err != nil || uid == "" || room == "" {
-		http.Error(w, "invalid token", http.StatusUnauthorized)
+	userID, roomName, err := handler.Verifier.VerifyRoomTicket(requestContext, token)
+	if err != nil || userID == "" || roomName == "" {
+		http.Error(writer, "invalid token", http.StatusUnauthorized)
 		return
 	}
 
-	// --- Upgrade ---
-	conn, err := upgrader.Upgrade(w, r, nil)
+	// --- 2) Upgrade ---
+	wsConn, err := upgrader.Upgrade(writer, request, nil)
 	if err != nil {
 		log.Println("[ws] upgrade error:", err)
 		return
 	}
-	// conn.Close() は writer 側で行う（CloseMessage送信のため）
+	// Close は writer 側で行う（CloseMessage 送信のため）
 
-	cli := &client{
-		uid:  uid,
-		room: room,
-		send: make(chan []byte, sendBufSize),
+	// 接続インスタンス（送信用チャネル付き）
+	clientConn := &Client{
+		userID:      userID,
+		roomName:    roomName,
+		sendChannel: make(chan []byte, sendBufSize),
 	}
 
-	// --- Join ---
-	if h.Hub != nil {
-		if err := h.Hub.Join(ctx, room, cli); err != nil {
+	// --- 3) Hub.Join ---
+	if handler.Hub != nil {
+		if err := handler.Hub.Join(requestContext, roomName, clientConn); err != nil {
 			if errors.Is(err, ErrRoomFull) {
-				_ = conn.WriteControl(websocket.CloseMessage,
+				_ = wsConn.WriteControl(
+					websocket.CloseMessage,
 					websocket.FormatCloseMessage(websocket.CloseTryAgainLater, "room full"),
-					time.Now().Add(writeWait))
+					time.Now().Add(writeWait),
+				)
 			}
-			_ = conn.Close()
+			_ = wsConn.Close()
 			return
 		}
 	}
 
-	// --- writer goroutine（Ping込み）を先に起動 ---
-	done := make(chan struct{})
+	// --- 4) writer goroutine（Ping 送信込み）---
+	doneChan := make(chan struct{})
 	go func() {
-		defer close(done)
-		defer conn.Close()
+		defer close(doneChan)
+		defer wsConn.Close()
 
-		ticker := time.NewTicker(pingInterval)
-		defer ticker.Stop()
+		pingTicker := time.NewTicker(pingInterval)
+		defer pingTicker.Stop()
 
 		for {
 			select {
-			case msg, ok := <-cli.send:
-				_ = conn.SetWriteDeadline(time.Now().Add(writeWait))
+			case messageBytes, ok := <-clientConn.sendChannel:
+				_ = wsConn.SetWriteDeadline(time.Now().Add(writeWait))
 				if !ok {
 					// close frame を送って終了
-					_ = conn.WriteMessage(websocket.CloseMessage, []byte{})
+					_ = wsConn.WriteMessage(websocket.CloseMessage, []byte{})
 					return
 				}
-				w, err := conn.NextWriter(websocket.TextMessage)
+				frameWriter, err := wsConn.NextWriter(websocket.TextMessage)
 				if err != nil {
 					return
 				}
-				if _, err := w.Write(msg); err != nil {
-					_ = w.Close()
+				if _, err := frameWriter.Write(messageBytes); err != nil {
+					_ = frameWriter.Close()
 					return
 				}
-				if err := w.Close(); err != nil {
+				if err := frameWriter.Close(); err != nil {
 					return
 				}
 
-			case <-ticker.C:
-				_ = conn.SetWriteDeadline(time.Now().Add(writeWait))
-				if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+			case <-pingTicker.C:
+				_ = wsConn.SetWriteDeadline(time.Now().Add(writeWait))
+				if err := wsConn.WriteMessage(websocket.PingMessage, nil); err != nil {
 					return
 				}
-			case <-ctx.Done():
+
+			case <-requestContext.Done():
 				// サーバ都合で閉じる
-				_ = conn.WriteControl(websocket.CloseMessage,
+				_ = wsConn.WriteControl(
+					websocket.CloseMessage,
 					websocket.FormatCloseMessage(websocket.CloseServiceRestart, "server stopping"),
-					time.Now().Add(writeWait))
+					time.Now().Add(writeWait),
+				)
 				return
 			}
 		}
 	}()
 
 	// --- 接続直後の初期メッセージ（writer 起動後に） ---
-	if h.Svc != nil {
-		if rep, err := h.Svc.OnConnect(ctx, uid, room); err == nil && rep != nil {
-			_ = cli.SendJSON(ctx, rep)
+	if handler.Service != nil {
+		if reply, err := handler.Service.OnConnect(requestContext, userID, roomName); err == nil && reply != nil {
+			_ = clientConn.SendJSON(requestContext, reply)
 		}
 	}
 
-	// --- reader ループ（Pong/ReadDeadline込み） ---
-	conn.SetReadLimit(readLimit)
-	_ = conn.SetReadDeadline(time.Now().Add(pongWait))
-	conn.SetPongHandler(func(string) error {
-		_ = conn.SetReadDeadline(time.Now().Add(pongWait))
+	// --- 5) reader ループ（Pong/ReadDeadline 込み） ---
+	wsConn.SetReadLimit(readLimit)
+	_ = wsConn.SetReadDeadline(time.Now().Add(pongWait))
+	wsConn.SetPongHandler(func(string) error {
+		_ = wsConn.SetReadDeadline(time.Now().Add(pongWait))
 		return nil
 	})
-	conn.SetCloseHandler(func(code int, text string) error {
+	wsConn.SetCloseHandler(func(_ int, _ string) error {
 		// 必要ならログ
 		return nil
 	})
 
 	for {
-		_, data, err := conn.ReadMessage()
+		_, rawData, err := wsConn.ReadMessage()
 		if err != nil {
 			break
 		}
-		var m inMsg
-		if err := json.Unmarshal(data, &m); err != nil {
+		var incoming IncomingMessage
+		if err := json.Unmarshal(rawData, &incoming); err != nil {
 			// ここで軽いエラー応答を返してもOK
 			continue
 		}
-		if h.Svc != nil {
-			if rep, err := h.Svc.OnMessage(ctx, uid, room, m.Type, m.Body); err == nil && rep != nil {
-				_ = cli.SendJSON(ctx, rep)
+		if handler.Service != nil {
+			if reply, err := handler.Service.OnMessage(requestContext, userID, roomName, incoming.Type, incoming.Body); err == nil && reply != nil {
+				_ = clientConn.SendJSON(requestContext, reply)
 			}
 		}
-		if h.Svc == nil {
-			_ = cli.SendJSON(ctx, map[string]any{
-				"echo": string(data),
+		if handler.Service == nil {
+			_ = clientConn.SendJSON(requestContext, map[string]any{
+				"echo": string(rawData),
 			})
 			continue
 		}
 	}
 
-	// --- 終了処理 ---
-	if h.Hub != nil {
-		_ = h.Hub.Leave(ctx, cli) // 先にHubから外す
+	// --- 6) 終了処理 ---
+	if handler.Hub != nil {
+		_ = handler.Hub.Leave(requestContext, clientConn) // 先に Hub から外す
 	}
-	if h.Svc != nil {
-		h.Svc.OnDisconnect(ctx, uid, room)
+	if handler.Service != nil {
+		handler.Service.OnDisconnect(requestContext, userID, roomName)
 	}
-	_ = cli.Close() // send を閉じて writer 終了を促す
-	<-done          // writer の終了待ち（CloseMessage 送出）
+	_ = clientConn.Close() // sendChannel を閉じて writer を終了させる
+	<-doneChan             // writer の終了待ち（CloseMessage 送出）
 }
