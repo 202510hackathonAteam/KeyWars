@@ -14,10 +14,10 @@ import (
 // RoundStateRepositoryRedis は、対戦進行中の「メタ情報・状態・イベント・デッキ」を
 // Redis 上の複数キーに分割して管理するリポジトリ実装。
 // キー構成：
-//   - match:{mid}         ... メタ情報（status, created_at, p1, p2, winner_user_id）
-//   - match:{mid}:state   ... 進行状態（deck_idx, q_started_at_ms, turn, p{uid}:lp, last_event_id）
-//   - match:{mid}:events  ... イベント Streams（answer などの出来事）
-//   - match:{mid}:deck    ... 出題デッキ（LIST; 要素はJSON文字列）
+//   - match:{matchID}         ... メタ情報（status, created_at, p1, p2, winner_user_id）
+//   - match:{matchID}:state   ... 進行状態（deck_idx, q_started_at_ms, turn, p{userID}:lp, last_event_id）
+//   - match:{matchID}:events  ... イベント Streams（answer などの出来事）
+//   - match:{matchID}:deck    ... 出題デッキ（LIST; 要素はJSON文字列）
 type RoundStateRepositoryRedis struct {
 	// redisClient は go-redis v9 のクライアント。
 	// 1インスタンスを本構造体で共有して各操作に使用する。
@@ -92,7 +92,6 @@ func (repository *RoundStateRepositoryRedis) SaveDeckOnce(contextObject context.
 
 	return repository.redisClient.Watch(contextObject, func(transaction *redis.Tx) error {
 		// 既存チェック（存在する場合はスキップ）
-		// 既存チェック（存在する場合はスキップ）
 		exists, err := transaction.Exists(contextObject, deckKey).Result()
 		if err != nil {
 			return err
@@ -143,7 +142,7 @@ func (repository *RoundStateRepositoryRedis) ApplyAnswer(contextObject context.C
 
 		// TxPipelined: WATCH 中の原子的更新
 		_, err = transaction.TxPipelined(contextObject, func(pipeliner redis.Pipeliner) error {
-			// 対戦相手の LP を更新。キーは p{uid}:lp（例: p123:lp）
+			// 対戦相手の LP を更新。キーは p{userID}:lp（例: p123:lp）
 			pipeliner.HSet(contextObject, stateKey, fmt.Sprintf("p%s:lp", answerArgs.OpponentUserID), answerArgs.NewOpponentLifePoint)
 
 			// ターンを +1（競合があれば WATCH により失敗→再実行 or エラー）
@@ -175,6 +174,7 @@ func (repository *RoundStateRepositoryRedis) ApplyAnswer(contextObject context.C
 		"server_ts", strconv.FormatInt(answerArgs.CurrentServerTimeMs, 10),
 	}
 	for key, value := range answerArgs.EventFields {
+		// 予約済みキーは上書きしない
 		if key == "type" || key == "turn" || key == "server_ts" {
 			continue
 		}

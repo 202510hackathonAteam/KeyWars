@@ -15,39 +15,39 @@ import (
 )
 
 func TestRoundState_ApplyAnswer(t *testing.T) {
-	mr, _ := miniredis.Run()
-	defer mr.Close()
+	miniRedis, _ := miniredis.Run()
+	defer miniRedis.Close()
 
-	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	repo := redisrepo.NewRoundStateRepositoryRedis(rdb)
+	redisClient := redis.NewClient(&redis.Options{Addr: miniRedis.Addr()})
+	repository := redisrepo.NewRoundStateRepositoryRedis(redisClient)
 
-	ctx := context.Background()
-	mid := "m123"
-	u1, u2 := "u1", "u2"
-	now := time.Now().UnixMilli()
+	contextObject := context.Background()
+	matchID := "m123"
+	user1ID, user2ID := "u1", "u2"
+	currentTimeMs := time.Now().UnixMilli()
 
 	// メタ & 開始
-	if err := repo.CreateMeta(ctx, mid, u1, u2, now); err != nil {
+	if err := repository.CreateMeta(contextObject, matchID, user1ID, user2ID, currentTimeMs); err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.Start(ctx, mid); err != nil {
+	if err := repository.Start(contextObject, matchID); err != nil {
 		t.Fatal(err)
 	}
 
 	// デッキ保存（1件だけでもOK）
-	if err := repo.SaveDeckOnce(ctx, mid, []string{`{"pid":1,"surface":"A","reading":"a","diff":1,"char_count":1,"limit_ms":3000}`}); err != nil {
+	if err := repository.SaveDeckOnce(contextObject, matchID, []string{`{"pid":1,"surface":"A","reading":"a","diff":1,"char_count":1,"limit_ms":3000}`}); err != nil {
 		t.Fatal(err)
 	}
 
-	// 回答適用（u1がu2へダメージ）
-	evID, turn, err := repo.ApplyAnswer(ctx, drepo.AnswerApplyArg{
-		MID:         mid,
-		OppUID:      u2,
-		NewOppLP:    7, // 例: 10→7
-		NextDeckIdx: 1, // 次へ進める
-		NowMs:       now + 100,
+	// 回答適用（user1ID が user2ID へダメージ）
+	eventID, turn, err := repository.ApplyAnswer(contextObject, drepo.AnswerApplyArg{
+		MatchID:              matchID,
+		OpponentUserID:       user2ID,
+		NewOpponentLifePoint: 7, // 例: 10→7
+		NextDeckIndex:        1, // 次へ進める
+		CurrentServerTimeMs:  currentTimeMs + 100,
 		EventFields: map[string]string{
-			"uid":        u1,
+			"uid":        user1ID,
 			"deck_idx":   "1",
 			"correct":    "1",
 			"dmg":        "3",
@@ -57,37 +57,37 @@ func TestRoundState_ApplyAnswer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyAnswer err: %v", err)
 	}
-	if evID == "" || turn != 1 {
-		t.Fatalf("unexpected result evID=%q turn=%d", evID, turn)
+	if eventID == "" || turn != 1 {
+		t.Fatalf("unexpected result eventID=%q turn=%d", eventID, turn)
 	}
 
 	// state が更新されているか（turn, deck_idx, last_event_id）
-	state, err := rdb.HGetAll(ctx, "match:"+mid+":state").Result()
+	stateHash, err := redisClient.HGetAll(contextObject, "match:"+matchID+":state").Result()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state["turn"] != "1" {
-		t.Fatalf("turn want=1 got=%s", state["turn"])
+	if stateHash["turn"] != "1" {
+		t.Fatalf("turn want=1 got=%s", stateHash["turn"])
 	}
-	if state["deck_idx"] != "1" {
-		t.Fatalf("deck_idx want=1 got=%s", state["deck_idx"])
+	if stateHash["deck_idx"] != "1" {
+		t.Fatalf("deck_idx want=1 got=%s", stateHash["deck_idx"])
 	}
-	if state["last_event_id"] == "" {
+	if stateHash["last_event_id"] == "" {
 		t.Fatalf("last_event_id empty")
 	}
-	if lp := state["p"+u2+":lp"]; lp != "7" {
-		t.Fatalf("opponent lp want=7 got=%s", lp)
+	if lifePoint := stateHash["p"+user2ID+":lp"]; lifePoint != "7" {
+		t.Fatalf("opponent lp want=7 got=%s", lifePoint)
 	}
 
 	// events に XADD されているか
-	entries, err := rdb.XRangeN(ctx, "match:"+mid+":events", "-", "+", 10).Result()
+	streamEntries, err := redisClient.XRangeN(contextObject, "match:"+matchID+":events", "-", "+", 10).Result()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 1 {
-		t.Fatalf("events want=1 got=%d", len(entries))
+	if len(streamEntries) != 1 {
+		t.Fatalf("events want=1 got=%d", len(streamEntries))
 	}
-	if entries[0].Values["turn"] != strconv.FormatInt(turn, 10) {
+	if streamEntries[0].Values["turn"] != strconv.FormatInt(turn, 10) {
 		t.Fatalf("event turn mismatch")
 	}
 }
