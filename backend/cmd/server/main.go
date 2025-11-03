@@ -12,7 +12,6 @@ import (
 	"keywars/backend/internal/app"
 	"keywars/backend/internal/config"
 	appRouter "keywars/backend/internal/transport/http/router"
-	ws "keywars/backend/internal/transport/websocket"
 )
 
 // main は、アプリケーションのエントリーポイント。
@@ -21,20 +20,15 @@ func main() {
 	// 設定ファイルの読み込み
 	cfg := config.Load()
 
+	// アプリケーションサーバーの初期化
 	server, err := app.New(&cfg)
 	if err != nil {
 		log.Fatalf("failed to init app: %v", err)
 	}
 	e := server.Echo
 
-	hub := ws.NewHub() // or &ws.Hub{}
-	wsh := &ws.Handler{
-		Hub:      hub,
-		Verifier: ws.DevTicket{}, // 開発用トークン: dev:<uid>:<room>
-	}
-
 	// ルート登録（/ws を含む）
-	appRouter.SetupRouter(e, server.API, server.AuthMiddleware, wsh)
+	appRouter.SetupRouter(e, server.API, server.AuthMiddleware, server.WebSocketHandler)
 
 	// シグナル受信用チャネルの初期化
 	quit := make(chan os.Signal, 1)
