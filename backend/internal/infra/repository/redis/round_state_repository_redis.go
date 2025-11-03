@@ -11,107 +11,183 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-type RoundStateRepositoryRedis struct{ rdb *redis.Client }
-
-func NewRoundStateRepositoryRedis(r *redis.Client) *RoundStateRepositoryRedis {
-	return &RoundStateRepositoryRedis{rdb: r}
+// RoundStateRepositoryRedis は、対戦進行中の「メタ情報・状態・イベント・デッキ」を
+// Redis 上の複数キーに分割して管理するリポジトリ実装。
+// キー構成：
+//   - match:{mid}         ... メタ情報（status, created_at, p1, p2, winner_user_id）
+//   - match:{mid}:state   ... 進行状態（deck_idx, q_started_at_ms, turn, p{uid}:lp, last_event_id）
+//   - match:{mid}:events  ... イベント Streams（answer などの出来事）
+//   - match:{mid}:deck    ... 出題デッキ（LIST; 要素はJSON文字列）
+type RoundStateRepositoryRedis struct {
+	// redisClient は go-redis v9 のクライアント。
+	// 1インスタンスを本構造体で共有して各操作に使用する。
+	redisClient *redis.Client
 }
 
-func (m *RoundStateRepositoryRedis) CreateMeta(ctx context.Context, mid, u1, u2 string, nowMs int64) error {
-	key := fmt.Sprintf("match:%s", mid)
-	return m.rdb.HSet(ctx, key, "status", "waiting", "created_at", nowMs, "p1", u1, "p2", u2).Err()
+// NewRoundStateRepositoryRedis は、外部から提供された Redis クライアントで実装を初期化する。
+// DI しやすいコンストラクタ。
+func NewRoundStateRepositoryRedis(redisClient *redis.Client) *RoundStateRepositoryRedis {
+	return &RoundStateRepositoryRedis{redisClient: redisClient}
 }
 
-func (m *RoundStateRepositoryRedis) Start(ctx context.Context, mid string) error {
-	k := fmt.Sprintf("match:%s", mid)
-	pipe := m.rdb.TxPipeline()
-	pipe.HSet(ctx, k, "status", "playing")
-	ttl := time.Hour
-	for _, s := range []string{"", ":state", ":events", ":deck"} {
-		pipe.Expire(ctx, k+s, ttl)
+// CreateMeta は、マッチのメタ情報を新規作成する。
+// 役割：参加者IDや作成時刻を保存し、初期状態を "waiting" に設定する。
+// ここでは state/events/deck には触れず、責務を分離している。
+func (repo *RoundStateRepositoryRedis) CreateMeta(ctx context.Context, matchID, user1ID, user2ID string, nowMs int64) error {
+	metaKey := fmt.Sprintf("match:%s", matchID)
+	return repo.redisClient.HSet(ctx, metaKey,
+		"status", "waiting",
+		"created_at", nowMs,
+		"p1", user1ID,
+		"p2", user2ID,
+	).Err()
+}
+
+// Start は、マッチを playing 状態へ遷移し、関連キーへ TTL を設定する。
+// 意図：進行中の試合データが放置されても自動的に回収されるよう GC を効かせる。
+// TTL は運用方針に応じて調整可。
+func (repo *RoundStateRepositoryRedis) Start(ctx context.Context, matchID string) error {
+	matchKey := fmt.Sprintf("match:%s", matchID)
+	pipeline := repo.redisClient.TxPipeline()
+
+	// ステータスを playing に更新
+	pipeline.HSet(ctx, matchKey, "status", "playing")
+
+	// 主要キーに 1 時間の TTL を付与（ハング・リーク対策）
+	expiration := time.Hour
+	for _, suffix := range []string{"", ":state", ":events", ":deck"} {
+		pipeline.Expire(ctx, matchKey+suffix, expiration)
 	}
-	_, err := pipe.Exec(ctx)
+
+	_, err := pipeline.Exec(ctx)
 	return err
 }
 
-func (m *RoundStateRepositoryRedis) Finish(ctx context.Context, mid, winnerUID string) error {
-	k := fmt.Sprintf("match:%s", mid)
-	pipe := m.rdb.TxPipeline()
-	pipe.HSet(ctx, k, "status", "finished", "winner_user_id", winnerUID)
-	ttl := 10 * time.Minute
-	for _, s := range []string{"", ":state", ":events", ":deck"} {
-		pipe.PExpire(ctx, k+s, ttl)
+// Finish は、マッチを finished 状態に更新し、勝者を記録したうえで短い TTL に切り替える。
+// 意図：終了後しばらくは参照できるが、不要に残り続けないようにする。
+func (repo *RoundStateRepositoryRedis) Finish(ctx context.Context, matchID, winnerUserID string) error {
+	matchKey := fmt.Sprintf("match:%s", matchID)
+	pipeline := repo.redisClient.TxPipeline()
+
+	// ステータスと勝者IDを保存
+	pipeline.HSet(ctx, matchKey,
+		"status", "finished",
+		"winner_user_id", winnerUserID,
+	)
+
+	// 終了後は 10 分で掃除（ミリ秒精度で設定）
+	expiration := 10 * time.Minute
+	for _, suffix := range []string{"", ":state", ":events", ":deck"} {
+		pipeline.PExpire(ctx, matchKey+suffix, expiration)
 	}
-	_, err := pipe.Exec(ctx)
+
+	_, err := pipeline.Exec(ctx)
 	return err
 }
 
-func (m *RoundStateRepositoryRedis) SaveDeckOnce(ctx context.Context, mid string, deckJSON []string) error {
-	key := fmt.Sprintf("match:%s:deck", mid)
-	return m.rdb.Watch(ctx, func(tx *redis.Tx) error {
-		exists, err := tx.Exists(ctx, key).Result()
+// SaveDeckOnce は、出題デッキ(LIST)を「未作成のときだけ」保存する（冪等）。
+// 競合時は WATCH により存在チェックと追加を疑似原子的に実施する。
+func (repo *RoundStateRepositoryRedis) SaveDeckOnce(ctx context.Context, matchID string, deckItems []string) error {
+	deckKey := fmt.Sprintf("match:%s:deck", matchID)
+
+	return repo.redisClient.Watch(ctx, func(tx *redis.Tx) error {
+		// 既存チェック（存在する場合はスキップ）
+		exists, err := tx.Exists(ctx, deckKey).Result()
 		if err != nil {
 			return err
 		}
 		if exists == 1 {
 			return nil
 		}
-		_, err = tx.TxPipelined(ctx, func(p redis.Pipeliner) error {
-			for _, v := range deckJSON {
-				p.RPush(ctx, key, v)
+
+		// 変更競合を検知しつつ、一括で LIST 末尾に積む
+		_, err = tx.TxPipelined(ctx, func(pipeliner redis.Pipeliner) error {
+			for _, item := range deckItems {
+				pipeliner.RPush(ctx, deckKey, item)
 			}
 			return nil
 		})
 		return err
-	}, key)
+	}, deckKey)
 }
 
-func (m *RoundStateRepositoryRedis) GetDeckItem(ctx context.Context, mid string, deckIdx int64) (string, error) {
-	return m.rdb.LIndex(ctx, fmt.Sprintf("match:%s:deck", mid), deckIdx).Result()
+// GetDeckItem は、出題デッキから指定インデックス（0-based）の要素（JSON文字列）を取得する。
+// 未存在の場合は redis.Nil が返る点に注意。
+func (repo *RoundStateRepositoryRedis) GetDeckItem(ctx context.Context, matchID string, deckIndex int64) (string, error) {
+	deckKey := fmt.Sprintf("match:%s:deck", matchID)
+	return repo.redisClient.LIndex(ctx, deckKey, deckIndex).Result()
 }
 
-func (m *RoundStateRepositoryRedis) ApplyAnswer(ctx context.Context, a drepo.AnswerApplyArg) (eventID string, turn int64, err error) {
-	keyState := fmt.Sprintf("match:%s:state", a.MID)
-	keyEvents := fmt.Sprintf("match:%s:events", a.MID)
+// ApplyAnswer は、回答結果を state に反映し（LP, deck_idx, q_started_at_ms, turn）、
+// 続けて events Streams に answer イベントを追加する 2 フェーズ処理。
+// Phase A: WATCH + TxPipelined で turn 競合を回避しつつ state 更新
+// Phase B: XADD でイベントを記録し、last_event_id を best-effort で更新
+func (repo *RoundStateRepositoryRedis) ApplyAnswer(ctx context.Context, args drepo.AnswerApplyArg) (eventID string, turn int64, err error) {
+	stateKey := fmt.Sprintf("match:%s:state", args.MID)
+	eventsKey := fmt.Sprintf("match:%s:events", args.MID)
 
-	// Phase A: state更新（WATCH）
-	err = m.rdb.Watch(ctx, func(tx *redis.Tx) error {
-		vals, err := tx.HMGet(ctx, keyState, "turn").Result()
+	// --- Phase A: 状態更新（turn の整合性確保のため WATCH を使用）---
+	err = repo.redisClient.Watch(ctx, func(tx *redis.Tx) error {
+		// 現在の turn を取得。未設定なら 0 とみなす。
+		values, err := tx.HMGet(ctx, stateKey, "turn").Result()
 		if err != nil {
 			return err
 		}
-		var curTurn int64
-		if vals[0] != nil {
-			curTurn, _ = strconv.ParseInt(vals[0].(string), 10, 64)
+
+		var currentTurn int64
+		if len(values) > 0 && values[0] != nil {
+			// HMGet は interface{} を返すため、string にキャストしてから parse
+			currentTurn, _ = strconv.ParseInt(values[0].(string), 10, 64)
 		}
-		_, err = tx.TxPipelined(ctx, func(p redis.Pipeliner) error {
-			p.HSet(ctx, keyState, fmt.Sprintf("p%s:lp", a.OppUID), a.NewOppLP)
-			p.HIncrBy(ctx, keyState, "turn", 1)
-			if a.NextDeckIdx >= 0 {
-				p.HSet(ctx, keyState, "deck_idx", a.NextDeckIdx, "q_started_at_ms", a.NowMs)
+
+		// TxPipelined: WATCH 中の原子的更新
+		_, err = tx.TxPipelined(ctx, func(pipeliner redis.Pipeliner) error {
+			// 対戦相手の LP を更新。キーは p{uid}:lp（例: p123:lp）
+			pipeliner.HSet(ctx, stateKey, fmt.Sprintf("p%s:lp", args.OppUID), args.NewOppLP)
+
+			// ターンを +1（競合があれば WATCH により失敗→再実行 or エラー）
+			pipeliner.HIncrBy(ctx, stateKey, "turn", 1)
+
+			// 次の問題へ進む場合のみ、deck_idx と q_started_at_ms を更新
+			if args.NextDeckIdx >= 0 {
+				pipeliner.HSet(ctx, stateKey,
+					"deck_idx", args.NextDeckIdx,
+					"q_started_at_ms", args.NowMs,
+				)
 			}
 			return nil
 		})
 		if err == nil {
-			turn = curTurn + 1
+			// 呼び出し側に「更新後の turn 」を返す
+			turn = currentTurn + 1
 		}
 		return err
-	}, keyState)
+	}, stateKey)
 	if err != nil {
 		return "", 0, err
 	}
 
-	// Phase B: events追加 → last_event_id（ベストエフォート）
-	values := []interface{}{"type", "answer", "turn", strconv.FormatInt(turn, 10), "server_ts", strconv.FormatInt(a.NowMs, 10)}
-	for k, v := range a.EventFields {
-		if k == "type" || k == "turn" || k == "server_ts" {
+	// --- Phase B: イベント追加（予約済みフィールドを除外して積む）---
+	eventValues := []interface{}{
+		"type", "answer",
+		"turn", strconv.FormatInt(turn, 10),
+		"server_ts", strconv.FormatInt(args.NowMs, 10),
+	}
+	for key, value := range args.EventFields {
+		// 予約済みキーは上書きしない
+		if key == "type" || key == "turn" || key == "server_ts" {
 			continue
 		}
-		values = append(values, k, v)
+		eventValues = append(eventValues, key, value)
 	}
-	eventID, err = m.rdb.XAdd(ctx, &redis.XAddArgs{Stream: keyEvents, Values: values}).Result()
+
+	// Streams にイベントを追加。成功時のみ last_event_id を best-effort で更新。
+	eventID, err = repo.redisClient.XAdd(ctx, &redis.XAddArgs{
+		Stream: eventsKey,
+		Values: eventValues,
+	}).Result()
 	if err == nil {
-		_ = m.rdb.HSet(ctx, keyState, "last_event_id", eventID).Err()
+		_ = repo.redisClient.HSet(ctx, stateKey, "last_event_id", eventID).Err()
 	}
 	return
 }
