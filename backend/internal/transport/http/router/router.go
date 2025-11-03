@@ -3,8 +3,9 @@ package router
 import (
 	"net/http"
 
-	"github.com/labstack/echo/v4"
 	"keywars/backend/internal/transport/http/handler"
+
+	"github.com/labstack/echo/v4"
 )
 
 // SetupRouter は、アプリケーションのルーティング定義。
@@ -26,6 +27,15 @@ func SetupRouter(e *echo.Echo, api *handler.API, authMiddleware echo.MiddlewareF
 	v1 := e.Group("/api/v1", authMiddleware)
 	// デバッグ用（handler.Auth.Hello が削除されたら、このエンドポイントも削除する）
 	v1.GET("/hello", api.Auth.Hello)
+
+	// --- マッチングAPI ---
+	matches := v1.Group("/matches")
+	// 例: POST /api/v1/matches/queue/join?user_id=xxx
+	// レスポンス例: {"status":"queued","user_id":"u123","enqueue_at_ms":1730318135123}
+	//
+	matches.POST("/queue/join", api.Matches.JoinQueue)
+	// 例: POST /api/v1/matches/queue/try
+	matches.POST("/queue/try", api.Matches.TryMatch)
 
 	return e
 }
