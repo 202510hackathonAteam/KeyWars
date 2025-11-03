@@ -1,5 +1,5 @@
 import React from "react";
-// import "./Buttle.module.css";
+import "./Buttle.css";
 
 export default function GamePage() {
   return (

@@ -1,17 +1,32 @@
 import React, { useState } from "react";
 // import "./Login.css";
 
-// Loginという名前でコンポーネント化
 export default function Login() {
-  // playerNameをstateとして、セット
-  const [playerName, setPlayerName] = useState("");
+  const [userName, setUserName] = useState("");
   const [password, setPassword] = useState("");
 
-  const enterArena = (e) => {
+  const enterArena = async (e) => {
     e.preventDefault();
-    if (playerName.trim()) {
-      localStorage.setItem("playerName", playerName.trim());
-      window.location.href = "/home"; // React Router を使う場合は navigate("/home")
+
+    try {
+      const response = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_name: userName, password }),
+      });
+
+      if (!response.ok) throw new Error("Login failed");
+
+      const data = await response.json();
+
+      // JWTトークンなどを保存
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("user_name", userName.trim());
+
+      window.location.href = "/home";
+    } catch (error) {
+      alert("ログインに失敗しました");
+      console.error(error);
     }
   };
 
@@ -29,16 +44,18 @@ export default function Login() {
         <div className="gate"></div>
 
         <form onSubmit={enterArena}>
-          <input className="entry-form"
+          <input
+            className="entry-form"
             type="text"
             placeholder="PLAYER NAME"
             maxLength={12}
-            value={playerName}
-            onChange={(e) => setPlayerName(e.target.value)}
+            value={userName}
+            onChange={(e) => setUserName(e.target.value)}
             required
           />
           <br />
-          <input className="entry-form"
+          <input
+            className="entry-form"
             type="password"
             placeholder="PASSWORD"
             maxLength={12}

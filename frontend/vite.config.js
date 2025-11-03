@@ -1,11 +1,17 @@
+// import文は変更なし
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    // tailwindcss(),
+  ],
   server: {
-    host: '0.0.0.0', // これでコンテナ外からアクセス可能
-    port: 5173,      // 必要なら指定
+    host: true,
+    port: 5173,
   },
+  // 以下追加 //
+  build: { outDir: 'dist' }, // ビルドしたファイルを出力するディレクトリ名
+  base: './', // ビルド後のHTMLからの参照を相対パスにする
 })

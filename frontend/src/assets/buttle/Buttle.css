@@ -194,7 +194,7 @@ body {
   margin-top: 8px;
 }
 
-input[type="text"] {
+.kbd-area input[type="text"] {
   width: 100%;
   padding: 20px;
   border-radius: 10px;
@@ -205,7 +205,7 @@ input[type="text"] {
   font-size: 12px;
 }
 
-input[type="text"]:focus {
+.kbd-area input[type="text"]:focus {
   outline: none;
   border-color: #ffcc00;
   box-shadow: 0 0 10px #ffaa00;
