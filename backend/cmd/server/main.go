@@ -11,6 +11,7 @@ import (
 
 	"keywars/backend/internal/app"
 	"keywars/backend/internal/config"
+	appRouter "keywars/backend/internal/transport/http/router"
 )
 
 // main は、アプリケーションのエントリーポイント。
@@ -25,6 +26,9 @@ func main() {
 		log.Fatalf("failed to init app: %v", err)
 	}
 	e := server.Echo
+
+	// ルート登録（/ws を含む）
+	appRouter.SetupRouter(e, server.API, server.AuthMiddleware, server.WebSocketHandler)
 
 	// シグナル受信用チャネルの初期化
 	quit := make(chan os.Signal, 1)
