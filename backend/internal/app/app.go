@@ -17,12 +17,15 @@ import (
 	"keywars/backend/internal/service"
 	"keywars/backend/internal/transport/http/handler"
 	httpmiddleware "keywars/backend/internal/transport/http/middleware"
-	"keywars/backend/internal/transport/http/router"
+	ws "keywars/backend/internal/transport/websocket"
 )
 
 // Server は、アプリケーション全体の依存関係と Echo インスタンスを保持する構造体の定義。
 type Server struct {
-	Echo *echo.Echo
+	Echo             *echo.Echo
+	API              *handler.API
+	AuthMiddleware   echo.MiddlewareFunc
+	WebSocketHandler *ws.Handler
 }
 
 // New は、アプリケーションサーバーを初期化して Server を生成。
@@ -89,7 +92,18 @@ func New(config *config.Config) (*Server, error) {
 
 	// ハンドラ群とルータの設定
 	api := handler.New(services)
-	router.SetupRouter(e, api, authMiddleware)
 
-	return &Server{Echo: e}, nil
+	// WebSocket ハブとハンドラをアプリ初期化の中で生成
+	hub := ws.NewHub()
+	webSocketHandler := &ws.Handler{
+		Hub:      hub,
+		Verifier: ws.DevTicket{}, // 開発用トークン: dev:<userID>:<room>
+	}
+
+	return &Server{
+		Echo:             e,
+		API:              api,
+		AuthMiddleware:   authMiddleware,
+		WebSocketHandler: webSocketHandler,
+	}, nil
 }
