@@ -42,7 +42,7 @@ func (service *Service) tryMakeMatch(ctx context.Context) {
 	// DequeuePairAndInitMatch:
 	//   - 2名を ZPOPMIN で取り出す
 	//   - match:{matchID} / match:{matchID}:state を初期化
-	user1ID, user2ID, matchID, lockToken, err := service.matchQueueRepository.DequeuePairAndInitMatch(ctx)
+	user1ID, user2ID, matchID, _, err := service.matchQueueRepository.DequeuePairAndInitMatch(ctx)
 	if err != nil || matchID == "" {
 		// 競合発生 or 2名未満の場合は何もしない
 		return
