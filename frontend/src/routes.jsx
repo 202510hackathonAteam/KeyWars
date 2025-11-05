@@ -3,8 +3,9 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Home from "./assets/home/Home";
 import Login from "./assets/login/Login";
 import Signup from "./assets/signup/Signup";
-import Buttle from "./assets/buttle/Buttle";
-import Result from "./assets/result/Result"
+import Battle from "./assets/battle/Battle";
+import Result from "./assets/result/Result";
+import Testcss from "./assets/test/tail_login";
 
 export default function AppRoutes() {
   return (
@@ -13,8 +14,9 @@ export default function AppRoutes() {
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
-        <Route path="/buttle" element={<Buttle />} />
+        <Route path="/battle" element={<Battle />} />
         <Route path="/result" element={<Result />} />
+        <Route path="/test" element={<Testcss />} />
       </Routes>
     </BrowserRouter>
   );
