@@ -24,7 +24,7 @@ const Result = ({ result = "victory" }) => {
 
   return (
     <div className="result-container">
-      <h1>KEY WARS</h1>
+      <h1 className="title">KEY WARS</h1>
 
       <div className="result-panel">
         <div className="stat">
