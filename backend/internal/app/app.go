@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"time"
@@ -15,6 +16,7 @@ import (
 	redisrepository "keywars/backend/internal/infra/repository/redis"
 	sqlrepository "keywars/backend/internal/infra/repository/sql"
 	"keywars/backend/internal/service"
+	"keywars/backend/internal/service/realtime"
 	"keywars/backend/internal/transport/http/handler"
 	httpmiddleware "keywars/backend/internal/transport/http/middleware"
 	ws "keywars/backend/internal/transport/websocket"
@@ -26,6 +28,7 @@ type Server struct {
 	API              *handler.API
 	AuthMiddleware   echo.MiddlewareFunc
 	WebSocketHandler *ws.Handler
+	RealtimeCancel   context.CancelFunc
 }
 
 // New は、アプリケーションサーバーを初期化して Server を生成。
@@ -99,11 +102,21 @@ func New(config *config.Config) (*Server, error) {
 		Hub:      hub,
 		Verifier: ws.DevTicket{}, // 開発用トークン: dev:<userID>:<room>
 	}
+	// Realtime Service を生成してWebSocketとRedis Queueを接続
+	realtimeService := realtime.NewService(redisrepos.Queue, hub)
+
+	// WSハンドラにサービスを差し込む（OnConnect/OnMessage/OnDisconnectが呼ばれる）
+	webSocketHandler.Service = realtimeService
+
+	// matchmaker 起動（0.5s間隔など好みで）
+	realtimeContext, realtimeCancel := context.WithCancel(context.Background())
+	realtimeService.StartMatchmaker(realtimeContext, 500*time.Millisecond)
 
 	return &Server{
 		Echo:             e,
 		API:              api,
 		AuthMiddleware:   authMiddleware,
 		WebSocketHandler: webSocketHandler,
+		RealtimeCancel:   realtimeCancel,
 	}, nil
 }

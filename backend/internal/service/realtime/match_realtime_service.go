@@ -2,7 +2,7 @@ package realtime
 
 import (
 	"context"
-	redisrepo "keywars/backend/internal/infra/repository/redis"
+	redisrepo "keywars/backend/internal/infra/repository"
 	"keywars/backend/internal/transport/websocket"
 	"time"
 )
@@ -20,7 +20,7 @@ import (
 //   - Hub（WebSocket Hub）を用いてイベントをブロードキャストする
 type Service struct {
 	// matchQueueRepository は、マッチング待機キューを操作する Redis リポジトリ。
-	matchQueueRepository *redisrepo.MatchQueueRepositoryRedis
+	matchQueueRepository redisrepo.MatchQueueRepository
 
 	// websocketHub は、全クライアント接続を管理し、メッセージ送受信を仲介するハブ。
 	websocketHub *websocket.Hub
@@ -29,7 +29,7 @@ type Service struct {
 // NewService は、依存する Redis リポジトリと WebSocket ハブを受け取り、
 // 新しい Service インスタンスを生成して返すコンストラクタ。
 func NewService(
-	matchQueueRepository *redisrepo.MatchQueueRepositoryRedis,
+	matchQueueRepository redisrepo.MatchQueueRepository,
 	websocketHub *websocket.Hub,
 ) *Service {
 	return &Service{

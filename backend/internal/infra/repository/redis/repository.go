@@ -8,9 +8,9 @@ import (
 
 // Repos は domain 層のリポジトリIFを Redis で実装した構造体をまとめた集約。
 type Repos struct {
-	Queue repository.MatchQueueRepository
-	Round repository.RoundStateRepository
-	// Presence repository.PresenceRepository // 将来的に追加予定ならここに
+	Queue    repository.MatchQueueRepository
+	Round    repository.RoundStateRepository
+	Presence repository.PresenceRepository
 	// 他のRedis系リポをここに追加
 }
 
