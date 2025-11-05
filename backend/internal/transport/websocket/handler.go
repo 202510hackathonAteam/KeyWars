@@ -93,22 +93,28 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	// 接続インスタンス（送信用チャネル付き）
 	clientConn := &Client{
 		userID:      userID,
-		roomName:    roomName,
+		roomName:    "user:" + userID,
 		sendChannel: make(chan []byte, sendBufSize),
 	}
 
-	// --- 3) Hub.Join ---
+	userRoom := clientConn.Room()
+	// --- 3) Hub.Join（マッチング待機は個人ルームへ） ---
 	if handler.Hub != nil {
-		if err := handler.Hub.Join(requestContext, roomName, clientConn); err != nil {
-			if errors.Is(err, ErrRoomFull) {
+		if err := handler.Hub.Join(requestContext, userRoom, clientConn); err != nil {
+			if errors.Is(err, ErrAlreadyJoined) {
+				// no-op
+			} else if errors.Is(err, ErrRoomFull) {
 				_ = wsConn.WriteControl(
 					websocket.CloseMessage,
 					websocket.FormatCloseMessage(websocket.CloseTryAgainLater, "room full"),
 					time.Now().Add(writeWait),
 				)
+				_ = wsConn.Close()
+				return
+			} else {
+				_ = wsConn.Close()
+				return
 			}
-			_ = wsConn.Close()
-			return
 		}
 	}
 
@@ -162,7 +168,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 
 	// --- 接続直後の初期メッセージ（writer 起動後に） ---
 	if handler.Service != nil {
-		if reply, err := handler.Service.OnConnect(requestContext, userID, roomName); err == nil && reply != nil {
+		if reply, err := handler.Service.OnConnect(requestContext, userID, clientConn.Room()); err == nil && reply != nil {
 			_ = clientConn.SendJSON(requestContext, reply)
 		}
 	}
@@ -175,7 +181,6 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		return nil
 	})
 	wsConn.SetCloseHandler(func(_ int, _ string) error {
-		// 必要ならログ
 		return nil
 	})
 
@@ -186,11 +191,11 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		}
 		var incoming IncomingMessage
 		if err := json.Unmarshal(rawData, &incoming); err != nil {
-			// ここで軽いエラー応答を返してもOK
 			continue
 		}
 		if handler.Service != nil {
-			if reply, err := handler.Service.OnMessage(requestContext, userID, roomName, incoming.Type, incoming.Body); err == nil && reply != nil {
+			room := clientConn.Room()
+			if reply, err := handler.Service.OnMessage(requestContext, userID, room, incoming.Type, incoming.Body); err == nil && reply != nil {
 				_ = clientConn.SendJSON(requestContext, reply)
 			}
 		}
@@ -207,8 +212,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		_ = handler.Hub.Leave(requestContext, clientConn) // 先に Hub から外す
 	}
 	if handler.Service != nil {
-		handler.Service.OnDisconnect(requestContext, userID, roomName)
+		handler.Service.OnDisconnect(requestContext, userID, clientConn.Room())
 	}
-	_ = clientConn.Close() // sendChannel を閉じて writer を終了させる
-	<-doneChan             // writer の終了待ち（CloseMessage 送出）
+	<-doneChan // writer の終了待ち（CloseMessage 送出）
 }
