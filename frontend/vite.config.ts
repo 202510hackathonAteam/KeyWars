@@ -12,6 +12,6 @@ export default defineConfig({
     host: true,
     port: 5173,
   },
-  build: { outDir: 'dist' },
-  base: './',
+  build: { outDir: 'dist' }, // ビルドしたファイルを出力するディレクトリ名
+  base: './', // ビルド後のHTMLからの参照を相対パスにする設定
 })

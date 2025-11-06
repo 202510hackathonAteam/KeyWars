@@ -11,25 +11,79 @@ provider "google" {
   project = var.project_id
   region  = "asia-northeast1"
 }
-
+#----------------------------
 # API有効化
-resource "google_project_service" "enable_compute_api" {
-  project = var.project_id
-  service = "compute.googleapis.com"
+#----------------------------
+
+resource "google_project_service" "compute_api" {
+  project            = var.project_id
+  service            = "compute.googleapis.com"
+  disable_on_destroy = false # destroy時に無効化しない
+}
+
+resource "google_project_service" "DNS_api" {
+  project            = var.project_id
+  service            = "dns.googleapis.com"
   disable_on_destroy = false
 }
 
-resource "google_project_service" "enable_DNS_api" {
-  project = var.project_id
-  service = "dns.googleapis.com"
+resource "google_project_service" "cloudbuild_api" {
+  project            = var.project_id
+  service            = "cloudbuild.googleapis.com"
   disable_on_destroy = false
 }
+
+resource "google_project_service" "secretmanager_api" {
+  project            = var.project_id
+  service            = "secretmanager.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_project_service" "servicenetworking_api" {
+  project            = var.project_id
+  service            = "servicenetworking.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_project_service" "sqladmin_api" {
+  project            = var.project_id
+  service            = "sqladmin.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_project_service" "cloudrun_api" {
+  project            = var.project_id
+  service            = "run.googleapis.com"
+  disable_on_destroy = false
+}
+
+#----------------------------
+#VPC・サブネット
+#----------------------------
 
 # VPC作成
 resource "google_compute_network" "vpc_network" {
   name                    = "${var.project_id}-vpc"
   auto_create_subnetworks = false
   mtu                     = 1460
+}
+
+# VPCピアリング用のPrivateIPを確保
+resource "google_compute_global_address" "private_ip_address" {
+  name          = "private-ip-address"
+  purpose       = "VPC_PEERING" # VPCピアリング用
+  address_type  = "INTERNAL"    # 内部(private)IPアドレス
+  prefix_length = 16
+  network       = google_compute_network.vpc_network.id
+  depends_on    = [google_compute_network.vpc_network]
+}
+
+# VPCピアリング用PrivateIPとGoogleサービスのネットワークと接続する
+resource "google_service_networking_connection" "default" {
+  network                 = google_compute_network.vpc_network.id
+  service                 = "servicenetworking.googleapis.com"
+  reserved_peering_ranges = [google_compute_global_address.private_ip_address.name]
+  # depends_on              = [google_project_service.servicenetworking_api]
 }
 
 # サブネット作成
@@ -54,6 +108,18 @@ resource "google_compute_subnetwork" "group3" {
   network       = google_compute_network.vpc_network.id
 }
 
+resource "google_compute_subnetwork" "group4" {
+  name          = "vpc-connector"
+  ip_cidr_range = "10.0.16.0/20" # Direct VPC Egressようなので広め
+  region        = var.region
+  network       = google_compute_network.vpc_network.id
+}
+
+
+
+#----------------------------
+# Strage
+#----------------------------
 
 # CloudStrageバケット作成
 resource "google_storage_bucket" "static" {
@@ -78,36 +144,40 @@ resource "google_storage_bucket_iam_member" "default" {
 
 # バケットにファイルアップロード
 resource "google_storage_bucket_object" "html" {
-  bucket = google_storage_bucket.static.id
-  for_each = fileset(var.frontend_static_path, "*.html")
-  name = each.value # GCS内でのファイル名
-  source = "${var.frontend_static_path}/${each.value}" # アップロードするファイルのパス
+  bucket       = google_storage_bucket.static.id
+  for_each     = fileset(var.frontend_static_path, "*.html")
+  name         = each.value                                  # GCS内でのファイル名
+  source       = "${var.frontend_static_path}/${each.value}" # アップロードするファイルのパス
   content_type = "text/html"
 }
 
 resource "google_storage_bucket_object" "css" {
-  bucket = google_storage_bucket.static.id
-  for_each = fileset(var.frontend_static_path, "assets/*.css")
-  name = each.value # GCS内でのファイル名
-  source = "${var.frontend_static_path}/${each.value}"
+  bucket       = google_storage_bucket.static.id
+  for_each     = fileset(var.frontend_static_path, "assets/*.css")
+  name         = each.value # GCS内でのファイル名
+  source       = "${var.frontend_static_path}/${each.value}"
   content_type = "text/css"
 }
 
 resource "google_storage_bucket_object" "js" {
-  bucket = google_storage_bucket.static.id
-  for_each = fileset(var.frontend_static_path, "assets/*.js")
-  name = each.value # GCS内でのファイル名
-  source = "${var.frontend_static_path}/${each.value}"
+  bucket       = google_storage_bucket.static.id
+  for_each     = fileset(var.frontend_static_path, "assets/*.js")
+  name         = each.value # GCS内でのファイル名
+  source       = "${var.frontend_static_path}/${each.value}"
   content_type = "application/javascript"
 }
 
 resource "google_storage_bucket_object" "svg" {
-  bucket = google_storage_bucket.static.id
-  for_each = fileset(var.frontend_static_path, "*.svg")
-  name = each.value # GCS内でのファイル名
-  source = "${var.frontend_static_path}/${each.value}"
+  bucket       = google_storage_bucket.static.id
+  for_each     = fileset(var.frontend_static_path, "*.svg")
+  name         = each.value # GCS内でのファイル名
+  source       = "${var.frontend_static_path}/${each.value}"
   content_type = "image/svg+xml"
 }
+
+#----------------------------
+# ロードバランサ
+#----------------------------
 
 ### HTTPS用ロードバランサ
 # 固定IPアドレス取得
@@ -127,7 +197,7 @@ resource "google_compute_backend_bucket" "bucket1" {
 
 # urlマップ(バックエンドルール)
 resource "google_compute_url_map" "default" {
-  name = "url-map"
+  name            = "url-map"
   default_service = google_compute_backend_bucket.bucket1.id
   # 指定したドメインに対して、使用するpath_matcherを指定
   host_rule {
@@ -140,11 +210,19 @@ resource "google_compute_url_map" "default" {
     default_service = google_compute_backend_bucket.bucket1.id # どれにも該当しないトラフィックの転送先
 
     # 特定のパターンに合致する場合の転送先
-    # path_rule {
-    #   paths = ["/api/*"]
-    #   service = 
-    # }
+    # テスト用
+    path_rule {
+      paths   = ["/hello"]
+      service = google_cloud_run_v2_service.api.id
+    }
 
+    # API用 
+    path_rule {
+      paths   = ["/api/*"]
+      service = google_cloud_run_v2_service.api.id
+    }
+
+    # WebSocket用 
     # path_rule {
     #   paths = ["/ws/*"]
     #   service = 
@@ -218,3 +296,317 @@ resource "google_dns_record_set" "A_record" {
   rrdatas      = [google_compute_global_address.lb_ip.address]
 }
 
+#----------------------------
+# Database
+#----------------------------
+
+# CloudSQL
+resource "google_sql_database_instance" "mysql" {
+  name             = "mysql"
+  region           = var.region
+  database_version = "MYSQL_8_0"
+  root_password    = var.mysql_root_password
+  settings {
+    tier = "db-f1-micro"
+    ip_configuration {
+      ipv4_enabled    = "false"                               # パブリックIPv4アドレスを無効
+      private_network = google_compute_network.vpc_network.id # 接続するVPC指定
+    }
+    password_validation_policy {
+      min_length                  = 8
+      complexity                  = "COMPLEXITY_DEFAULT" # 複雑さ
+      reuse_interval              = 0                    # パスワード再利用までの回数
+      disallow_username_substring = true                 # パスワードにユーザー名を許可しない
+      enable_password_policy      = true                 # パスワードポリシーのON/OFF
+    }
+  }
+  deletion_protection = false # Terraformでの削除から保護しない
+  depends_on = [
+    google_project_service.sqladmin_api,
+    google_service_networking_connection.default
+  ]
+}
+
+# MySQLデータベース作成
+resource "google_sql_database" "mysql_db" {
+  name     = var.mysql_database
+  instance = google_sql_database_instance.mysql.name
+}
+
+# ユーザー作成
+resource "google_sql_user" "mysql_user" {
+  name     = var.mysql_user
+  password = var.mysql_password
+  instance = google_sql_database_instance.mysql.name
+
+}
+
+### CloudSQLのSecret作成
+# データベースユーザーのsecret作成 
+resource "google_secret_manager_secret" "dbuser" {
+  secret_id = "dbuser"
+  replication {
+    auto {} # 自動で別リージョンに複製される
+  }
+  depends_on = [google_project_service.secretmanager_api]
+}
+
+# データベースユーザーのsecretの値を設定
+resource "google_secret_manager_secret_version" "dbuser_version" {
+  secret      = google_secret_manager_secret.dbuser.id
+  secret_data = var.mysql_user
+}
+
+# Secret参照権限を追加
+resource "google_secret_manager_secret_iam_member" "secretaccess_compute_dbuser" {
+  secret_id = google_secret_manager_secret.dbuser.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${var.project_nunmer}-compute@developer.gserviceaccount.com"
+}
+
+
+# データベースパスワードのsecret作成
+resource "google_secret_manager_secret" "dbpassword" {
+  secret_id = "dbpassword"
+  replication {
+    auto {} # 自動で別リージョンに複製される
+  }
+  depends_on = [google_project_service.secretmanager_api]
+}
+
+# データベースパスワードのsecretの値を設定
+resource "google_secret_manager_secret_version" "dbpassword_version" {
+  secret      = google_secret_manager_secret.dbpassword.id
+  secret_data = var.mysql_password
+}
+
+# Secret参照権限を追加
+resource "google_secret_manager_secret_iam_member" "secretaccess_compute_dbpassword" {
+  secret_id = google_secret_manager_secret.dbpassword.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${var.project_nunmer}-compute@developer.gserviceaccount.com"
+}
+
+
+# データベース名のsecret作成
+resource "google_secret_manager_secret" "dbname" {
+  secret_id = "dbname"
+  replication {
+    auto {} # 自動で別リージョンに複製される
+  }
+  depends_on = [google_project_service.secretmanager_api]
+}
+
+# データベース名のsecretの値を設定
+resource "google_secret_manager_secret_version" "dbname_version" {
+  secret      = google_secret_manager_secret.dbname.id
+  secret_data = var.mysql_database
+}
+
+# Secret参照権限を追加
+resource "google_secret_manager_secret_iam_member" "secretaccess_compute_dbname" {
+  secret_id = google_secret_manager_secret.dbname.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${var.project_nunmer}-compute@developer.gserviceaccount.com"
+}
+
+#----------------------------
+# CloudRun
+#----------------------------
+resource "google_cloud_run_v2_service" "api" {
+  name     = "cloudrun-api"
+  location = var.region
+
+  deletion_protection = false # 削除保護(本番ではtrue推奨)
+
+  template {
+    containers {
+      image = "${var.ar-repository_pass}/api-image:latest"
+      env {
+        name  = "INSTANCE_CONNECTION_NAME"
+        value = google_sql_database_instance.mysql.connection_name
+      }
+      env {
+        name = "MYSQL_USER"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.dbuser.secret_id
+            version = google_secret_manager_secret_version.dbuser_version.version
+          }
+        }
+      }
+      env {
+        name = "MYSQL_PASSWORD"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.dbpassword.secret_id
+            version = google_secret_manager_secret_version.dbpassword_version.version
+
+          }
+        }
+      }
+      env {
+        name = "MYSQL_DATABASE"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.dbname.secret_id
+            version = google_secret_manager_secret_version.dbname_version.version
+
+          }
+        }
+      }
+      env {
+        name  = "MYSQL_HOST"
+        value = google_sql_database_instance.mysql.private_ip_address
+      }
+      env {
+        name  = "MYSQL_PORT"
+        value = 3306
+      }
+      volume_mounts {
+        name       = "cloudsql"
+        mount_path = "/cloudsql"
+      }
+    }
+    vpc_access {
+      # Direct VPC Egress使用
+      network_interfaces {
+        network    = google_compute_network.vpc_network.name
+        subnetwork = google_compute_subnetwork.group4.name
+        tags       = ["api"]
+      }
+    }
+
+
+    volumes {
+      name = "cloudsql"
+      cloud_sql_instance {
+        instances = [google_sql_database_instance.mysql.connection_name]
+      }
+    }
+  }
+  ingress = "INGRESS_TRAFFIC_ALL" # IAMチェックを無効化
+  client  = "terraform"
+  depends_on = [
+    google_project_service.secretmanager_api,
+    google_project_service.cloudrun_api,
+    google_project_service.sqladmin_api
+  ]
+}
+
+# マイグレーション用ClouｄRunJob
+resource "google_cloud_run_v2_job" "migration" {
+  name     = "cloudrun-migration"
+  location = var.region
+
+  deletion_protection = false
+
+  template {
+    template {
+      containers {
+        image = "${var.ar-repository_pass}/migration-image:latest"
+      }
+
+    }
+  }
+  depends_on = [
+    google_project_service.secretmanager_api,
+    google_project_service.cloudrun_api,
+    google_project_service.sqladmin_api
+  ]
+}
+
+# 初期データ挿入用ClouｄRunJob
+resource "google_cloud_run_v2_job" "seed" {
+  name     = "cloudrun-seed"
+  location = var.region
+
+  deletion_protection = false
+
+  template {
+    template {
+      containers {
+        image = "${var.ar-repository_pass}/seed-image:latest"
+      }
+
+    }
+  }
+  depends_on = [
+
+    google_project_service.secretmanager_api,
+    google_project_service.cloudrun_api,
+    google_project_service.sqladmin_api
+  ]
+}
+#----------------------------
+# CloudBuild
+#----------------------------
+# secret作成
+# resource "google_secret_manager_secret" "github_token" {
+#   project   = var.project_id
+#   secret_id = "github-pat"
+#   # secret複製の設定
+#   replication {
+#     auto {} # 自動で別リージョンに複製される
+#   }
+#   depends_on = [google_project_service.secretmanager_api]
+# }
+
+# secretの取り出し
+# data "google_secret_manager_secret" "github_token" {
+#   project = var.project_id
+#   secret_id = var.github_token_secret_name
+# }
+
+# secretの取り出し
+data "google_secret_manager_secret_version" "github_token_version" {
+  project = var.project_id
+  secret  = var.github_token_secret_name
+  version = "latest"
+}
+
+# resource "google_secret_manager_secret_version" "github_token_version" {
+#   secret      = google_secret_manager_secret.github_token.id
+#   secret_data = var.github_pat
+# }
+
+
+# # secretにIAMポリシー付与
+# resource "google_secret_manager_secret_iam_member" "policy" {
+#   project   = google_secret_manager_secret.github_token.project
+#   secret_id = google_secret_manager_secret.github_token.secret_id
+#   role      = "roles/secretmanager.secretAccessor"
+#   # CloudBuild管理用アカウント(自動生成される)
+#   member = "serviceAccount:service-${var.project_nunmer}@gcp-sa-cloudbuild.iam.gserviceaccount.com"
+# }
+
+# githubと接続
+resource "google_cloudbuildv2_connection" "github_connection" {
+  project  = var.project_id
+  location = var.region
+  name     = "github-connection"
+
+  github_config {
+    app_installation_id = var.installed_id
+    authorizer_credential {
+      oauth_token_secret_version = data.google_secret_manager_secret_version.github_token_version.name
+    }
+  }
+}
+
+# githubレポジトリと接続
+resource "google_cloudbuildv2_repository" "github_repository" {
+  project           = var.project_id
+  location          = var.region
+  name              = var.repository_name
+  parent_connection = google_cloudbuildv2_connection.github_connection.name
+  remote_uri        = var.repository_uri
+}
+
+# ArtifactRegistryリポジトリの作成
+# resource "google_artifact_registry_repository" "cloudrun_api_image" {
+#   location =  var.region
+#   repository_id = "api-image"
+#   description = "Docker image for Cloud Run API"
+#   format = "Docker"
+# }
