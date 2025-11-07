@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"time"
@@ -11,8 +12,11 @@ import (
 	"keywars/backend/internal/config"
 	"keywars/backend/internal/infra/auth"
 	"keywars/backend/internal/infra/db"
+	redisx "keywars/backend/internal/infra/redis"
+	redisrepository "keywars/backend/internal/infra/repository/redis"
 	sqlrepository "keywars/backend/internal/infra/repository/sql"
 	"keywars/backend/internal/service"
+	"keywars/backend/internal/service/realtime"
 	"keywars/backend/internal/transport/http/handler"
 	httpmiddleware "keywars/backend/internal/transport/http/middleware"
 	ws "keywars/backend/internal/transport/websocket"
@@ -24,6 +28,7 @@ type Server struct {
 	API              *handler.API
 	AuthMiddleware   echo.MiddlewareFunc
 	WebSocketHandler *ws.Handler
+	RealtimeCancel   context.CancelFunc
 }
 
 // New は、アプリケーションサーバーを初期化して Server を生成。
@@ -42,10 +47,22 @@ func New(config *config.Config) (*Server, error) {
 		return nil, err
 	}
 
+	// Redisの初期化
+	rdb, err := redisx.NewRedis(config.Redis.Addr, config.Redis.Password, config.Redis.DB) // 例: "redis:6379", "", 0
+	if err != nil {
+		return nil, err
+	}
+
 	// Repository 層の初期化
-	repos := sqlrepository.Repos{
+	sqlrepos := sqlrepository.Repos{
 		User: sqlrepository.NewUserRepo(gormDB),
 		// 下に追加していく
+	}
+
+	// Redis 側（待機キュー / ラウンド状態）
+	redisrepos := redisrepository.Repos{
+		Queue: redisrepository.NewMatchQueueRepositoryRedis(rdb),
+		Round: redisrepository.NewRoundStateRepositoryRedis(rdb),
 	}
 
 	// JWT 認証ハンドラの初期化
@@ -70,7 +87,9 @@ func New(config *config.Config) (*Server, error) {
 
 	// Service 層の初期化
 	services := service.Services{
-		Auth: service.NewAuthService(repos.User),
+		Auth:  service.NewAuthService(sqlrepos.User),
+		Match: service.NewMatchService(redisrepos.Queue, redisrepos.Round),
+		Round: service.NewRoundService(redisrepos.Round),
 		// 下に追加していく
 	}
 
@@ -83,11 +102,21 @@ func New(config *config.Config) (*Server, error) {
 		Hub:      hub,
 		Verifier: ws.DevTicket{}, // 開発用トークン: dev:<userID>:<room>
 	}
+	// Realtime Service を生成してWebSocketとRedis Queueを接続
+	realtimeService := realtime.NewService(redisrepos.Queue, hub)
+
+	// WSハンドラにサービスを差し込む（OnConnect/OnMessage/OnDisconnectが呼ばれる）
+	webSocketHandler.Service = realtimeService
+
+	// matchmaker 起動（0.5s間隔など好みで）
+	realtimeContext, realtimeCancel := context.WithCancel(context.Background())
+	realtimeService.StartMatchmaker(realtimeContext, 500*time.Millisecond)
 
 	return &Server{
 		Echo:             e,
 		API:              api,
 		AuthMiddleware:   authMiddleware,
 		WebSocketHandler: webSocketHandler,
+		RealtimeCancel:   realtimeCancel,
 	}, nil
 }

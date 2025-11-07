@@ -23,10 +23,7 @@ func SetupRouter(e *echo.Echo, api *handler.API, authMiddleware echo.MiddlewareF
 	e.GET("/hello", api.Auth.Hello)
 
 	// 開発用: 認証なしWS（token=... はWS側で検証）
-	e.GET("/ws", func(c echo.Context) error {
-		wsHandler.ServeHTTP(c.Response(), c.Request())
-		return nil
-	})
+	e.GET("/ws", echo.WrapHandler(wsHandler))
 
 	// ──────────────────────────────
 	// 認証必須のAPIグループ (/api/v1)
@@ -35,6 +32,14 @@ func SetupRouter(e *echo.Echo, api *handler.API, authMiddleware echo.MiddlewareF
 	// デバッグ用（handler.Auth.Hello が削除されたら、このエンドポイントも削除する）
 	v1.GET("/hello", api.Auth.Hello)
 
+	// --- マッチングAPI ---
+	matches := v1.Group("/matches")
+	// 例: POST /api/v1/matches/queue/join?user_id=xxx
+	// レスポンス例: {"status":"queued","user_id":"u123","enqueue_at_ms":1730318135123}
+	//
+	matches.POST("/queue/join", api.Matches.JoinQueue)
+	// 例: POST /api/v1/matches/queue/try
+	matches.POST("/queue/try", api.Matches.TryMatch)
 	// 認証付きws
 	// v1.GET("/ws", func(c echo.Context) error {
 	// 	wsHandler.ServeHTTP(c.Response(), c.Request())
