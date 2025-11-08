@@ -77,28 +77,37 @@ export default function Home() {
         </div>
 
         {/* アリーナ枠 */}
-        <div className="relative w-[40vw] h-[40vh] border-4 border-[#ffcc00] rounded-[10px] shadow-[0_0_25px_#ffaa00,inset_0_0_20px_#ff3300] bg-[linear-gradient(180deg,rgba(50,10,0,0.7),rgba(0,0,0,0.9))] text-center p-5 mx-auto">
+        <div className="
+          relative w-[45vw] h-[55vh]
+          border-4 border-[#ffcc00] rounded-[10px]
+          shadow-[0_0_25px_#ffaa00,inset_0_0_20px_#ff3300]
+          bg-[linear-gradient(180deg,rgba(50,10,0,0.7),rgba(0,0,0,0.9))]
+          flex flex-col items-center
+          p-6 mx-auto
+          text-center
+          space-y-4
+        ">
           {/* 枠のタイトル */}
           <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-black px-3 py-1 text-[#ffcc00] text-[10px] border border-[#ffcc00] rounded-md shadow-[0_0_10px_#ff8800]">
             FIGHTER'S LOUNGE
           </div>
 
           {/* プレイヤー情報 */}
-          <div className="text-[20px] text-[#00ff99] mb-2 mt-3 drop-shadow-[0_0_5px_#00ff99]">
+          <div className="text-[4vh] text-[#00ff99] mb-2 mt-[5vh] drop-shadow-[0_0_5px_#00ff99]">
             PLAYER: GUEST
           </div>
 
           {/* ルール説明 */}
-          <div className="text-[12px] text-[#ffcc00] bg-[rgba(0,0,0,0.6)] border border-[#ffaa00] rounded-lg p-3 my-[22px] w-4/5 mx-auto leading-relaxed shadow-[0_0_10px_#ff8800]">
+          <div className="text-[2vh] text-[#ffcc00] bg-[rgba(0,0,0,0.6)] border border-[#ffaa00] rounded-lg p-3 my-[22px] mb-[6vh] w-4/5 mx-auto leading-relaxed shadow-[0_0_10px_#ff8800]">
             🥊 ルール：<br />
             相手よりも速くタイピングできると相手を攻撃でき、<br />
             相手のLPが減ります。
           </div>
 
           {/* ボタン群 */}
-          <div className="flex flex-col items-center gap-3">
+          <div className="flex flex-col items-center gap-5">
             <button
-              className="px-6 py-3 bg-[#ff0000] border-2 border-[#ffcc00] rounded-lg text-white text-[12px] uppercase shadow-[0_0_15px_#ff0000] transition-transform hover:bg-[#ff8800] hover:shadow-[0_0_25px_#ffaa00] hover:scale-110"
+              className="px-6 py-3 bg-[#ff0000] border-2 border-[#ffcc00] rounded-lg text-white text-[3vh] uppercase shadow-[0_0_15px_#ff0000] transition-transform hover:bg-[#ff8800] hover:shadow-[0_0_25px_#ffaa00] hover:scale-110"
               onClick={connectWebSocket}
               disabled={connected}
             >

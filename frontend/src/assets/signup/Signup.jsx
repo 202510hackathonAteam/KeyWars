@@ -1,6 +1,7 @@
 // src/assets/components/Signup/Signup.jsx
 import React, { useState } from "react";
 import "./Signup.css";
+import LoginbackButton from "./components/LoginbackButton.jsx";
 
 export default function Signup() {
   const [userName, setUserName] = useState("");
@@ -49,6 +50,7 @@ export default function Signup() {
     }
   };
 
+
   return (
       <div className="
         flex flex-col items-center justify-center
@@ -59,6 +61,7 @@ export default function Signup() {
         py-[clamp(2rem,8vh,5rem)]
        ">
     <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,0,0,0.2),transparent_70%),radial-gradient(circle_at_bottom,rgba(255,165,0,0.15),transparent_80%),radial-gradient(circle_at_top,rgba(0,0,255,0.15),transparent_70%)] animate-pulse z-0 pointer-events-none" ></div>
+    < LoginbackButton/>
     {/* <div className="signup-body"> */}
       <div className="flex flex-col items-center gap-[clamp(1.5rem,5vh,3rem)] z-10">
         <div className="title">KEY WARS</div>
