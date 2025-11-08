@@ -1,26 +1,23 @@
 import React, { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 // import "./Result.css";
 
-const Result = ({ result = "victory" }) => {
+const Result = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Battleから受け取る
+  const result = location.state?.result || "victory"; // デフォルト値
 
   useEffect(() => {
-    document.body.className = result; // victory or defeat
+    document.body.classList.add(result);
     return () => {
-      document.body.className = ""; // クリーンアップ
+      document.body.classList.remove(result);
     };
   }, [result]);
 
-  const retry = () => {
-    alert("再戦スタート！");
-    // navigate("/battle"); などに変更可能
-  };
-
-  const goHome = () => {
-    alert("ホームに戻ります");
-    navigate("/");
-  };
+  const retry = () => navigate("/battle");
+  const goHome = () => navigate("/");
 
   return (
     <div className="result-container">

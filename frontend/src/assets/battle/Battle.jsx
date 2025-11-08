@@ -1,7 +1,15 @@
 import React from "react";
-import "./Battle.css";
+// import "./Battle.css";
+import { useNavigate } from "react-router-dom";
 
 export default function GamePage() {
+  const navigate = useNavigate();
+
+  const finishBattle = (didWin) => {
+    const result = didWin ? "victory" : "defeat";
+    navigate("/result", { state: { result } });
+  };
+
   return (
     <div className="stage">
       <div className="battle">
@@ -99,11 +107,14 @@ export default function GamePage() {
         <div className="btns">
           <button className="btn">やめる</button>
         </div>
+        <button onClick={() => finishBattle(true)}>勝利にする</button>
+        <button onClick={() => finishBattle(false)}>敗北にする</button>
 
         <div style={{ fontSize: "10px", opacity: 0.7, marginTop: "12px" }}>
           デザインは『格闘ゲーム風』の雰囲気を参考にしたオリジナルUIです。
         </div>
       </div>
     </div>
+
   );
 }
