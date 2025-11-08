@@ -124,7 +124,7 @@ export default function Login() {
           </div>
         </form>
 
-        <footer className="absolute bottom-3 left-0 w-full text-center text-[clamp(0.45rem,0.8vw,0.65rem)] text-gray-500">
+        <footer className="absolute bottom-1 left-0 w-full text-center text-[clamp(0.45rem,0.8vw,0.65rem)] text-gray-500">
           © 2025 KEY WARS Tournament
         </footer>
       </div>

@@ -1,8 +1,8 @@
 /* src/assets/components/Signup/Signup.css */
 
-@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+/* @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap'); */
 
-.signup-body {
+/* .signup-body {
   margin: 0;
   height: 100vh;
   background: radial-gradient(circle at center, #1a1a1a 40%, #000 100%);
@@ -13,69 +13,14 @@
   justify-content: center;
   overflow: hidden;
   position: relative;
-}
+} */
 
-/* 光のアニメーション背景 */
-.neon-glow {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  background: radial-gradient(circle at center, rgba(255,0,0,0.2), transparent 70%),
-              radial-gradient(circle at bottom, rgba(255,165,0,0.15), transparent 80%),
-              radial-gradient(circle at top, rgba(0,0,255,0.15), transparent 70%);
-  animation: glowMove 6s infinite alternate ease-in-out;
-  z-index: 0;
-}
-
-@keyframes glowMove {
-  0% { transform: scale(1); filter: brightness(1); }
-  100% { transform: scale(1.2); filter: brightness(1.4); }
-}
-
-.container {
+/* .container {
   text-align: center;
   z-index: 2;
-}
+} */
 
-.title {
-  font-size: 55px;
-  color: #ff4444;
-  text-shadow: 0 0 10px #ff0000, 0 0 20px #ff8800;
-  margin-bottom: 60px;
-  animation: flicker 2s infinite;
-}
-
-@keyframes flicker {
-  0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% { opacity: 1; }
-  20%, 24%, 55% { opacity: 0.4; }
-}
-
-.gate {
-  width: 320px;
-  height: 180px;
-  border: 3px solid #ffcc00;
-  border-radius: 10px;
-  box-shadow: 0 0 25px #ffaa00, inset 0 0 20px #ff3300;
-  margin: 0 auto 40px;
-  background: linear-gradient(180deg, rgba(60,20,0,0.7), rgba(0,0,0,0.9));
-  position: relative;
-}
-
-.gate::before {
-  content: "ARENA ENTRANCE";
-  position: absolute;
-  top: -28px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: #000;
-  padding: 6px 12px;
-  color: #ffcc00;
-  font-size: 10px;
-  border: 1px solid #ffcc00;
-  border-radius: 6px;
-  box-shadow: 0 0 10px #ff8800;
-}
-
+/* 
 input[type="text"] {
   padding: 10px;
   border: 2px solid #ff8800;
@@ -124,4 +69,4 @@ footer {
   font-size: 10px;
   color: #888;
   text-shadow: 0 0 5px #333;
-}
+} */

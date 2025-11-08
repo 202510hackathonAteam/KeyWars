@@ -5,7 +5,6 @@ import Login from "./assets/login/Login";
 import Signup from "./assets/signup/Signup";
 import Battle from "./assets/battle/Battle";
 import Result from "./assets/result/Result";
-import Testcss from "./assets/test/tail_login";
 
 export default function AppRoutes() {
   return (
@@ -16,7 +15,6 @@ export default function AppRoutes() {
         <Route path="/signup" element={<Signup />} />
         <Route path="/battle" element={<Battle />} />
         <Route path="/result" element={<Result />} />
-        <Route path="/test" element={<Testcss />} />
       </Routes>
     </BrowserRouter>
   );
