@@ -1,120 +1,179 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 // import "./Battle.css";
 import { useNavigate } from "react-router-dom";
 
+
 export default function GamePage() {
   const navigate = useNavigate();
+  const inputRef = useRef(null); // ← 入力欄参照を作成
+  const [timeLeft, setTimeLeft] = useState(60);
 
   const finishBattle = (didWin) => {
     const result = didWin ? "victory" : "defeat";
     navigate("/result", { state: { result } });
   };
 
+    // ページ表示時にフォーカスを当てる
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+  const timer = setInterval(() => {
+    setTimeLeft((prev) => {
+      if (prev <= 1) {
+        clearInterval(timer);
+        finishBattle(false); // 0になったら終了処理へ
+        return 0;
+      }
+      return prev - 1;
+    });
+  }, 1000); // 1秒ごと
+
+  return () => clearInterval(timer); // コンポーネントが消えたらタイマー停止
+}, []);
+
+
   return (
-    <div className="stage">
-      <div className="battle">
-        <div className="ui-row">
-          <div className="player-box">
-            <div className="nameplate">
-              <div className="avatar">
-                <img className="imgp1" src="../../../public/img/ai_right.jpeg" alt="P1" />
-              </div>
-              <div>
-                <div style={{ fontSize: "12px" }}>CALLSIGN: KYO</div>
-                <div className="hp-wrap">
-                  <div className="hp-bar">
-                    <div className="hp-fill" style={{ width: "100%" }}></div>
-                  </div>
-                  <div className="hp-num">
-                    <span>100</span> / 100
-                  </div>
+    <div className="
+    mt-[5vh]
+    max-w-[90vw] mx-auto my-6 
+    p-5 rounded-xl 
+    bg-gradient-to-b from-white/5 to-black/5
+    h-[85vh]
+    from-white/5 
+    to-black/5 
+    shadow-[0_8px_30px_rgba(252,2,2,0.6)]"
+    gap-y-6   /* ← 内部要素間に余白を取る */
+    >
+      {/* 戦闘エリア */}
+      <div className="relative flex flex-col justify-between rounded-lg bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.02),transparent_40%)] p-5 overflow-hidden">
+        {/* プレイヤー行 */}
+        <div className="flex justify-between items-center">
+          {/* プレイヤー1 */}
+          <div className="flex items-center gap-2 w-[48%]">
+            <div className="relative w-[17vh] h-[17vh] rounded-md bg-gradient-to-br from-neutral-700 to-neutral-900 border-2 border-white/5 flex items-center justify-center">
+              <img
+                className="absolute w-[17vh]"
+                src="../../../public/img/ai_right.jpeg"
+                alt="P1"
+              />
+            </div>
+            <div>
+              <div className="text-[clamp(1.2rem,2vw,2rem)]">CALLSIGN: KYO</div>
+              <div className="bg-white/5 p-2 rounded-md mt-2">
+                <div className="h-[16px] bg-neutral-800 rounded-md overflow-hidden">
+                  <div
+                    className="h-full w-full bg-gradient-to-r from-[#3ce27a] to-[#afffb0] transition-all duration-300"
+                    style={{ width: "100%" }}
+                  ></div>
+                </div>
+                <div className="text-[10px] mt-1 opacity-90">
+                  <span>100</span> / 100
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="player-box" style={{ textAlign: "right" }}>
-            <div className="nameplate" style={{ justifyContent: "flex-end" }}>
-              <div>
-                <div style={{ fontSize: "12px" }}>CALLSIGN: RYU</div>
-                <div className="hp-wrap">
-                  <div className="hp-bar">
-                    <div className="hp-fill" style={{ width: "100%" }}></div>
-                  </div>
-                  <div className="hp-num">
-                    <span>100</span> / 100
-                  </div>
+          {/* プレイヤー2 */}
+          <div className="flex items-center gap-2 w-[48%] justify-end text-right">
+            <div>
+              <div className="text-[clamp(1.2rem,2vw,2rem)]">CALLSIGN: RYU</div>
+              <div className="bg-white/5 p-2 rounded-md mt-2">
+                <div className="h-[16px] bg-neutral-800 rounded-md overflow-hidden">
+                  <div
+                    className="h-full w-full bg-gradient-to-r from-[#3ce27a] to-[#afffb0]"
+                    style={{ width: "100%" }}
+                  ></div>
+                </div>
+                <div className="text-[10px] mt-1 opacity-90 text-center">
+                  <span>100</span> / 100
                 </div>
               </div>
-              <div className="avatar">
-                <img className="imgp2" src="../../../public/img/azuna_left.jpeg" alt="P2" />
-              </div>
+            </div>
+            <div className="relative w-[17vh] h-[17vh] rounded-md bg-gradient-to-br from-neutral-700 to-neutral-900 border-2 border-white/5 flex items-center justify-center">
+              <img
+                className="absolute w-[17vw]"
+                src="../../../public/img/azuna_left.jpeg"
+                alt="P2"
+              />
             </div>
           </div>
         </div>
 
-        <div className="vs-badge">
-          <div className="round">ROUND 1</div>
-          <div className="vs">VS</div>
+        {/* VSバッジ */}
+        <div className="absolute left-1/2 top-5 -translate-x-1/2 text-center">
+          <div className="text-[1rem] opacity-90">ROUND 1</div>
+          <div className="text-[clamp(1.2rem,3vw,7rem)] text-[#ff0d00] drop-shadow-[0_2px_8px_rgba(255,200,0,0.1)]">
+            VS
+          </div>
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            flexDirection: "column",
-          }}
-        >
-          <div style={{ fontSize: "14px", opacity: 0.85 }}>
+        {/* 中央下部 - 説明とタイマー */}
+        <div className="flex flex-col items-center justify-center">
+          <div className="text-[14px] opacity-85">
             Type to attack! 正確にタイプすると相手のHPが減る
           </div>
-          <div style={{ padding: "14px", borderRadius: "10px", background: "rgba(255,255,255,0.02)", width: "120px", textAlign: "center", marginTop: "12px" }}>
-            <div style={{ fontSize: "12px", opacity: 0.8 }}>時間</div>
-            <div style={{ fontSize: "24px", marginTop: "6px" }}>60</div>
-            <div style={{ fontSize: "12px", opacity: 0.8 }}>秒</div>
+          <div className="mt-3 px-4 py-2 rounded-lg bg-white/5 text-center w-[120px]">
+            <div className="text-[12px] opacity-80">時間</div>
+            <div className="text-[clamp(1.2rem,2vw,7rem)] mt-1">{timeLeft}</div>
+            <div className="text-[12px] opacity-80">秒</div>
           </div>
         </div>
 
-        <div className="bg-decor">FIGHT</div>
+        <div className="absolute right-[-60px] bottom-[-60px] text-[220px] rotate-[-20deg] opacity-[0.08] select-none pointer-events-none">
+          FIGHT
+        </div>
       </div>
 
-      <div className="side">
-        <div className="panel-title">KEY WARS</div>
-        <div className="word-target">
+      {/* サイドパネル */}
+      <div className="rounded-lg bg-gradient-to-b from-white/5 to-black/5 p-5 flex flex-col gap-3">
+        <div className="text-[12px] text-[#ff0d00] tracking-wider">KEY WARS</div>
+
+        <div className="bg-gradient-to-b from-[#260707] to-[#0c0404] p-3 rounded-md border border-white/5 flex items-center justify-center min-h-[60px] text-[clamp(1.2rem,2vw,7rem)]">
           <div>
             <span>Type "</span>
-            <span style={{ fontWeight: 700 }}>example</span>
+            <span className="font-bold text-[#3ce27a]">example</span>
             <span>"</span>
           </div>
         </div>
 
-        <div className="kbd-area">
-          <input
-            type="text"
-            placeholder="Enterで攻撃開始　ここにタイプ"
-            autoComplete="off"
-          />
-        </div>
+        <input
+          ref={inputRef}
+          type="text"
+          placeholder="Enterで攻撃開始　ここにタイプ"
+          className="w-full p-[3vh] rounded-lg border-2 border-white/5 bg-transparent text-white font-['Press_Start_2P'] text-[] focus:outline-none focus:border-[#ffcc00] focus:shadow-[0_0_10px_#ffaa00]"
+        />
 
-        <div className="stats">
-          <div className="stat">
-            <div style={{ fontSize: "10px", opacity: 0.8 }}>TypeMiss（通算）</div>
-            <div className="num">0</div>
+        <div className="grid gap-2 mt-2">
+          <div className="bg-[#24140f] p-3 rounded-lg text-center">
+            <div className="text-[10px] opacity-80">TypeMiss（通算）</div>
+            <div className="text-[18px]">0</div>
           </div>
         </div>
 
-        <div className="btns">
-          <button className="btn">やめる</button>
+        <div className="flex justify-center gap-3 mt-2">
+          <button className="px-3 py-2 rounded-lg border-2 border-white/5 text-white hover:bg-red-900/40">
+            やめる
+          </button>
         </div>
-        <button onClick={() => finishBattle(true)}>勝利にする</button>
-        <button onClick={() => finishBattle(false)}>敗北にする</button>
 
-        <div style={{ fontSize: "10px", opacity: 0.7, marginTop: "12px" }}>
-          デザインは『格闘ゲーム風』の雰囲気を参考にしたオリジナルUIです。
-        </div>
+        {/* デバッグ用ボタン */}
+        {/* <div className="flex justify-center gap-3 mt-3">
+          <button
+            onClick={() => finishBattle(true)}
+            className="px-4 py-2 bg-green-700 rounded-lg hover:bg-green-600 text-[12px]"
+          >
+            勝利にする
+          </button>
+          <button
+            onClick={() => finishBattle(false)}
+            className="px-4 py-2 bg-red-700 rounded-lg hover:bg-red-600 text-[12px]"
+          >
+            敗北にする
+          </button>
+        </div> */}
       </div>
     </div>
-
   );
 }

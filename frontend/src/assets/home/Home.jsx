@@ -11,9 +11,10 @@ export default function Home() {
   const connectWebSocket = () => {
     // 固定の user_id を送る
     const user_id = "user_1234";
+    const wsUrl = import.meta.env.VITE_WS_URL;
 
     // WebSocketオブジェクト生成し、接続
-    const ws = new WebSocket(`ws://localhost:8080/ws?user_id=${user_id}`);
+    const ws = new WebSocket(`${wsUrl}?user_id=${user_id}`);
     // 本番環境でhttpsが使えるなら、以下の方がいい
     // const ws = new WebSocket(`wss://localhost:8080/ws?user_id=${user_id}`);
 
