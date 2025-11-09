@@ -57,6 +57,12 @@ resource "google_project_service" "cloudrun_api" {
   disable_on_destroy = false
 }
 
+resource "google_project_service" "artifactregistry_api" {
+    project            = var.project_id
+  service            = "artifactregistry.googleapis.com"
+  disable_on_destroy = false
+}
+
 #----------------------------
 #VPC・サブネット
 #----------------------------
@@ -83,7 +89,7 @@ resource "google_service_networking_connection" "default" {
   network                 = google_compute_network.vpc_network.id
   service                 = "servicenetworking.googleapis.com"
   reserved_peering_ranges = [google_compute_global_address.private_ip_address.name]
-  # depends_on              = [google_project_service.servicenetworking_api]
+  depends_on              = [google_project_service.servicenetworking_api]
 }
 
 # サブネット作成
@@ -193,7 +199,33 @@ resource "google_compute_backend_bucket" "bucket1" {
   enable_cdn  = true
 }
 
-# CloudRunはここに追加
+# サーバーレスNEG
+resource "google_compute_region_network_endpoint_group" "cloudrun_api_neg" {
+  name = "cloudrun-api-neg"
+  region = var.region
+  network_endpoint_type = "SERVERLESS"
+  cloud_run {
+    service = "cloudrun-api"
+  }  
+}
+
+# バックエンドサービス
+resource "google_compute_backend_service" "api_service" {
+  name = "api-service"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+
+  backend {
+    group = google_compute_region_network_endpoint_group.cloudrun_api_neg.id
+  }
+  #あとでWebsocket用追加？も一個作る？
+  # backend {
+  #   group = google_compute_region_network_endpoint_group.cloudrun_api_neg.id
+  # }
+
+  depends_on = [
+    google_project_service.compute_api,
+  ]
+}
 
 # urlマップ(バックエンドルール)
 resource "google_compute_url_map" "default" {
@@ -213,13 +245,13 @@ resource "google_compute_url_map" "default" {
     # テスト用
     path_rule {
       paths   = ["/hello"]
-      service = google_cloud_run_v2_service.api.id
+      service = google_compute_backend_service.api_service.id
     }
 
     # API用 
     path_rule {
       paths   = ["/api/*"]
-      service = google_cloud_run_v2_service.api.id
+      service = google_compute_backend_service.api_service.id
     }
 
     # WebSocket用 
@@ -494,7 +526,7 @@ resource "google_cloud_run_v2_service" "api" {
   ]
 }
 
-# マイグレーション用ClouｄRunJob
+# マイグレーション用CloudRunJob
 resource "google_cloud_run_v2_job" "migration" {
   name     = "cloudrun-migration"
   location = var.region
@@ -537,6 +569,14 @@ resource "google_cloud_run_v2_job" "seed" {
     google_project_service.cloudrun_api,
     google_project_service.sqladmin_api
   ]
+}
+
+# 認証なしでアクセスを許可する(公開する)
+resource "google_cloud_run_service_iam_member" "allow_unauthenticated" {
+  location = google_cloud_run_v2_service.api.location
+  service = google_cloud_run_v2_service.api.name
+  role = "roles/run.invoker" # 呼び出し許可
+  member = "allUsers"
 }
 #----------------------------
 # CloudBuild
