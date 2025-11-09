@@ -1,0 +1,150 @@
+// src/assets/components/Signup/Signup.jsx
+import React, { useState } from "react";
+import "./Signup.css";
+
+export default function Signup() {
+  const [userName, setUserName] = useState("");
+  const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [error, setError] = useState("");
+
+  const handleSignup = async () => {
+    setError("");
+
+    // 入力チェック
+    if (!userName || !password || !passwordConfirm) {
+      setError("全ての項目を入力してください。");
+      return;
+    }
+    if (password !== passwordConfirm) {
+      setError("パスワードが一致しません。");
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          player_name: userName,
+          password: password,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("サーバーエラー");
+      }
+
+      const data = await response.json();
+
+      if (data.status === "Authorized") {
+        // 認証成功 → ホーム画面に遷移
+        window.location.href = "/home";
+      } else {
+        setError("認証に失敗しました。");
+      }
+    } catch (err) {
+      setError("通信エラーが発生しました。");
+      console.error(err);
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-gradient-radial from-neutral-900 to-black text-white font-['Press_Start_2P'] relative overflow-hidden">
+    <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,0,0,0.2),transparent_70%),radial-gradient(circle_at_bottom,rgba(255,165,0,0.15),transparent_80%),radial-gradient(circle_at_top,rgba(0,0,255,0.15),transparent_70%)] animate-pulse z-0 pointer-events-none" ></div>
+    <div className="signup-body">
+      <div className="neon-glow"></div>
+
+      <div className="container">
+        <div className="title">KEY WARS</div>
+
+        <div className="gate"></div>
+
+        <form
+          onSubmit={(e) => e.preventDefault()} 
+          className="flex flex-col items-center space-y-[clamp(0.3rem,1vh,0.8rem)] w-full"
+        >
+          <input 
+          type="text" 
+          placeholder="PLAYER NAME" 
+          maxLength="12" 
+          required
+          value={userName}
+          onChange={(e) => setUserName(e.target.value)} 
+          className="
+              block mx-auto text-center
+              border-2 border-orange-500 bg-black text-white
+              rounded-md outline-none
+              px-[clamp(0.4rem,1vw,0.5rem)]
+              py-[clamp(0.2rem,0.6vh,0.7rem)]
+              text-[clamp(0.6rem,0.9vw,0.8rem)]
+              focus:border-yellow-400 focus:shadow-[0_0_10px_#ffaa00]
+              transition-all
+            "
+          />
+          <input 
+          type="text" 
+          placeholder="PASSWORD" 
+          maxLength="12" 
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className="
+              block mx-auto text-center
+              border-2 border-orange-500 bg-black text-white
+              rounded-md outline-none
+              px-[clamp(0.4rem,1vw,0.5rem)]
+              py-[clamp(0.2rem,0.6vh,0.7rem)]
+              text-[clamp(0.6rem,0.9vw,0.8rem)]
+              focus:border-yellow-400 focus:shadow-[0_0_10px_#ffaa00]
+              transition-all
+            "
+           />
+          <input
+            type="text"
+            placeholder="PASSWORD CONFIRM"
+            maxLength="12"
+            required
+            value={passwordConfirm}
+            onChange={(e) => setPasswordConfirm(e.target.value)}
+            className="
+              block mx-auto text-center
+              border-2 border-orange-500 bg-black text-white
+              rounded-md outline-none
+              px-[clamp(0.4rem,1vw,0.5rem)]
+              py-[clamp(0.2rem,0.6vh,0.7rem)]
+              text-[clamp(0.6rem,0.9vw,0.8rem)]
+              focus:border-yellow-400 focus:shadow-[0_0_10px_#ffaa00]
+              transition-all
+            "
+          />
+          {error && (
+              <p className="text-red-500 text-[clamp(0.45rem,0.8vw,0.7rem)] text-center">
+                {error}
+              </p>
+            )}
+          <button 
+          type="button"
+          onClick={handleSignup} 
+          className="
+                min-w-[6rem] max-w-[10rem]
+                px-[clamp(0.4rem,0.5vw,0.5rem)]
+                py-[clamp(0.2rem,0.6vh,0.7rem)]
+                border-2 border-yellow-400 rounded-md
+                bg-blue-600 text-white
+                text-[clamp(0.6rem,0.9vw,0.8rem)]
+                hover:bg-cyan-400
+                hover:shadow-[0_0_25px_#00ffff]
+                transition-transform hover:scale-105
+              "
+              >
+            OPEN WAR
+          </button>
+        </form>
+
+        <footer className="absolute bottom-1 left-0 w-full text-center text-[clamp(0.45rem,0.8vw,0.65rem)] text-gray-500">© 2025 KEY WARS Tournament</footer>
+      </div>
+    </div>
+  </div>
+  );
+}

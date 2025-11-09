@@ -6,11 +6,17 @@ import (
 
 // DBConfig は、データベース接続に必要な設定情報の定義
 type DBConfig struct {
-	User string
+	User     string
 	Password string
-	Host string
-	Port string
-	Name string
+	Host     string
+	Port     string
+	Name     string
+}
+
+type RedisConfig struct {
+	Addr     string
+	Password string
+	DB       int
 }
 
 // ServerConfig は、アプリケーションサーバーに関する設定の定義
@@ -20,7 +26,8 @@ type ServerConfig struct {
 
 // Config は、アプリ全体の設定をまとめた構造体。
 type Config struct {
-	DB DBConfig
+	DB     DBConfig
+	Redis  RedisConfig
 	Server ServerConfig
 }
 
