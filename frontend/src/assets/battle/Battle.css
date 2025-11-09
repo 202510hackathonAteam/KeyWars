@@ -1,0 +1,285 @@
+:root {
+  --bg: #200c0b;
+  --panel: #24140f;
+  --accent: #ff0d00;
+  --hp-green: #3ce27a;
+  --hp-red: #ff5959;
+  --glass: rgba(255, 255, 255, 0.04);
+  --neon: rgba(255, 200, 30, 0.15);
+  font-family: 'Press Start 2P', system-ui, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: linear-gradient(180deg, #1a1a1a 0%, #0b1220 100%);
+  color: #fff;
+}
+
+/* ステージ全体 */
+.stage {
+  max-width: 1100px;
+  margin: 24px auto;
+  padding: 20px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(0, 0, 0, 0.03));
+  box-shadow: 0 8px 30px rgba(252, 2, 2, 0.6);
+  gap: 18px;
+  align-items: start;
+  animation: flicker 2s infinite alternate;
+}
+
+/* 戦闘フィールド */
+.battle {
+  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='720'><rect fill='%23040a12' width='100%' height='100%'/><g fill='%2300202f' opacity='0.6'><rect x='0' y='600' width='1200' height='120'/></g></svg>")
+      center/cover no-repeat,
+    radial-gradient(ellipse at center, rgba(255, 255, 255, 0.02), transparent 40%);
+  border-radius: 10px;
+  padding: 18px;
+  min-height: 200px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.ui-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* プレイヤーエリア */
+.player-box {
+  width: 48%;
+}
+
+.nameplate {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.avatar {
+  width: 100px;
+  height: 100px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #222 0, #111 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: #ddd;
+  letter-spacing: 1px;
+  border: 2px solid rgba(255, 255, 255, 0.04);
+}
+
+.imgp1 {
+  position: absolute;
+  width: 90px;
+}
+
+.imgp2 {
+  position: absolute;
+  width: 90px;
+}
+
+/* HPバー */
+.hp-wrap {
+  background: var(--glass);
+  padding: 8px;
+  border-radius: 8px;
+  margin-top: 8px;
+}
+
+.hp-bar {
+  height: 16px;
+  background: #222;
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+}
+
+.hp-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, var(--hp-green), #afffb0);
+  transition: width 0.3s ease;
+}
+
+.hp-num {
+  font-size: 10px;
+  margin-top: 6px;
+  opacity: 0.9;
+}
+
+/* 中央VSバッジ */
+.vs-badge {
+  position: absolute;
+  left: 50%;
+  top: 18px;
+  transform: translateX(-50%);
+  text-align: center;
+}
+
+.round {
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.vs {
+  font-size: 36px;
+  color: var(--accent);
+  text-shadow: 0 2px 8px rgba(255, 200, 0, 0.08);
+  padding: 7px;
+}
+
+/* 背景装飾 */
+.bg-decor {
+  position: absolute;
+  right: -60px;
+  bottom: -60px;
+  opacity: 0.08;
+  font-size: 220px;
+  transform: rotate(-20deg);
+  pointer-events: none;
+}
+
+/* サイドパネル */
+.side {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(0, 0, 0, 0.03));
+  border-radius: 10px;
+  padding: 18px;
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.panel-title {
+  font-size: 12px;
+  color: var(--accent);
+  letter-spacing: 1px;
+}
+
+/* タイピングUI */
+.word-target {
+  background: linear-gradient(180deg, #260707, #0c0404);
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+.word-correct {
+  color: var(--hp-green);
+}
+
+.word-remaining {
+  opacity: 0.6;
+}
+
+/* 入力欄 */
+.kbd-area {
+  margin-top: 8px;
+}
+
+.kbd-area input[type="text"] {
+  width: 100%;
+  padding: 20px;
+  border-radius: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.04);
+  background: transparent;
+  color: #fff;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.kbd-area input[type="text"]:focus {
+  outline: none;
+  border-color: #ffcc00;
+  box-shadow: 0 0 10px #ffaa00;
+}
+
+/* ステータス */
+.stats {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.stat {
+  background: var(--panel);
+  padding: 10px;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.stat .num {
+  font-size: 18px;
+}
+
+/* ボタン */
+.btns {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  justify-content: center;
+}
+
+.btn {
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: white;
+  border: 2px solid rgba(255, 255, 255, 0.04);
+  background: transparent;
+  cursor: pointer;
+}
+
+.btn:hover {
+  background: rgba(255, 0, 0, 0.1);
+}
+
+/* 小さいスクリーン対応 */
+@media (max-width: 980px) {
+  .stage {
+    grid-template-columns: 1fr;
+  }
+
+  .vs-badge {
+    position: static;
+    transform: none;
+    margin-bottom: 6px;
+  }
+
+  .battle {
+    order: 2;
+  }
+
+  .side {
+    order: 1;
+  }
+}
+
+/* 点滅アニメーション */
+@keyframes flicker {
+  0%,
+  100% {
+    opacity: 1;
+    text-shadow: 0 0 10px #ff3300, 0 0 20px #ff6600;
+  }
+  50% {
+    opacity: 0.9;
+    text-shadow: 0 0 5px #ff0000, 0 0 10px #ff6600;
+  }
+}
