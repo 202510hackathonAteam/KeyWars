@@ -15,10 +15,17 @@ provider "google" {
 # API有効化
 #----------------------------
 
+resource "google_project_service" "cloudresourcemanager_api" {
+  project            = var.project_id
+  service            = "cloudresourcemanager.googleapis.com"
+  disable_on_destroy = false # destroy時に無効化しない
+}
+
+
 resource "google_project_service" "compute_api" {
   project            = var.project_id
   service            = "compute.googleapis.com"
-  disable_on_destroy = false # destroy時に無効化しない
+  disable_on_destroy = false
 }
 
 resource "google_project_service" "DNS_api" {
@@ -42,7 +49,7 @@ resource "google_project_service" "secretmanager_api" {
 resource "google_project_service" "servicenetworking_api" {
   project            = var.project_id
   service            = "servicenetworking.googleapis.com"
-  disable_on_destroy = false
+  # disable_on_destroy = false
 }
 
 resource "google_project_service" "sqladmin_api" {
@@ -58,10 +65,11 @@ resource "google_project_service" "cloudrun_api" {
 }
 
 resource "google_project_service" "artifactregistry_api" {
-    project            = var.project_id
+  project            = var.project_id
   service            = "artifactregistry.googleapis.com"
   disable_on_destroy = false
 }
+
 
 #----------------------------
 #VPC・サブネット
@@ -89,7 +97,7 @@ resource "google_service_networking_connection" "default" {
   network                 = google_compute_network.vpc_network.id
   service                 = "servicenetworking.googleapis.com"
   reserved_peering_ranges = [google_compute_global_address.private_ip_address.name]
-  depends_on              = [google_project_service.servicenetworking_api]
+  depends_on              = [google_project_service.servicenetworking_api, google_compute_global_address.private_ip_address]
 }
 
 # サブネット作成
@@ -201,17 +209,17 @@ resource "google_compute_backend_bucket" "bucket1" {
 
 # サーバーレスNEG
 resource "google_compute_region_network_endpoint_group" "cloudrun_api_neg" {
-  name = "cloudrun-api-neg"
-  region = var.region
+  name                  = "cloudrun-api-neg"
+  region                = var.region
   network_endpoint_type = "SERVERLESS"
   cloud_run {
     service = "cloudrun-api"
-  }  
+  }
 }
 
 # バックエンドサービス
 resource "google_compute_backend_service" "api_service" {
-  name = "api-service"
+  name                  = "api-service"
   load_balancing_scheme = "EXTERNAL_MANAGED"
 
   backend {
@@ -574,79 +582,15 @@ resource "google_cloud_run_v2_job" "seed" {
 # 認証なしでアクセスを許可する(公開する)
 resource "google_cloud_run_service_iam_member" "allow_unauthenticated" {
   location = google_cloud_run_v2_service.api.location
-  service = google_cloud_run_v2_service.api.name
-  role = "roles/run.invoker" # 呼び出し許可
-  member = "allUsers"
-}
-#----------------------------
-# CloudBuild
-#----------------------------
-# secret作成
-# resource "google_secret_manager_secret" "github_token" {
-#   project   = var.project_id
-#   secret_id = "github-pat"
-#   # secret複製の設定
-#   replication {
-#     auto {} # 自動で別リージョンに複製される
-#   }
-#   depends_on = [google_project_service.secretmanager_api]
-# }
-
-# secretの取り出し
-# data "google_secret_manager_secret" "github_token" {
-#   project = var.project_id
-#   secret_id = var.github_token_secret_name
-# }
-
-# secretの取り出し
-data "google_secret_manager_secret_version" "github_token_version" {
-  project = var.project_id
-  secret  = var.github_token_secret_name
-  version = "latest"
+  service  = google_cloud_run_v2_service.api.name
+  role     = "roles/run.invoker" # 呼び出し許可
+  member   = "allUsers"
 }
 
-# resource "google_secret_manager_secret_version" "github_token_version" {
-#   secret      = google_secret_manager_secret.github_token.id
-#   secret_data = var.github_pat
-# }
 
+data "google_client_openid_userinfo" "current" {}
 
-# # secretにIAMポリシー付与
-# resource "google_secret_manager_secret_iam_member" "policy" {
-#   project   = google_secret_manager_secret.github_token.project
-#   secret_id = google_secret_manager_secret.github_token.secret_id
-#   role      = "roles/secretmanager.secretAccessor"
-#   # CloudBuild管理用アカウント(自動生成される)
-#   member = "serviceAccount:service-${var.project_nunmer}@gcp-sa-cloudbuild.iam.gserviceaccount.com"
-# }
-
-# githubと接続
-resource "google_cloudbuildv2_connection" "github_connection" {
-  project  = var.project_id
-  location = var.region
-  name     = "github-connection"
-
-  github_config {
-    app_installation_id = var.installed_id
-    authorizer_credential {
-      oauth_token_secret_version = data.google_secret_manager_secret_version.github_token_version.name
-    }
-  }
+output "current_account_email" {
+  value       = data.google_client_openid_userinfo.current.email
+  description = "Terraform実行に使用されたサービスアカウントまたはユーザーのメールアドレス"
 }
-
-# githubレポジトリと接続
-resource "google_cloudbuildv2_repository" "github_repository" {
-  project           = var.project_id
-  location          = var.region
-  name              = var.repository_name
-  parent_connection = google_cloudbuildv2_connection.github_connection.name
-  remote_uri        = var.repository_uri
-}
-
-# ArtifactRegistryリポジトリの作成
-# resource "google_artifact_registry_repository" "cloudrun_api_image" {
-#   location =  var.region
-#   repository_id = "api-image"
-#   description = "Docker image for Cloud Run API"
-#   format = "Docker"
-# }
