@@ -10,189 +10,201 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// PresenceRepositoryRedis は、ユーザーのプレゼンス（オンライン／対戦中／オフライン状態）を
-// Redis 上で管理するリポジトリ実装。
-//
-// Redis のキー構成：
-//
-//	presence:{userID} （HASH）
-//	  - status        : "online" | "ingame" | "offline"
-//	  - last_seen_ms  : 最終アクティブ時刻（UNIXミリ秒）
-//	  - match_id      : 対戦中のマッチID（"ingame" のときのみ）
-//
-// TTL（有効期限）を設定することで、心拍更新が止まった場合に自然消滅する仕組み。
-// これにより「自動ログアウト」や「強制切断後のリーク防止」を実現する。
+// 仕様： user:{uid}:presence（HASH + TTL 30s）
+// fields: status (offline|online|ingame|reconnecting), match_id, updated_at(ms), socket_count
+// ops:
+//  - 接続時:     HSET status online ... ; HINCRBY socket_count 1 ; EXPIRE 30
+//  - 心拍:       HSET updated_at now ; PEXPIRE 30000
+//  - 参戦:       HSET status ingame match_id {mid} ; PEXPIRE 30000
+//  - 切断:       HINCRBY socket_count -1 ; PEXPIRE 30000
+// TTLは常に30秒（心拍で延長）
+
+const (
+	presenceTTL = 30 * time.Second // 30秒（PEXPIREで延長）
+)
+
+// PresenceRepositoryRedis は、ユーザーのプレゼンスを Redis に保持・更新する実装。
 type PresenceRepositoryRedis struct {
-	redisClient        *redis.Client // Redisクライアントインスタンス
-	heartbeatTTL       time.Duration // 通常時（オンラインまたは対戦中）のTTL
-	disconnectGraceTTL time.Duration // 明示切断後に情報を保持するTTL
+	redisClient *redis.Client
 }
 
-// NewPresenceRepositoryRedis は PresenceRepositoryRedis のコンストラクタ。
-// Redis クライアントと TTL 設定を受け取り、リポジトリを初期化する。
-func NewPresenceRepositoryRedis(
-	redisClient *redis.Client,
-	heartbeatTTL time.Duration,
-	disconnectGraceTTL time.Duration,
-) *PresenceRepositoryRedis {
+func NewPresenceRepositoryRedis(redisClient *redis.Client) *PresenceRepositoryRedis {
 	return &PresenceRepositoryRedis{
-		redisClient:        redisClient,
-		heartbeatTTL:       heartbeatTTL,
-		disconnectGraceTTL: disconnectGraceTTL,
+		redisClient: redisClient,
 	}
 }
 
-// presenceKey は、指定したユーザーIDに対応する Redis キー名を生成する。
-// 例: presence:u001
+// presenceKey は user:{userID}:presence を返す。
 func presenceKey(userID string) string {
-	return fmt.Sprintf("presence:%s", userID)
+	return fmt.Sprintf("user:%s:presence", userID)
 }
 
-// SetOnline は、ユーザーを「オンライン状態」として登録し、TTL を設定する。
-//
-// 引数:
-//
-//	contextObject - コンテキスト（タイムアウト／キャンセル制御）
-//	userID        - 対象ユーザーID
-//	currentTimeMs - 現在時刻（UNIXミリ秒）
-//
-// 動作:
-//
-//	Redis の presence:{userID} HASH に以下を保存：
-//	  status="online", last_seen_ms=currentTimeMs, match_id=""
-//	さらに TTL を heartbeatTTL に設定する。
-func (repository *PresenceRepositoryRedis) SetOnline(
-	contextObject context.Context,
+// OnConnect は WebSocket 接続開始時に呼び出し、オンライン化＆socket_count を加算する。
+// - status = online（既にingame等なら上書きしたくない場合は要件に応じて条件分岐を追加）
+// - socket_count を +1
+// - updated_at を now に
+// - TTL を 30s に延長（PEXPIRE）
+func (r *PresenceRepositoryRedis) OnConnect(
+	ctx context.Context,
 	userID string,
-	currentTimeMs int64,
+	nowUnixMilli int64,
 ) error {
-	presenceKeyName := presenceKey(userID)
-	pipeline := repository.redisClient.TxPipeline()
+	key := presenceKey(userID)
+	pipe := r.redisClient.TxPipeline()
 
-	pipeline.HSet(contextObject, presenceKeyName,
+	pipe.HSet(ctx, key,
 		"status", "online",
-		"last_seen_ms", currentTimeMs,
-		"match_id", "",
+		"updated_at", nowUnixMilli,
 	)
-	pipeline.Expire(contextObject, presenceKeyName, repository.heartbeatTTL)
+	socketCountCmd := pipe.HIncrBy(ctx, key, "socket_count", 1)
+	pipe.PExpire(ctx, key, presenceTTL)
 
-	_, err := pipeline.Exec(contextObject)
-	return err
+	// 実行
+	if _, err := pipe.Exec(ctx); err != nil {
+		return err
+	}
+
+	// socket_count が負になることは無いが、一応0未満保険（別Txで補正）
+	if socketCountCmd.Val() < 0 {
+		_ = r.redisClient.HSet(ctx, key, "socket_count", 1).Err()
+	}
+	return nil
 }
 
-// Heartbeat は、ユーザーが継続的にオンラインであることを示す心拍。
-// last_seen_ms を更新し、TTL を延長する。
-//
-// 引数:
-//
-//	contextObject - コンテキスト
-//	userID        - 対象ユーザーID
-//	currentTimeMs - 現在時刻（UNIXミリ秒）
-//
-// 動作:
-//
-//	HASH の last_seen_ms を更新し、TTL を再設定。
-func (repository *PresenceRepositoryRedis) Heartbeat(
-	contextObject context.Context,
+// Heartbeat はクライアント側からの定期心拍で呼び出す。
+// - updated_at を now に更新
+// - TTL を 30s に延長（PEXPIRE）
+func (r *PresenceRepositoryRedis) Heartbeat(
+	ctx context.Context,
 	userID string,
-	currentTimeMs int64,
+	nowUnixMilli int64,
 ) error {
-	presenceKeyName := presenceKey(userID)
-	pipeline := repository.redisClient.TxPipeline()
+	key := presenceKey(userID)
+	pipe := r.redisClient.TxPipeline()
 
-	pipeline.HSet(contextObject, presenceKeyName, "last_seen_ms", currentTimeMs)
-	pipeline.Expire(contextObject, presenceKeyName, repository.heartbeatTTL)
+	pipe.HSet(ctx, key, "updated_at", nowUnixMilli)
+	pipe.PExpire(ctx, key, presenceTTL)
 
-	_, err := pipeline.Exec(contextObject)
+	_, err := pipe.Exec(ctx)
 	return err
 }
 
-// SetIngame は、ユーザーを「対戦中（ingame）」状態として登録し、
-// 対戦中のマッチIDを記録する。
-//
-// 引数:
-//
-//	contextObject - コンテキスト
-//	userID        - 対象ユーザーID
-//	matchID       - 対戦中のマッチID
-//	currentTimeMs - 現在時刻（UNIXミリ秒）
-//
-// 動作:
-//
-//	Redis の presence:{userID} HASH に以下を保存：
-//	  status="ingame", match_id=matchID, last_seen_ms=currentTimeMs
-//	TTL は heartbeatTTL に設定。
-func (repository *PresenceRepositoryRedis) SetIngame(
-	contextObject context.Context,
+// SetIngame は対戦開始時に呼び出す。
+// - status = ingame
+// - match_id = {matchID}
+// - updated_at を now に
+// - TTL を 30s に延長（PEXPIRE）
+func (r *PresenceRepositoryRedis) SetIngame(
+	ctx context.Context,
 	userID string,
 	matchID string,
-	currentTimeMs int64,
+	nowUnixMilli int64,
 ) error {
-	presenceKeyName := presenceKey(userID)
-	pipeline := repository.redisClient.TxPipeline()
+	key := presenceKey(userID)
+	pipe := r.redisClient.TxPipeline()
 
-	pipeline.HSet(contextObject, presenceKeyName,
+	pipe.HSet(ctx, key,
 		"status", "ingame",
-		"last_seen_ms", currentTimeMs,
 		"match_id", matchID,
+		"updated_at", nowUnixMilli,
 	)
-	pipeline.Expire(contextObject, presenceKeyName, repository.heartbeatTTL)
+	pipe.PExpire(ctx, key, presenceTTL)
 
-	_, err := pipeline.Exec(contextObject)
+	_, err := pipe.Exec(ctx)
 	return err
 }
 
-// Disconnect は、ユーザーを「オフライン（offline）」として登録し、
-// 直近状態を短期間だけ保持する。
-//
-// 引数:
-//
-//	contextObject - コンテキスト
-//	userID        - 対象ユーザーID
-//	currentTimeMs - 現在時刻（UNIXミリ秒）
-//
-// 動作:
-//
-//	Redis の presence:{userID} HASH に以下を保存：
-//	  status="offline", match_id="", last_seen_ms=currentTimeMs
-//	TTL は disconnectGraceTTL に設定（例: 30秒など）。
-func (repository *PresenceRepositoryRedis) Disconnect(
-	contextObject context.Context,
+// SetReconnecting は回線復帰中などを表現したい場合に利用（任意）。
+// - status = reconnecting
+// - updated_at を now に
+// - TTL を 30s に延長（PEXPIRE）
+func (r *PresenceRepositoryRedis) SetReconnecting(
+	ctx context.Context,
 	userID string,
-	currentTimeMs int64,
+	nowUnixMilli int64,
 ) error {
-	presenceKeyName := presenceKey(userID)
-	pipeline := repository.redisClient.TxPipeline()
+	key := presenceKey(userID)
+	pipe := r.redisClient.TxPipeline()
 
-	pipeline.HSet(contextObject, presenceKeyName,
-		"status", "offline",
-		"last_seen_ms", currentTimeMs,
-		"match_id", "",
+	pipe.HSet(ctx, key,
+		"status", "reconnecting",
+		"updated_at", nowUnixMilli,
 	)
-	pipeline.Expire(contextObject, presenceKeyName, repository.disconnectGraceTTL)
+	pipe.PExpire(ctx, key, presenceTTL)
 
-	_, err := pipeline.Exec(contextObject)
+	_, err := pipe.Exec(ctx)
 	return err
 }
 
-// Get は、指定したユーザーの現在のプレゼンス状態を取得する。
-//
-// 引数:
-//
-//	contextObject - コンテキスト
-//	userID        - 対象ユーザーID
-//
-// 戻り値:
-//
-//	map[string]string - 現在の状態を格納したマップ（status, last_seen_ms, match_id）
-//	error             - 取得エラー（キーが存在しない場合は空マップが返る）
-func (repository *PresenceRepositoryRedis) Get(
-	contextObject context.Context,
+// OnDisconnect は WebSocket 切断時に呼び出し、socket_count を減算する。
+// - socket_count を -1
+// - 0 以下になった場合は offline へ落とし、socket_count=0 に補正、match_id は残す/消すは要件次第
+//   - ここでは match_id は「残す」とし、presence は TTLで自然消滅させる。
+//   - TTL は常に 30s に延長（PEXPIRE）
+//     （ブラウザがすぐ再接続する前提でも presence を短時間保持したい）
+func (r *PresenceRepositoryRedis) Disconnect(
+	ctx context.Context,
+	userID string,
+	nowUnixMilli int64,
+) error {
+	key := presenceKey(userID)
+	// HINCRBY の結果を見て分岐したいので、TxPipelineで値を拾う
+	pipe := r.redisClient.TxPipeline()
+
+	socketCountCmd := pipe.HIncrBy(ctx, key, "socket_count", -1)
+	pipe.HSet(ctx, key, "updated_at", nowUnixMilli)
+	pipe.PExpire(ctx, key, presenceTTL)
+
+	if _, err := pipe.Exec(ctx); err != nil {
+		return err
+	}
+
+	// 0 未満になった場合の補正と offline 落とし
+	if socketCountCmd.Val() <= 0 {
+		// 補正と状態更新（別Tx）
+		repair := r.redisClient.TxPipeline()
+		repair.HSet(ctx, key,
+			"socket_count", 0,
+			"status", "offline",
+			"updated_at", nowUnixMilli,
+		)
+		repair.PExpire(ctx, key, presenceTTL)
+		_, _ = repair.Exec(ctx)
+	}
+
+	return nil
+}
+
+// Get は現在のプレゼンスをそのまま返す。
+// （キーが無ければ空マップ / redis.Nil 対応は go-redis の Result() 仕様に準ずる）
+func (r *PresenceRepositoryRedis) Get(
+	ctx context.Context,
 	userID string,
 ) (map[string]string, error) {
-	presenceKeyName := presenceKey(userID)
-	return repository.redisClient.HGetAll(contextObject, presenceKeyName).Result()
+	key := presenceKey(userID)
+	return r.redisClient.HGetAll(ctx, key).Result()
 }
 
-// コンパイル時にインターフェース適合を保証。
+// IsOnline は /queue/join の前提チェック用ヘルパー。
+// 仕様：「status != online なら /queue/join を拒否」
+// ここでは status=="online" かつ socket_count>0 をオンラインとみなす。
+func (r *PresenceRepositoryRedis) IsOnline(
+	ctx context.Context,
+	userID string,
+) (bool, error) {
+	key := presenceKey(userID)
+	values, err := r.redisClient.HGetAll(ctx, key).Result()
+	if err != nil {
+		return false, err
+	}
+	if values["status"] != "online" {
+		return false, nil
+	}
+	// socket_count>0 を軽く確認（パース失敗時は true 扱いでも可）
+	if sc, ok := values["socket_count"]; ok && sc == "0" {
+		return false, nil
+	}
+	return true, nil
+}
+
 var _ repository.PresenceRepository = (*PresenceRepositoryRedis)(nil)
