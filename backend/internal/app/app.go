@@ -102,8 +102,13 @@ func New(config *config.Config) (*Server, error) {
 		Hub:      hub,
 		Verifier: ws.DevTicket{}, // 開発用トークン: dev:<userID>:<room>
 	}
-	// Realtime Service を生成してWebSocketとRedis Queueを接続
-	realtimeService := realtime.NewService(redisrepos.Queue, hub)
+	// Realtime Service を生成してWebSocketとRedisを接続
+	realtimeService := realtime.NewService(
+		redisrepos.Queue,
+		redisrepos.Round,
+		redisrepos.Presence,
+		hub,
+	)
 
 	// WSハンドラにサービスを差し込む（OnConnect/OnMessage/OnDisconnectが呼ばれる）
 	webSocketHandler.Service = realtimeService
