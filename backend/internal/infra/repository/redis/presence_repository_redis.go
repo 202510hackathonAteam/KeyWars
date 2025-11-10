@@ -39,38 +39,6 @@ func presenceKey(userID string) string {
 	return fmt.Sprintf("user:%s:presence", userID)
 }
 
-// OnConnect は WebSocket 接続開始時に呼び出し、オンライン化＆socket_count を加算する。
-// - status = online（既にingame等なら上書きしたくない場合は要件に応じて条件分岐を追加）
-// - socket_count を +1
-// - updated_at を now に
-// - TTL を 30s に延長（PEXPIRE）
-func (r *PresenceRepositoryRedis) OnConnect(
-	ctx context.Context,
-	userID string,
-	nowUnixMilli int64,
-) error {
-	key := presenceKey(userID)
-	pipe := r.redisClient.TxPipeline()
-
-	pipe.HSet(ctx, key,
-		"status", "online",
-		"updated_at", nowUnixMilli,
-	)
-	socketCountCmd := pipe.HIncrBy(ctx, key, "socket_count", 1)
-	pipe.PExpire(ctx, key, presenceTTL)
-
-	// 実行
-	if _, err := pipe.Exec(ctx); err != nil {
-		return err
-	}
-
-	// socket_count が負になることは無いが、一応0未満保険（別Txで補正）
-	if socketCountCmd.Val() < 0 {
-		_ = r.redisClient.HSet(ctx, key, "socket_count", 1).Err()
-	}
-	return nil
-}
-
 // Heartbeat はクライアント側からの定期心拍で呼び出す。
 // - updated_at を now に更新
 // - TTL を 30s に延長（PEXPIRE）
@@ -183,28 +151,6 @@ func (r *PresenceRepositoryRedis) Get(
 ) (map[string]string, error) {
 	key := presenceKey(userID)
 	return r.redisClient.HGetAll(ctx, key).Result()
-}
-
-// IsOnline は /queue/join の前提チェック用ヘルパー。
-// 仕様：「status != online なら /queue/join を拒否」
-// ここでは status=="online" かつ socket_count>0 をオンラインとみなす。
-func (r *PresenceRepositoryRedis) IsOnline(
-	ctx context.Context,
-	userID string,
-) (bool, error) {
-	key := presenceKey(userID)
-	values, err := r.redisClient.HGetAll(ctx, key).Result()
-	if err != nil {
-		return false, err
-	}
-	if values["status"] != "online" {
-		return false, nil
-	}
-	// socket_count>0 を軽く確認（パース失敗時は true 扱いでも可）
-	if sc, ok := values["socket_count"]; ok && sc == "0" {
-		return false, nil
-	}
-	return true, nil
 }
 
 var _ repository.PresenceRepository = (*PresenceRepositoryRedis)(nil)

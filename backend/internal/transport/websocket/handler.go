@@ -9,6 +9,7 @@ import (
 	"time"
 
 	domain "keywars/backend/internal/domain/port"
+	"keywars/backend/internal/domain/repository"
 
 	"github.com/gorilla/websocket"
 )
@@ -44,6 +45,7 @@ type Handler struct {
 	Hub      *Hub
 	Service  domain.RealtimeService
 	Verifier TicketVerifier
+	Presence repository.PresenceRepository
 }
 
 // upgrader は HTTP から WebSocket へのアップグレード設定。
@@ -176,8 +178,11 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	// --- 5) reader ループ（Pong/ReadDeadline 込み） ---
 	wsConn.SetReadLimit(readLimit)
 	_ = wsConn.SetReadDeadline(time.Now().Add(pongWait))
-	wsConn.SetPongHandler(func(string) error {
+	wsConn.SetPongHandler(func(_ string) error {
 		_ = wsConn.SetReadDeadline(time.Now().Add(pongWait))
+		if handler.Presence != nil {
+			_ = handler.Presence.Heartbeat(requestContext, userID, time.Now().UnixMilli())
+		}
 		return nil
 	})
 	wsConn.SetCloseHandler(func(_ int, _ string) error {
@@ -213,6 +218,9 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	}
 	if handler.Service != nil {
 		handler.Service.OnDisconnect(requestContext, userID, clientConn.Room())
+	}
+	if handler.Presence != nil {
+		_ = handler.Presence.Disconnect(requestContext, userID, time.Now().UnixMilli())
 	}
 	<-doneChan // writer の終了待ち（CloseMessage 送出）
 }

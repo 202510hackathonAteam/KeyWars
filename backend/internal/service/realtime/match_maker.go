@@ -79,6 +79,8 @@ func (service *Service) tryMakeMatch(ctx context.Context) {
 			"turn":            0,
 		},
 	})
+	_ = service.presenceRepository.SetIngame(ctx, user1ID, matchID, time.Now().UnixMilli())
+	_ = service.presenceRepository.SetIngame(ctx, user2ID, matchID, time.Now().UnixMilli())
 }
 
 //

@@ -14,10 +14,6 @@ import "context"
 //
 // /queue/join の前提: status == "online"
 type PresenceRepository interface {
-	// SetOnline:
-	//   接続時に呼ぶ。status=online, socket_countを+1, updated_at=now, PEXPIRE 30s。
-	OnConnect(ctx context.Context, userID string, currentTimeMs int64) error
-
 	// Heartbeat:
 	//   心拍。updated_at=now を更新し、PEXPIRE 30s（延長）のみ行う。
 	Heartbeat(ctx context.Context, userID string, currentTimeMs int64) error
