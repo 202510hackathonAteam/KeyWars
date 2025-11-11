@@ -22,8 +22,8 @@ type Service struct {
 	matchQueueRepository repository.MatchQueueRepository
 	roundStateRepository repository.RoundStateRepository
 	presenceRepository   repository.PresenceRepository
-
-	websocketHub *websocket.Hub
+	promptRepository     repository.PromptRepository
+	websocketHub         *websocket.Hub
 }
 
 // NewService は、依存する Redis リポジトリと WebSocket ハブを受け取り、
@@ -32,12 +32,14 @@ func NewService(
 	matchQueueRepository repository.MatchQueueRepository,
 	roundState repository.RoundStateRepository,
 	presence repository.PresenceRepository,
+	prompt repository.PromptRepository,
 	websocketHub *websocket.Hub,
 ) *Service {
 	return &Service{
 		matchQueueRepository: matchQueueRepository,
 		roundStateRepository: roundState,
 		presenceRepository:   presence,
+		promptRepository:     prompt,
 		websocketHub:         websocketHub,
 	}
 }

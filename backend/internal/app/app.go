@@ -55,7 +55,8 @@ func New(config *config.Config) (*Server, error) {
 
 	// Repository 層の初期化
 	sqlrepos := sqlrepository.Repos{
-		User: sqlrepository.NewUserRepo(gormDB),
+		User:   sqlrepository.NewUserRepo(gormDB),
+		Prompt: sqlrepository.NewPromptRepositorySQL(gormDB),
 		// 下に追加していく
 	}
 
@@ -101,6 +102,7 @@ func New(config *config.Config) (*Server, error) {
 		redisRepos.Queue,
 		redisRepos.Round,
 		redisRepos.Presence,
+		sqlrepos.Prompt,
 		hub,
 	)
 

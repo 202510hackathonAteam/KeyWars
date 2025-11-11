@@ -65,7 +65,7 @@ type RoundStateRepository interface {
 	//   error - 成功時は nil、失敗時はエラーを返す
 	Finish(contextObject context.Context, matchID, winnerUserID string) error
 
-	// SaveDeckOnce は、出題デッキを初期化時に一度だけ保存する。
+	// SaveDeck は、出題デッキを初期化時に一度だけ保存する。
 	// 例: match:{matchID}:deck に全単語を保存しておき、以降の出題でインデックス参照する。
 	//
 	// 引数:
@@ -75,7 +75,7 @@ type RoundStateRepository interface {
 	//
 	// 戻り値:
 	//   error - 成功時は nil、失敗時はエラーを返す
-	SaveDeckOnce(contextObject context.Context, matchID string, deckItems []string) error
+	SaveDeck(ctx context.Context, matchID string, deck []PromptWithDifficulty) error
 
 	// GetDeckItem は、指定したデッキインデックスの単語を取得する。
 	// Redis の配列から deckIndex 番目の単語を返す。
