@@ -57,7 +57,7 @@ func (repository *PromptRepositorySQL) GetDeckPrompts(ctx context.Context) ([]do
 		return nil, err
 	}
 
-	// 各難易度内のランダム化（Go 1.20+ の安全な乱数生成）
+	// 各難易度内のランダム化
 	randomGenerator := rand.New(rand.NewSource(time.Now().UnixNano()))
 	randomGenerator.Shuffle(len(easyPrompts), func(i, j int) {
 		easyPrompts[i], easyPrompts[j] = easyPrompts[j], easyPrompts[i]
