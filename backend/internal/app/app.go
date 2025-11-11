@@ -59,11 +59,8 @@ func New(config *config.Config) (*Server, error) {
 		// 下に追加していく
 	}
 
-	// Redis 側（待機キュー / ラウンド状態）
-	redisrepos := redisrepository.Repos{
-		Queue: redisrepository.NewMatchQueueRepositoryRedis(rdb),
-		Round: redisrepository.NewRoundStateRepositoryRedis(rdb),
-	}
+	// Redis Repos
+	redisRepos := redisrepository.New(rdb)
 
 	// JWT 認証ハンドラの初期化
 	jwtHandler := auth.NewJWTHandler(auth.JWTConfig{
@@ -88,30 +85,32 @@ func New(config *config.Config) (*Server, error) {
 	// Service 層の初期化
 	services := service.Services{
 		Auth:  service.NewAuthService(sqlrepos.User),
-		Match: service.NewMatchService(redisrepos.Queue, redisrepos.Round),
-		Round: service.NewRoundService(redisrepos.Round),
+		Match: service.NewMatchService(redisRepos.Queue, redisRepos.Round),
+		Round: service.NewRoundService(redisRepos.Round),
 		// 下に追加していく
 	}
 
 	// ハンドラ群とルータの設定
 	api := handler.New(services)
 
-	// WebSocket ハブとハンドラをアプリ初期化の中で生成
+	// WebSocket Hub / Handler / Realtime Service
 	hub := ws.NewHub()
-	webSocketHandler := &ws.Handler{
-		Hub:      hub,
-		Verifier: ws.DevTicket{}, // 開発用トークン: dev:<userID>:<room>
-	}
-	// Realtime Service を生成してWebSocketとRedisを接続
+
+	// Realtime Service を生成（Redis実装とHubを注入）
 	realtimeService := realtime.NewService(
-		redisrepos.Queue,
-		redisrepos.Round,
-		redisrepos.Presence,
+		redisRepos.Queue,
+		redisRepos.Round,
+		redisRepos.Presence,
 		hub,
 	)
 
-	// WSハンドラにサービスを差し込む（OnConnect/OnMessage/OnDisconnectが呼ばれる）
-	webSocketHandler.Service = realtimeService
+	// WebSocket Handler を生成（Service には realtimeService を渡す）
+	webSocketHandler := &ws.Handler{
+		Hub:      hub,
+		Service:  realtimeService,
+		Verifier: ws.DevTicket{}, // 開発用: token=dev:<userID>:<room>
+		Presence: redisRepos.Presence,
+	}
 
 	// matchmaker 起動（0.5s間隔など好みで）
 	realtimeContext, realtimeCancel := context.WithCancel(context.Background())
