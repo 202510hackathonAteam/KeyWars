@@ -90,7 +90,6 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		log.Println("[ws] upgrade error:", err)
 		return
 	}
-	// Close は writer 側で行う（CloseMessage 送信のため）
 
 	// 接続インスタンス（送信用チャネル付き）
 	clientConn := &Client{
@@ -98,25 +97,29 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		roomName:    "user:" + userID,
 		sendChannel: make(chan []byte, sendBufSize),
 	}
-
 	userRoom := clientConn.Room()
+
+	defer func() {
+		if handler.Hub != nil {
+			_ = handler.Hub.Leave(requestContext, clientConn)
+		}
+		if handler.Presence != nil {
+			_ = handler.Presence.Disconnect(requestContext, userID, time.Now().UnixMilli())
+		}
+		_ = wsConn.Close()
+	}()
+
 	// --- 3) Hub.Join（マッチング待機は個人ルームへ） ---
 	if handler.Hub != nil {
 		if err := handler.Hub.Join(requestContext, userRoom, clientConn); err != nil {
-			if errors.Is(err, ErrAlreadyJoined) {
-				// no-op
-			} else if errors.Is(err, ErrRoomFull) {
+			if errors.Is(err, ErrRoomFull) {
 				_ = wsConn.WriteControl(
 					websocket.CloseMessage,
 					websocket.FormatCloseMessage(websocket.CloseTryAgainLater, "room full"),
 					time.Now().Add(writeWait),
 				)
-				_ = wsConn.Close()
-				return
-			} else {
-				_ = wsConn.Close()
-				return
 			}
+			return
 		}
 	}
 
@@ -213,14 +216,5 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	}
 
 	// --- 6) 終了処理 ---
-	if handler.Hub != nil {
-		_ = handler.Hub.Leave(requestContext, clientConn) // 先に Hub から外す
-	}
-	if handler.Service != nil {
-		handler.Service.OnDisconnect(requestContext, userID, clientConn.Room())
-	}
-	if handler.Presence != nil {
-		_ = handler.Presence.Disconnect(requestContext, userID, time.Now().UnixMilli())
-	}
-	<-doneChan // writer の終了待ち（CloseMessage 送出）
+	<-doneChan
 }
