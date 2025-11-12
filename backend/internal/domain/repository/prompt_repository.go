@@ -17,6 +17,4 @@ type PromptWithDifficulty struct {
 // 難易度別取得が外でも必要なら、GetPromptsByDifficulty もここに追加してOK。
 type PromptRepository interface {
 	GetDeckPrompts(ctx context.Context) ([]PromptWithDifficulty, error)
-	// もし使うなら↓も追加
-	// GetPromptsByDifficulty(ctx context.Context, difficultyCode string, limit int) ([]PromptWithDifficulty, error)
 }

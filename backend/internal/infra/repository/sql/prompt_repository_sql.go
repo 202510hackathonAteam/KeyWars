@@ -25,7 +25,7 @@ func (repository *PromptRepositorySQL) GetPromptsByDifficulty(ctx context.Contex
 	err := repository.db.WithContext(ctx).
 		Table("prompts AS p").
 		Select(`
-			p.prompt_id,
+			p.id,
 			p.prompt_text_ja,
 			p.target_romaji,
 			d.id AS difficulty_level,
@@ -69,6 +69,7 @@ func (repository *PromptRepositorySQL) GetDeckPrompts(ctx context.Context) ([]do
 		hardPrompts[i], hardPrompts[j] = hardPrompts[j], hardPrompts[i]
 	})
 
+	// 難易度順に結合
 	allPrompts = append(allPrompts, easyPrompts...)
 	allPrompts = append(allPrompts, normalPrompts...)
 	allPrompts = append(allPrompts, hardPrompts...)
