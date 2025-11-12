@@ -1,0 +1,111 @@
+@import url("https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap");
+
+/* Tailwindでは難しい背景演出やbodyアニメーションをCSSで残す */
+body {
+  background: #000;
+  color: #fff;
+  transition: background 1s ease;
+  overflow: hidden;
+}
+
+/* === 背景フラッシュ（勝利） === */
+body.victory {
+  background: radial-gradient(circle at center, #89482e 0%, #000000 90%);
+  animation: victoryFlash 2s infinite;
+}
+
+@keyframes victoryFlash {
+  0%, 100% {
+    background-color: #000;
+  }
+  50% {
+    background-color: #ffc800;
+  }
+}
+
+/* === 背景フラッシュ（敗北） === */
+body.defeat {
+  background: radial-gradient(circle at center, #330000 0%, #000000 90%);
+  animation: defeatFlash 3s infinite;
+}
+
+@keyframes defeatFlash {
+  0%, 100% {
+    background-color: #000;
+  }
+  50% {
+    background-color: #330000;
+  }
+}
+
+/* === flicker, pulseGlow, blink === */
+@keyframes flicker {
+  0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% {
+    opacity: 1;
+  }
+  20%, 24%, 55% {
+    opacity: 0.4;
+  }
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 40px #ff6600;
+  }
+  50% {
+    box-shadow: 0 0 80px #ffcc00;
+  }
+}
+
+@keyframes blink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Tailwindの「animate-○○」をCSSで補完 */
+.animate-flicker {
+  animation: flicker 2s infinite;
+}
+.animate-pulseGlow {
+  animation: pulseGlow 2s infinite;
+}
+.animate-blink {
+  animation: blink 1.2s infinite;
+}
+
+.confetti-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 5; /* ← これ大事！ */
+}
+
+.confetti {
+  position: absolute;
+  top: -10px;
+  width: 10px;
+  height: 25px;
+  opacity: 0.9;
+  transform: rotate(15deg);
+  animation: fall 4s linear infinite;
+  border-radius: 2px;
+}
+
+@keyframes fall {
+  0% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(110vh) rotate(360deg);
+    opacity: 0.7;
+  }
+}

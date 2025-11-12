@@ -33,6 +33,7 @@ COPY --from=builder /out/seed /usr/local/bin/seed
 # 起動時スクリプトを配置
 COPY docker/seed/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh
 
 # コンテナ起動時は entrypoint.sh を実行
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

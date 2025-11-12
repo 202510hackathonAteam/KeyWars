@@ -1,42 +1,86 @@
+@import "tailwindcss";
+
 #root {
-  max-width: 1280px;
+  width: 100vw;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 0;
   text-align: center;
+  font-size: 12px;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+
+.title {
+  font-size: 3rem;
+  color: #ff3b3b;
+  text-shadow:
+    0 0 5px #ff0000,
+    0 0 10px #ff0000,
+    0 0 20px #ff6600,
+    0 0 40px #ff6600,
+    0 0 80px #ff6600;
+  margin-bottom: 2rem;
+  animation: flicker 3s steps(1, end) infinite;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
+@keyframes flicker {
+  0% {
+    opacity: 1;
+    text-shadow:
+      0 0 5px #ff0000,
+      0 0 10px #ff0000,
+      0 0 20px #ff6600,
+      0 0 40px #ff6600,
+      0 0 80px #ff6600;
   }
-  to {
-    transform: rotate(360deg);
+
+  5% {
+    opacity: 0.8;
+    text-shadow: none;
   }
-}
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
+  8% {
+    opacity: 1;
   }
-}
 
-.card {
-  padding: 2em;
-}
+  10% {
+    opacity: 0.4;
+    text-shadow: none;
+  }
 
-.read-the-docs {
-  color: #888;
+  12%, 20% {
+    opacity: 1;
+  }
+
+  25% {
+    opacity: 0.6;
+    text-shadow: none;
+  }
+
+  30%, 70% {
+    opacity: 1;
+  }
+
+  72% {
+    opacity: 0.5;
+    text-shadow: none;
+  }
+
+  77% {
+    opacity: 1;
+  }
+
+  80% {
+    opacity: 0.2;
+    text-shadow: none;
+  }
+
+  85%, 100% {
+    opacity: 1;
+    text-shadow:
+      0 0 5px #ff0000,
+      0 0 10px #ff0000,
+      0 0 20px #ff6600,
+      0 0 40px #ff6600,
+      0 0 80px #ff6600;
+  }
 }
