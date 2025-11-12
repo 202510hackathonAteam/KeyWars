@@ -30,11 +30,10 @@ func NewAuthenticationMiddleware(jwtHandler *auth.JWTHandler) echo.MiddlewareFun
 			}
 
 			// 検証成功時：userID をコンテキストへ設定
-			requestCtx := context.WithValue(c.Request().Context(), CtxKeyActorID, userID)
+			requestCtx := context.WithValue(c.Request().Context(), CtxUserID, userID)
 			c.SetRequest(c.Request().WithContext(requestCtx))
 			c.Set("userID", userID)
 
-			// 次のハンドラへ制御を移譲
 			return next(c)
 		}
 	}

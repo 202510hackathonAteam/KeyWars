@@ -80,8 +80,6 @@ func (h *JWTHandler) GenerateTokens(userID string) (accessToken string, refreshT
 }
 
 // VerifyAccessToken は、アクセストークンの検証処理。
-// アクセストークンが有効な場合は Subject（userID）を返却。
-// 署名方式の不一致、期限切れ、Issuer 不一致、Subject 欠落などの場合はエラーを返す。
 func (h *JWTHandler) VerifyAccessToken(accessTokenString string) (string, error) {
 	var accessTokenClaims jwt.RegisteredClaims
 
@@ -115,8 +113,6 @@ func (h *JWTHandler) VerifyAccessToken(accessTokenString string) (string, error)
 }
 
 // VerifyRefreshToken は、リフレッシュトークンの検証処理。
-// リフレッシュトークンが有効な場合は Subject（userID）を返却する。
-// 署名不正・期限切れ・Issuer不一致・Subject欠落などの場合はエラーを返す。
 func (h *JWTHandler) VerifyRefreshToken(refreshTokenString string) (string, error) {
 	var refreshTokenClaims jwt.RegisteredClaims
 
