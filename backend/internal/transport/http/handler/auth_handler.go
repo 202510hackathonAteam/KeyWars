@@ -185,7 +185,7 @@ func (h *AuthHandler) Refresh(c echo.Context) error {
 		return Respond(c, http.StatusUnauthorized, nil)
 	}
 
-	// リフレッシュトークンの検証、新しいアクセストークンの再発行処理
+	// リフレッシュトークンの検証、新しいアクセストークンの更新処理
 	accessToken, err := h.authService.Refresh(refreshToken)
 	if err != nil {
 		switch {
