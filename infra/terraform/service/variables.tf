@@ -1,9 +1,14 @@
+variable "project_name" {
+  type        = string
+  description = "The Google Cloud project name in lowercase"
+}
+
 variable "project_id" {
   type        = string
   description = "The Google Cloud project ID"
 }
 
-variable "project_nunmer" {
+variable "project_number" {
   type        = number
   description = "The Google Cloud project number"
 }
@@ -76,7 +81,7 @@ variable "repository_uri" {
   description = "My github repository uri"
 }
 
-variable "ar-repository_pass" {
+variable "ar-repository_name" {
   type        = string
-  description = "Repogitory for Cloud Run in Artifact Registry"
+  description = "Repogitory Name for Cloud Run in Artifact Registry"
 }
