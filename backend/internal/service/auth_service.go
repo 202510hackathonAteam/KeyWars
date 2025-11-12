@@ -104,7 +104,7 @@ func (s *authService) Signin(ctx context.Context, username, passwordPlain string
 	return accessToken, refreshToken, nil
 }
 
-// Refresh は、新しいアクセストークンを更新するメソッド。
+// Refresh は、アクセストークンを再発行するメソッド。
 func (s *authService) Refresh(refreshToken string) (string, error) {
 	// リフレッシュトークンの検証
 	userID, err := s.jwtHandler.VerifyRefreshToken(refreshToken)
