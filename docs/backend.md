@@ -170,6 +170,43 @@
 
 <br>  
 
+## ハンドラー層でのログ出力とレスポンス方針
+### 原則
+ハンドラー層では、エラー発生時に **ログ出力とレスポンス返却（h.Respond）をセットで行います**。
+
+サービス層・リポジトリ層ではログを出さず、`error` を返すのみとします。  
+これにより「どのリクエストで何が失敗したか」が必ずハンドラー側で記録されます。  
+
+### ログレベルの使い分け
+| レベル | 用途 | 例 |
+|--------|------|----|
+| `Error` | サーバー内部の異常（例：DB接続失敗） | `logger.Error().Err(err).Msg("failed to connect DB")` |
+| `Warn`  | 想定内の軽度な異常（例：入力不備・認証失敗） | `logger.Warn().Err(err).Msg("signin failed: user not found")` |
+| `Info`  | 正常系の操作や主要イベント | `logger.Info().Str("user", id).Msg("user signed up")` |
+| `Debug` | 詳細なデバッグ情報（開発時のみ有効） | `logger.Debug().Msg("token parsed successfully")` |
+
+### 実装ルール
+| ケース | ログ出力 | HTTPステータス | レスポンスメッセージ例 |
+|---------|-----------|----------------|--------------------------|
+| クライアント入力ミス (400系) | `Warn()` | 400 / 401 / 409 | `"invalid credentials"`, `"user already exists"` |
+| サーバー内部エラー (500系) | `Error()` | 500 | `"internal error"` |
+| 正常処理 | `Info()`（必要に応じて） | 200 / 201 / 204 | `"ok"`, `"created"` |
+
+### 例外（ログ不要なケース）
+- 想定内のバリデーションエラー（username is requiredなど）
+- Cookie やヘッダが存在しないなど日常的な400系エラー
+→ h.Respond のみでOK（ログノイズ防止）
+
+### コーディング例
+```go
+  logger.Warn().Err(err).Msg("signin failed: invalid credentials")
+  return h.Respond(c, http.StatusUnauthorized, echo.Map{
+    "message": "invalid credentials",
+  })
+```
+
+<br>  
+
 ## 必須ではない環境変数とカスタマイズ方法
 `.env.example` に記載がない一部の変数も、挙動を変更したい場合に利用できます。 
 
@@ -206,22 +243,28 @@ backend/
 │  ├─ config/      # 環境変数・設定ファイルの読み込み（Config構造体定義）
 │  ├─ service/     # ビジネスロジック層（アプリの振る舞い・ユースケースを記述）
 │  ├─ domain/      # データ構造と契約層（Repositoryインターフェース）
-│  │  └─ repository/   # Repositoryインターフェース（契約のみを定義）
+│  │  ├─ model/      # ドメインモデル定義（業務ルール中心）
+│  │  ├─ port/       # アプリ内外の接続インターフェース（port定義）
+│  │  └─ repository/ # Repositoryインターフェース（契約のみを定義）
 │  ├─ infra/       # データアクセス層（DBやRedisなど外部リソースへの実装）
 │  │  ├─ auth/         # JWTなどの認証関連の実装
 │  │  ├─ db/           # データベース接続の初期化や管理を担当
-│  │  │  └─ initial/   # DBマイグレーション後の初期データの投入処理を担当
+│  │  │  ├─ initial/   # DBマイグレーション後の初期データの投入処理を担当
+│  │  │  └─ seed/      # デモ、テストデータ登録関連
 │  │  ├─ redis/        # Redis接続の初期化や共通処理を担当
 │  │  └─ repository/   # domainで定義したRepositoryの実装層
 │  │     ├─ redis/     # Redisを用いたRepositoryの実装
 │  │     └─ sql/       # SQL(GORM)を用いたRepositoryの実装
 │  │        └─ model/  # DBテーブル構造に対応するGORMモデル定義
-│  └─ transport/   # 通信層（HTTPやWebSocketでリクエストを受ける部分）
-│     ├─ http/         # HTTP通信関連の処理をまとめる
-│     │  ├─ handler/       # 各エンドポイントのハンドラを定義
-│     │  ├─ middleware/    # 認証・ログなどのHTTPミドルウェアを定義
-│     │  └─ router/        # ルーティング設定を定義
-│     └─ websocket/    # WebSocket通信関連の処理をまとめる
-├─ migrations/     # DBマイグレーションSQL（テーブル作成や変更）
-└─ wait-for.sh     # DBなどの依存サービス起動を待機するスクリプト
+│  ├─ transport/   # 通信層（HTTPやWebSocketでリクエストを受ける部分）
+│  │  ├─ http/         # HTTP通信関連の処理をまとめる
+│  │  │  ├─ handler/       # 各エンドポイントのハンドラを定義
+│  │  │  ├─ middleware/    # 認証・ログなどのHTTPミドルウェアを定義
+│  │  │  └─ router/        # ルーティング設定を定義
+│  │  └─ websocket/    # WebSocket通信関連の処理をまとめる
+│  └─ util/         # 汎用的な共通処理をまとめる（アプリ全体から再利用される）
+│     ├─ password/       # パスワードハッシュ化・検証などの共通ロジックを提供
+│     ├─ validator/      # 入力値の検証（バリデーション）ロジックを提供
+│     └─ cookie/         # Cookie操作（設定・削除）を提供
+└─ migrations/     # DBマイグレーションSQL（テーブル作成や変更）
 ```
