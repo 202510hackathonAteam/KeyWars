@@ -1,0 +1,28 @@
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+
+.gate {
+  width: 25vw;
+  height: 20vh;
+  border: 3px solid #ffcc00;
+  border-radius: 10px;
+  box-shadow: 0 0 25px #ffaa00, inset 0 0 20px #ff3300;
+  margin: 0 auto 10px;
+  background: linear-gradient(180deg, rgba(60, 20, 0, 0.7), rgba(0, 0, 0, 0.9));
+  position: relative;
+}
+
+.gate::before {
+  content: "ARENA ENTRANCE";
+  position: absolute;
+  top: -28px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #000;
+  padding: 0.1rem 12px;
+  color: #ffcc00;
+  font-size: 0.5rem;
+  border: 1px solid #ffcc00;
+  border-radius: 6px;
+  box-shadow: 0 0 10px #ff8800;
+}

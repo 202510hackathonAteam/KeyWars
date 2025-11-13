@@ -30,5 +30,6 @@ COPY backend/migrations /app/migrations
 # エントリーポイントスクリプトで migrate 実行を制御
 COPY docker/migrate/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

@@ -1,79 +1,142 @@
 package app
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
+	"github.com/rs/zerolog"
 
 	"keywars/backend/internal/config"
 	"keywars/backend/internal/infra/auth"
 	"keywars/backend/internal/infra/db"
+	redisx "keywars/backend/internal/infra/redis"
+	redisrepository "keywars/backend/internal/infra/repository/redis"
 	sqlrepository "keywars/backend/internal/infra/repository/sql"
+	"keywars/backend/internal/service"
+	"keywars/backend/internal/service/realtime"
 	"keywars/backend/internal/transport/http/handler"
 	httpmiddleware "keywars/backend/internal/transport/http/middleware"
-	"keywars/backend/internal/transport/http/router"
-	"keywars/backend/internal/service"
+	ws "keywars/backend/internal/transport/websocket"
+	"keywars/backend/internal/util/validator"
 )
 
 // Server は、アプリケーション全体の依存関係と Echo インスタンスを保持する構造体の定義。
 type Server struct {
-	Echo *echo.Echo
+	Echo             *echo.Echo
+	API              *handler.API
+	AuthMiddleware   echo.MiddlewareFunc
+	WebSocketHandler *ws.Handler
+	RealtimeCancel   context.CancelFunc
 }
 
 // New は、アプリケーションサーバーを初期化して Server を生成。
 // DB 接続、リポジトリ・サービス・ハンドラの依存注入、ルータ設定をまとめて実施。
-func New(config *config.Config) (*Server, error) {
+func New(cfg *config.Config) (*Server, error) {
 	// Echo 本体の初期化と共通ミドルウェア設定
 	e := echo.New()
 	e.HideBanner = true
 	e.Use(echomiddleware.Logger())
 	e.Use(echomiddleware.Recover())
 	e.Use(echomiddleware.RequestID())
+	e.Use(echomiddleware.CSRFWithConfig(echomiddleware.CSRFConfig{
+		CookieName:     "csrf_token",
+		CookiePath:     "/",
+		CookieHTTPOnly: true,
+		TokenLookup:    "header:X-CSRF-Token",
+	}))
+
+	baseLogger := zerolog.New(os.Stdout).With().Timestamp().Logger()
+	e.Use(httpmiddleware.RequestLogger(&baseLogger))
 
 	// DB接続の初期化
-	gormDB, err := db.New(config.DB)
+	gormDB, err := db.New(cfg.DB)
+	if err != nil {
+		return nil, err
+	}
+
+	// Redisの初期化
+	rdb, err := redisx.NewRedis(cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB) // 例: "redis:6379", "", 0
 	if err != nil {
 		return nil, err
 	}
 
 	// Repository 層の初期化
-	repos := sqlrepository.Repos {
-		User: sqlrepository.NewUserRepo(gormDB),
+	sqlrepos := sqlrepository.Repos{
+		User:   sqlrepository.NewUserRepo(gormDB),
+		Prompt: sqlrepository.NewPromptRepositorySQL(gormDB),
 		// 下に追加していく
 	}
 
-	// JWT 認証ハンドラの初期化
-	jwtHandler := auth.NewJWTHandler(auth.JWTConfig{
-		IssuerName: "keywars",
-		HMACSecretKey: []byte(os.Getenv("JWT_SECRET")),
-		AccessTokenTTL: 24 * time.Hour,
-	})
+	// Redis Repos
+	redisRepos := redisrepository.New(rdb)
+
+	// 認証機能の初期化
+	jwtConfig := config.LoadJWTConfig()
+	jwtHandler := auth.NewJWTHandler(jwtConfig)
 
 	// 認証ミドルウェアの設定
 	authMiddleware := httpmiddleware.NewAuthenticationMiddleware(jwtHandler)
 
+	// Cookieの初期化
+	config.LoadCookieConfig()
+
 	// CORS 設定（環境変数で許可オリジンを指定可能）
 	if origin := os.Getenv("CORS_ALLOWED_ORIGIN"); origin != "" {
 		e.Use(echomiddleware.CORSWithConfig(echomiddleware.CORSConfig{
-			AllowOrigins: []string{origin},
-			AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch, http.MethodOptions},
-			AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
+			AllowOrigins:     []string{origin},
+			AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch, http.MethodOptions},
+			AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
 			AllowCredentials: true,
 		}))
 	}
 
 	// Service 層の初期化
 	services := service.Services{
-		Auth: service.NewAuthService(repos.User),
+		Auth:  service.NewAuthService(sqlrepos.User, jwtHandler),
+		Match: service.NewMatchService(redisRepos.Queue, redisRepos.Round),
+		Round: service.NewRoundService(redisRepos.Round),
 		// 下に追加していく
 	}
 
-	// ハンドラ群とルータの設定
-	api := handler.New(services)
-	router.SetupRouter(e, api, authMiddleware)
+	// Validator 初期化
+	validate := validator.InitValidator()
 
-	return &Server{Echo: e}, nil
+	// ハンドラ群とルータの設定
+	api := handler.New(services, validate, jwtHandler)
+
+	// WebSocket Hub / Handler / Realtime Service
+	hub := ws.NewHub()
+
+	// Realtime Service を生成（Redis実装とHubを注入）
+	realtimeService := realtime.NewService(
+		redisRepos.Queue,
+		redisRepos.Round,
+		redisRepos.Presence,
+		sqlrepos.Prompt,
+		hub,
+	)
+
+	// WebSocket Handler を生成（Service には realtimeService を渡す）
+	webSocketHandler := &ws.Handler{
+		Hub:      hub,
+		Service:  realtimeService,
+		Verifier: ws.DevTicket{}, // 開発用: token=dev:<userID>:<room>
+		Presence: redisRepos.Presence,
+	}
+
+	// matchmaker 起動（0.5s間隔など好みで）
+	realtimeContext, realtimeCancel := context.WithCancel(context.Background())
+	realtimeService.StartMatchmaker(realtimeContext, 500*time.Millisecond)
+
+	return &Server{
+		Echo:             e,
+		API:              api,
+		AuthMiddleware:   authMiddleware,
+		WebSocketHandler: webSocketHandler,
+		RealtimeCancel:   realtimeCancel,
+	}, nil
 }

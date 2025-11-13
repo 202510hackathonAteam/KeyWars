@@ -2,26 +2,64 @@ package config
 
 import (
 	"fmt"
+	"time"
+	"os"
 )
 
 // DBConfig は、データベース接続に必要な設定情報の定義
 type DBConfig struct {
-	User string
+	User     string
 	Password string
-	Host string
-	Port string
-	Name string
+	Host     string
+	Port     string
+	Name     string
 }
 
-// ServerConfig は、アプリケーションサーバーに関する設定の定義
-type ServerConfig struct {
-	Port string
+type RedisConfig struct {
+	Addr     string
+	Password string
+	DB       int
+}
+
+// JWTConfig は、JWT の発行および検証に必要な設定値の定義。
+type JWTConfig struct {
+	IssuerName string
+	HMACSecretKey []byte
+	AccessTokenExpiry time.Duration
+	RefreshTokenExpiry time.Duration
+}
+
+// LoadJWTConfig は、JWT 認証ハンドラの初期化
+func LoadJWTConfig() JWTConfig {
+	return JWTConfig{
+		IssuerName: "keywars",
+		HMACSecretKey: []byte(os.Getenv("JWT_SECRET")),
+		AccessTokenExpiry: 1 * time.Hour,
+		RefreshTokenExpiry: 30 * 24 * time.Hour,
+	}
+}
+
+// CookieConfig は、アプリケーションで使用する Cookie の共通設定を保持する構造体。
+type CookieConfig struct {
+	Domain string
+	Secure bool
+}
+
+// LoadCookieConfig は、CookieConfig のデフォルト設定を読み込む初期化関数。
+func LoadCookieConfig() CookieConfig {
+	return CookieConfig{
+		// 本番環境ではドメイン名を記載すること
+		Domain: "",
+		// 本番環境では必ずtrueにすること
+		Secure: false,
+	}
 }
 
 // Config は、アプリ全体の設定をまとめた構造体。
 type Config struct {
-	DB DBConfig
-	Server ServerConfig
+	DB     DBConfig
+	Redis  RedisConfig
+	JWT JWTConfig
 }
 
 // DSN は、MySQL 用の接続文字列（Data Source Name）の生成
