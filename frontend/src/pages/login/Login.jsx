@@ -10,15 +10,14 @@ export default function Login() {
   const enterArena = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch("/api/login", {
+      const response = await fetch("/auth/signin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_name: userName, password }),
       });
       if (!response.ok) throw new Error("Login failed");
 
-      const data = await response.json();
-      localStorage.setItem("token", data.token);
+     
       localStorage.setItem("user_name", userName.trim());
       window.location.href = "/";
     } catch (error) {

@@ -23,27 +23,28 @@ export default function Signup() {
     }
 
     try {
-      const response = await fetch("/api/", {
+      const response = await fetch("/auth/signup", {
         method: "POST",
+        credentials: "include",           // ← Cookie 認証の要
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           player_name: userName,
           password: password,
+          confirm_password: passwordConfirm,
         }),
       });
 
       if (!response.ok) {
+        if (response.status === 409) {
+          setError("ユーザー名が既に使われています。");
+          return;
+        }
         throw new Error("サーバーエラー");
       }
+      // Cookie に token がセットされるので React 側で token を保存しない
+      localStorage.setItem("user_name", userName.trim());
 
-      const data = await response.json();
-
-      if (data.status === "Authorized") {
-        // 認証成功 → ホーム画面に遷移
-        window.location.href = "/home";
-      } else {
-        setError("認証に失敗しました。");
-      }
+      window.location.href = "/home";
     } catch (err) {
       setError("通信エラーが発生しました。");
       console.error(err);
