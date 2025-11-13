@@ -24,6 +24,10 @@ const (
 	// lockTTL はロック自動解放までの有効期限。
 	// フェイル時のスタック状態を防ぐ（best-effort）。
 	lockTTL = 3 * time.Second
+
+	// --- マッチ関連のTTLポリシー ---
+	matchTTLOnStart  = 1 * time.Hour    // 試合開始時：1時間保持
+	matchTTLOnFinish = 10 * time.Minute // 試合終了後：10分保持
 )
 
 // MatchQueueRepositoryRedis は、Redis を利用した待機キュー操作（ZSET）と
@@ -78,8 +82,8 @@ func (repository *MatchQueueRepositoryRedis) Score(contextObject context.Context
 //  3. 2名未満なら ZADD で戻して終了
 //  4. match:{matchID} / match:{matchID}:state を TxPipeline で初期化
 //  5. 初期化失敗時は 2 名を ZADD で再投入してロールバック
-//  6. defer でロックを解放（ReleaseLock）
 func (repository *MatchQueueRepositoryRedis) DequeuePairAndInitMatch(contextObject context.Context) (user1ID, user2ID, matchID, lockToken string, err error) {
+
 	// 1) ロック取得（トークン発行→NX セット）
 	lockToken, err = generateRandomToken()
 	if err != nil {
@@ -92,7 +96,6 @@ func (repository *MatchQueueRepositoryRedis) DequeuePairAndInitMatch(contextObje
 		}
 		return
 	}
-	// 6) 関数終了時にロック解放（best-effort）
 	defer func() {
 		_ = repository.ReleaseLock(contextObject, lockToken)
 	}()
@@ -124,6 +127,8 @@ func (repository *MatchQueueRepositoryRedis) DequeuePairAndInitMatch(contextObje
 	// 4) マッチのメタ／進行状態を初期化（TxPipeline＝同時確定）
 	currentTimeMs := time.Now().UnixMilli()
 	pipeline := repository.redisClient.TxPipeline()
+	matchKey := fmt.Sprintf("match:%s", matchID)
+	matchStateKey := fmt.Sprintf("match:%s:state", matchID)
 
 	// match:{matchID} : メタ情報
 	pipeline.HSet(contextObject,
@@ -141,6 +146,10 @@ func (repository *MatchQueueRepositoryRedis) DequeuePairAndInitMatch(contextObje
 		"q_started_at_ms", currentTimeMs,
 		"turn", 0,
 	)
+
+	// ---  試合開始時点で TTL を設定 ---
+	pipeline.Expire(contextObject, matchKey, matchTTLOnStart)
+	pipeline.Expire(contextObject, matchStateKey, matchTTLOnStart)
 
 	// 5) 実行。失敗時は 2 名をキューへ戻して整合性を保つ
 	if _, err = pipeline.Exec(contextObject); err != nil {
@@ -177,7 +186,7 @@ func (repository *MatchQueueRepositoryRedis) ReleaseLock(contextObject context.C
 }
 
 // generateRandomToken は、16 バイト乱数を16進文字列へ変換して返す。
-// 用途：ロックトークン、マッチID などの衝突しづらい識別子。
+// 用途：ロックトークン、マッチID などの識別子。
 func generateRandomToken() (string, error) {
 	bytes := make([]byte, 16)
 	_, err := rand.Read(bytes)

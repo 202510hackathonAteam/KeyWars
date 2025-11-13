@@ -11,9 +11,6 @@ import (
 type MatchService struct {
 	// matchQueueRepository は、待機中ユーザーの登録・削除・マッチ生成などを担当する。
 	matchQueueRepository repository.MatchQueueRepository
-
-	// roundStateRepository は、マッチ進行中の状態（ラウンド、デッキ、イベントなど）を管理する。
-	roundStateRepository repository.RoundStateRepository
 }
 
 // NewMatchService は、MatchQueueRepository と RoundStateRepository を受け取り、
@@ -30,7 +27,6 @@ type MatchService struct {
 func NewMatchService(matchQueueRepository repository.MatchQueueRepository, roundStateRepository repository.RoundStateRepository) *MatchService {
 	return &MatchService{
 		matchQueueRepository: matchQueueRepository,
-		roundStateRepository: roundStateRepository,
 	}
 }
 

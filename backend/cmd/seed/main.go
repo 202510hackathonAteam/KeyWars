@@ -6,9 +6,10 @@ import (
 	"keywars/backend/internal/config"
 	"keywars/backend/internal/infra/db"
 	"keywars/backend/internal/infra/db/initial"
+	"keywars/backend/internal/infra/db/seed"
 )
 
-// main は、データベースの自動マイグレーションを実行するエントリーポイント。
+// main は、初期データなどをデータベースへ自動登録を実行するエントリーポイント。
 // internal/infra/db/initial 配下に定義されたマスタデータ（例: 難易度・お題など）を
 // データベースに登録します。
 func main() {
@@ -24,6 +25,11 @@ func main() {
 	// 初期データ投入
 	if err := initial.LoadInitialData(gormDB); err != nil {
 		log.Fatalf("failed to load initial data: %v", err)
+	}
+
+	// テストデータ投入（本番環境では削除）
+	if err := seed.SeedDevelopmentData(gormDB); err != nil {
+		log.Fatalf("failed to load demo data: %v", err)
 	}
 
 	log.Println("Database migration completed successfully!")

@@ -1,0 +1,62 @@
+package realtime
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"keywars/backend/internal/domain/repository"
+
+	"github.com/redis/go-redis/v9"
+)
+
+type DeckGenerator struct {
+	dbRepo repository.PromptRepository
+	redis  *redis.Client
+}
+
+func NewDeckGenerator(dbRepo repository.PromptRepository, redisClient *redis.Client) *DeckGenerator {
+	return &DeckGenerator{
+		dbRepo: dbRepo,
+		redis:  redisClient,
+	}
+}
+
+// DeckItem は Redis に保存する出題情報
+type DeckItem struct {
+	PromptID   int    `json:"prompt_id"`
+	Surface    string `json:"surface"`
+	Reading    string `json:"reading"`
+	Difficulty int    `json:"diff"`
+	CharCount  int    `json:"char_count"`
+	LimitMs    int    `json:"limit_ms"`
+}
+
+// GenerateAndSaveDeck は、指定 matchID のデッキを作成して Redis に保存する。
+func (g *DeckGenerator) GenerateAndSaveDeck(ctx context.Context, matchID string) error {
+	prompts, err := g.dbRepo.GetDeckPrompts(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get prompts: %w", err)
+	}
+
+	key := fmt.Sprintf("match:%s:deck", matchID)
+	pipeline := g.redis.TxPipeline()
+
+	for _, p := range prompts {
+		item := DeckItem{
+			PromptID:   p.ID,
+			Surface:    p.PromptTextJa,
+			Reading:    p.TargetRomaji,
+			Difficulty: p.DifficultyLevel,
+			CharCount:  len([]rune(p.TargetRomaji)),
+			LimitMs:    p.TimeLimitMs,
+		}
+		jsonBytes, _ := json.Marshal(item)
+		pipeline.RPush(ctx, key, jsonBytes)
+	}
+
+	pipeline.Expire(ctx, key, 1*time.Hour) // デッキTTLは1時間
+	_, err = pipeline.Exec(ctx)
+	return err
+}

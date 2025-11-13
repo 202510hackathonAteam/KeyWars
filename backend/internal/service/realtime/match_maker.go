@@ -49,6 +49,12 @@ func (service *Service) tryMakeMatch(ctx context.Context) {
 	}
 	// ※ DequeuePairAndInitMatch 内部で defer ReleaseLock 済み
 
+	// 問題抽出
+	deck, err := service.promptRepository.GetDeckPrompts(ctx)
+	if err == nil && len(deck) == 20 {
+		_ = service.roundStateRepository.SaveDeck(ctx, matchID, deck)
+	}
+
 	// --- 1) 両者の個人ルームへ「マッチ成立」通知 ---
 	_, _ = service.websocketHub.Broadcast(ctx, "user:"+user1ID, map[string]any{
 		"type":     "match.found",
@@ -78,7 +84,10 @@ func (service *Service) tryMakeMatch(ctx context.Context) {
 			"q_started_at_ms": time.Now().UnixMilli(),
 			"turn":            0,
 		},
+		"deck": deck,
 	})
+	_ = service.presenceRepository.SetIngame(ctx, user1ID, matchID, time.Now().UnixMilli())
+	_ = service.presenceRepository.SetIngame(ctx, user2ID, matchID, time.Now().UnixMilli())
 }
 
 //

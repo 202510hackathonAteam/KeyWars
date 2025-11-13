@@ -3,24 +3,26 @@ package router
 import (
 	"net/http"
 
+	"github.com/labstack/echo/v4"
+
 	"keywars/backend/internal/transport/http/handler"
 	"keywars/backend/internal/transport/websocket"
-
-	"github.com/labstack/echo/v4"
+	httpmiddleware "keywars/backend/internal/transport/http/middleware"
 )
 
 // SetupRouter は、アプリケーションのルーティング定義。
 func SetupRouter(e *echo.Echo, api *handler.API, authMiddleware echo.MiddlewareFunc, wsHandler *websocket.Handler) *echo.Echo {
 	// 公開：ヘルスチェック
-	e.GET("/healthz", func(ctx echo.Context) error {
-		return ctx.NoContent(http.StatusOK)
+	e.GET("/healthz", func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
 	})
 
 	// ──────────────────────────────
 	// 認証不要のAPI
 	// ──────────────────────────────
-	// デバッグ用（handler.Auth.Hello が削除されたら、このエンドポイントも削除する）
-	e.GET("/hello", api.Auth.Hello)
+	e.POST("/auth/signin", api.Auth.Signin)
+	e.POST("/auth/signup", api.Auth.Signup)
+	e.POST("/auth/refresh", api.Auth.Refresh)
 
 	// 開発用: 認証なしWS（token=... はWS側で検証）
 	e.GET("/ws", echo.WrapHandler(wsHandler))
@@ -29,8 +31,8 @@ func SetupRouter(e *echo.Echo, api *handler.API, authMiddleware echo.MiddlewareF
 	// 認証必須のAPIグループ (/api/v1)
 	// ──────────────────────────────
 	v1 := e.Group("/api/v1", authMiddleware)
-	// デバッグ用（handler.Auth.Hello が削除されたら、このエンドポイントも削除する）
-	v1.GET("/hello", api.Auth.Hello)
+	v1.Use(httpmiddleware.AuthUserContextLogger())
+	v1.POST("/auth/signout", api.Auth.Signout)
 
 	// --- マッチングAPI ---
 	matches := v1.Group("/matches")

@@ -17,8 +17,8 @@ type Repos struct {
 // New は *redis.Client を受け取り、Redis実装のReposを生成。
 func New(rdb *redis.Client) *Repos {
 	return &Repos{
-		Queue: NewMatchQueueRepositoryRedis(rdb),
-		Round: NewRoundStateRepositoryRedis(rdb),
-		// Presence: NewPresenceRepositoryRedis(rdb),
+		Queue:    NewMatchQueueRepositoryRedis(rdb),
+		Round:    NewRoundStateRepositoryRedis(rdb),
+		Presence: NewPresenceRepositoryRedis(rdb),
 	}
 }
