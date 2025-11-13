@@ -2,6 +2,7 @@ package redisrepo
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -9,6 +10,11 @@ import (
 	drepo "keywars/backend/internal/domain/repository"
 
 	"github.com/redis/go-redis/v9"
+)
+
+const (
+	matchTTL        = time.Hour        // 試合開始時 EXPIRE 1h
+	matchTTLPostFin = 10 * time.Minute // 終了後 PEXPIRE 10m は別箇所で
 )
 
 // RoundStateRepositoryRedis は、対戦進行中の「メタ情報・状態・イベント・デッキ」を
@@ -87,28 +93,36 @@ func (repository *RoundStateRepositoryRedis) Finish(contextObject context.Contex
 
 // SaveDeckOnce は、出題デッキ(LIST)を「未作成のときだけ」保存する（冪等）。
 // 競合時は WATCH により存在チェックと追加を疑似原子的に実施する。
-func (repository *RoundStateRepositoryRedis) SaveDeckOnce(contextObject context.Context, matchID string, deckItems []string) error {
-	deckKey := fmt.Sprintf("match:%s:deck", matchID)
+func (repository *RoundStateRepositoryRedis) SaveDeck(ctx context.Context, matchID string, deck []drepo.PromptWithDifficulty) error {
+	keyDeck := fmt.Sprintf("match:%s:deck", matchID)
+	keyMeta := fmt.Sprintf("match:%s", matchID) // TTL を揃える対象
 
-	return repository.redisClient.Watch(contextObject, func(transaction *redis.Tx) error {
-		// 既存チェック（存在する場合はスキップ）
-		exists, err := transaction.Exists(contextObject, deckKey).Result()
-		if err != nil {
-			return err
+	// JSON 化して RPUSH
+	args := make([]interface{}, 0, len(deck))
+	for _, p := range deck {
+		// フロントが欲しい形に最低限整える（必要に応じて項目名調整）
+		payload := map[string]any{
+			"pid":        p.ID,
+			"surface":    p.PromptTextJa,
+			"reading":    p.TargetRomaji,
+			"diff":       p.DifficultyLevel,
+			"char_count": len([]rune(p.TargetRomaji)),
+			"limit_ms":   p.TimeLimitMs,
 		}
-		if exists == 1 {
-			return nil
-		}
+		b, _ := json.Marshal(payload)
+		args = append(args, b)
+	}
 
-		// 変更競合を検知しつつ、一括で LIST 末尾に積む
-		_, err = transaction.TxPipelined(contextObject, func(pipeliner redis.Pipeliner) error {
-			for _, item := range deckItems {
-				pipeliner.RPush(contextObject, deckKey, item)
-			}
-			return nil
-		})
-		return err
-	}, deckKey)
+	pipe := repository.redisClient.TxPipeline()
+	if len(args) > 0 {
+		pipe.RPush(ctx, keyDeck, args...)
+	}
+	// 試合開始時に 1h で揃える（Meta が無いケースでも Deck 側へ設定しておく）
+	pipe.Expire(ctx, keyDeck, matchTTL)
+	pipe.Expire(ctx, keyMeta, matchTTL)
+
+	_, err := pipe.Exec(ctx)
+	return err
 }
 
 // GetDeckItem は、出題デッキから指定インデックス（0-based）の要素（JSON文字列）を取得する。

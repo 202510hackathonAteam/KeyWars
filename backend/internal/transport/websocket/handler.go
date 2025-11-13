@@ -9,6 +9,7 @@ import (
 	"time"
 
 	domain "keywars/backend/internal/domain/port"
+	"keywars/backend/internal/domain/repository"
 
 	"github.com/gorilla/websocket"
 )
@@ -44,6 +45,7 @@ type Handler struct {
 	Hub      *Hub
 	Service  domain.RealtimeService
 	Verifier TicketVerifier
+	Presence repository.PresenceRepository
 }
 
 // upgrader は HTTP から WebSocket へのアップグレード設定。
@@ -88,7 +90,6 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		log.Println("[ws] upgrade error:", err)
 		return
 	}
-	// Close は writer 側で行う（CloseMessage 送信のため）
 
 	// 接続インスタンス（送信用チャネル付き）
 	clientConn := &Client{
@@ -96,25 +97,29 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		roomName:    "user:" + userID,
 		sendChannel: make(chan []byte, sendBufSize),
 	}
-
 	userRoom := clientConn.Room()
+
+	defer func() {
+		if handler.Hub != nil {
+			_ = handler.Hub.Leave(requestContext, clientConn)
+		}
+		if handler.Presence != nil {
+			_ = handler.Presence.Disconnect(requestContext, userID, time.Now().UnixMilli())
+		}
+		_ = wsConn.Close()
+	}()
+
 	// --- 3) Hub.Join（マッチング待機は個人ルームへ） ---
 	if handler.Hub != nil {
 		if err := handler.Hub.Join(requestContext, userRoom, clientConn); err != nil {
-			if errors.Is(err, ErrAlreadyJoined) {
-				// no-op
-			} else if errors.Is(err, ErrRoomFull) {
+			if errors.Is(err, ErrRoomFull) {
 				_ = wsConn.WriteControl(
 					websocket.CloseMessage,
 					websocket.FormatCloseMessage(websocket.CloseTryAgainLater, "room full"),
 					time.Now().Add(writeWait),
 				)
-				_ = wsConn.Close()
-				return
-			} else {
-				_ = wsConn.Close()
-				return
 			}
+			return
 		}
 	}
 
@@ -176,8 +181,11 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	// --- 5) reader ループ（Pong/ReadDeadline 込み） ---
 	wsConn.SetReadLimit(readLimit)
 	_ = wsConn.SetReadDeadline(time.Now().Add(pongWait))
-	wsConn.SetPongHandler(func(string) error {
+	wsConn.SetPongHandler(func(_ string) error {
 		_ = wsConn.SetReadDeadline(time.Now().Add(pongWait))
+		if handler.Presence != nil {
+			_ = handler.Presence.Heartbeat(requestContext, userID, time.Now().UnixMilli())
+		}
 		return nil
 	})
 	wsConn.SetCloseHandler(func(_ int, _ string) error {
@@ -208,11 +216,5 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	}
 
 	// --- 6) 終了処理 ---
-	if handler.Hub != nil {
-		_ = handler.Hub.Leave(requestContext, clientConn) // 先に Hub から外す
-	}
-	if handler.Service != nil {
-		handler.Service.OnDisconnect(requestContext, userID, clientConn.Room())
-	}
-	<-doneChan // writer の終了待ち（CloseMessage 送出）
+	<-doneChan
 }

@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/rs/zerolog"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
+	"github.com/rs/zerolog"
 
 	"keywars/backend/internal/config"
 	"keywars/backend/internal/infra/auth"
@@ -19,9 +19,9 @@ import (
 	"keywars/backend/internal/service"
 	"keywars/backend/internal/service/realtime"
 	"keywars/backend/internal/transport/http/handler"
-	"keywars/backend/internal/util/validator"
 	httpmiddleware "keywars/backend/internal/transport/http/middleware"
 	ws "keywars/backend/internal/transport/websocket"
+	"keywars/backend/internal/util/validator"
 )
 
 // Server は、アプリケーション全体の依存関係と Echo インスタンスを保持する構造体の定義。
@@ -43,10 +43,10 @@ func New(cfg *config.Config) (*Server, error) {
 	e.Use(echomiddleware.Recover())
 	e.Use(echomiddleware.RequestID())
 	e.Use(echomiddleware.CSRFWithConfig(echomiddleware.CSRFConfig{
-		CookieName: "csrf_token",
-		CookiePath: "/",
+		CookieName:     "csrf_token",
+		CookiePath:     "/",
 		CookieHTTPOnly: true,
-		TokenLookup: "header:X-CSRF-Token",
+		TokenLookup:    "header:X-CSRF-Token",
 	}))
 
 	baseLogger := zerolog.New(os.Stdout).With().Timestamp().Logger()
@@ -66,15 +66,13 @@ func New(cfg *config.Config) (*Server, error) {
 
 	// Repository 層の初期化
 	sqlrepos := sqlrepository.Repos{
-		User: sqlrepository.NewUserRepo(gormDB),
+		User:   sqlrepository.NewUserRepo(gormDB),
+		Prompt: sqlrepository.NewPromptRepositorySQL(gormDB),
 		// 下に追加していく
 	}
 
-	// Redis 側（待機キュー / ラウンド状態）
-	redisrepos := redisrepository.Repos{
-		Queue: redisrepository.NewMatchQueueRepositoryRedis(rdb),
-		Round: redisrepository.NewRoundStateRepositoryRedis(rdb),
-	}
+	// Redis Repos
+	redisRepos := redisrepository.New(rdb)
 
 	// 認証機能の初期化
 	jwtConfig := config.LoadJWTConfig()
@@ -99,28 +97,36 @@ func New(cfg *config.Config) (*Server, error) {
 	// Service 層の初期化
 	services := service.Services{
 		Auth:  service.NewAuthService(sqlrepos.User, jwtHandler),
-		Match: service.NewMatchService(redisrepos.Queue, redisrepos.Round),
-		Round: service.NewRoundService(redisrepos.Round),
+		Match: service.NewMatchService(redisRepos.Queue, redisRepos.Round),
+		Round: service.NewRoundService(redisRepos.Round),
 		// 下に追加していく
 	}
-	
+
 	// Validator 初期化
 	validate := validator.InitValidator()
 
 	// ハンドラ群とルータの設定
 	api := handler.New(services, validate, jwtHandler)
 
-	// WebSocket ハブとハンドラをアプリ初期化の中で生成
+	// WebSocket Hub / Handler / Realtime Service
 	hub := ws.NewHub()
+
+	// Realtime Service を生成（Redis実装とHubを注入）
+	realtimeService := realtime.NewService(
+		redisRepos.Queue,
+		redisRepos.Round,
+		redisRepos.Presence,
+		sqlrepos.Prompt,
+		hub,
+	)
+
+	// WebSocket Handler を生成（Service には realtimeService を渡す）
 	webSocketHandler := &ws.Handler{
 		Hub:      hub,
-		Verifier: ws.DevTicket{}, // 開発用トークン: dev:<userID>:<room>
+		Service:  realtimeService,
+		Verifier: ws.DevTicket{}, // 開発用: token=dev:<userID>:<room>
+		Presence: redisRepos.Presence,
 	}
-	// Realtime Service を生成してWebSocketとRedis Queueを接続
-	realtimeService := realtime.NewService(redisrepos.Queue, hub)
-
-	// WSハンドラにサービスを差し込む（OnConnect/OnMessage/OnDisconnectが呼ばれる）
-	webSocketHandler.Service = realtimeService
 
 	// matchmaker 起動（0.5s間隔など好みで）
 	realtimeContext, realtimeCancel := context.WithCancel(context.Background())

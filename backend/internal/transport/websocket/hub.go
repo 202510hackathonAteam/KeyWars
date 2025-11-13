@@ -174,7 +174,7 @@ func (hub *Hub) Broadcast(ctx context.Context, roomName string, message any) (fa
 }
 
 //
-// ==== 追加：Members / Move ====
+// ==== Members / Move ====
 //
 
 // Members は roomName の参加者スナップショットを返す（ロック短縮のためコピー）。

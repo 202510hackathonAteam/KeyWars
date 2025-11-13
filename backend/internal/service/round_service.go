@@ -3,7 +3,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"strconv"
 	"time"
@@ -50,36 +49,6 @@ type DeckItem struct {
 	Diff      int    `json:"diff"`
 	CharCount int    `json:"char_count"`
 	LimitMS   int64  `json:"limit_ms"`
-}
-
-// SaveDeckOnce はデッキ（20問想定）を JSON 文字列として保存する（冪等）。
-func (service *RoundService) SaveDeckOnce(contextObject context.Context, matchID string, deckItems []DeckItem) error {
-	if len(deckItems) == 0 {
-		return errors.New("empty deck")
-	}
-	// JSON文字列の配列に変換
-	jsonArray := make([]string, 0, len(deckItems))
-	for _, deckItem := range deckItems {
-		bytesJSON, marshalErr := json.Marshal(deckItem)
-		if marshalErr != nil {
-			return marshalErr
-		}
-		jsonArray = append(jsonArray, string(bytesJSON))
-	}
-	return service.roundStateRepository.SaveDeckOnce(contextObject, matchID, jsonArray)
-}
-
-// GetDeckItem は deck_index で1件取得（JSON文字列）→ DeckItem にデコードする。
-func (service *RoundService) GetDeckItem(contextObject context.Context, matchID string, deckIndex int64) (DeckItem, error) {
-	jsonString, err := service.roundStateRepository.GetDeckItem(contextObject, matchID, deckIndex)
-	if err != nil {
-		return DeckItem{}, err
-	}
-	var deckItem DeckItem
-	if unmarshalErr := json.Unmarshal([]byte(jsonString), &deckItem); unmarshalErr != nil {
-		return DeckItem{}, unmarshalErr
-	}
-	return deckItem, nil
 }
 
 // -----------------------------
