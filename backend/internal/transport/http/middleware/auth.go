@@ -4,7 +4,9 @@ import (
 	"net/http"
 	"context"
 
+	"github.com/rs/zerolog"
 	"github.com/labstack/echo/v4"
+
 	"keywars/backend/internal/infra/auth"
 	"keywars/backend/internal/transport/http/response"
 )
@@ -14,6 +16,8 @@ import (
 func NewAuthenticationMiddleware(jwtHandler *auth.JWTHandler) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
+			logger := zerolog.Ctx(c.Request().Context())
+
 			// Cookie からアクセストークンを取得
 			accessTokenCookie, err := c.Cookie("access_token")
 			if err != nil || accessTokenCookie.Value == "" {
@@ -23,6 +27,7 @@ func NewAuthenticationMiddleware(jwtHandler *auth.JWTHandler) echo.MiddlewareFun
 			// JWT の検証処理
 			userID, err := jwtHandler.VerifyAccessToken(accessTokenCookie.Value)
 			if err != nil {
+				logger.Warn().Err(err).Msg("access token verification failed")
 				return response.Respond(c, http.StatusUnauthorized, nil)
 			}
 

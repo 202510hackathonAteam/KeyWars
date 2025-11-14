@@ -80,12 +80,12 @@ func (h *AuthHandler) Signup(c echo.Context) error {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrUserExists):
-			logger.Warn().Err(err).Str("username", body.Username).Msg("signup conflict: user already exists")
+			logger.Warn().Err(err).Str("username", body.Username).Msg("/auth/signup conflict: user already exists")
 			return response.Respond(c, http.StatusConflict, echo.Map{
 				"message": "ユーザー名がすでに使われています。",
 			})
 		default:
-			logger.Error().Err(err).Msgf("signup failed: internal error (%T: %v)", err, err)
+			logger.Error().Err(err).Msgf("/auth/signup failed: internal error (%T: %v)", err, err)
 			return response.Respond(c, http.StatusInternalServerError, nil)
 		}
 	}
@@ -136,12 +136,12 @@ func (h *AuthHandler) Signin(c echo.Context) error {
 		switch {
 		case errors.Is(err, service.ErrUserNotFound),
 				 errors.Is(err, service.ErrInvalidCredentials):
-			logger.Warn().Err(err).Str("username", body.Username).Msg("signin failed: user not found")
+			logger.Warn().Err(err).Str("username", body.Username).Msg("/auth/signin failed: user not found")
 			return response.Respond(c, http.StatusConflict, echo.Map{
 				"message": "ログインに失敗しました。入力内容をご確認ください。",
 			})
 		default:
-			logger.Error().Err(err).Msg("signin failed: internal error")
+			logger.Error().Err(err).Msg("/auth/signin failed: internal error")
 			return response.Respond(c, http.StatusInternalServerError, nil)
 		}
 	}
@@ -187,10 +187,10 @@ func (h *AuthHandler) Refresh(c echo.Context) error {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrInvalidToken):
-			logger.Warn().Err(err).Msg("refresh failed: invalid refresh token")
+			logger.Warn().Err(err).Msg("/auth/refresh failed: invalid refresh token")
 			return response.Respond(c, http.StatusUnauthorized, nil)
 		default:
-			logger.Error().Err(err).Msg("refresh failed: internal error")
+			logger.Error().Err(err).Msg("/auth/refresh failed: internal error")
 			return response.Respond(c, http.StatusInternalServerError, nil)
 		}
 	}
@@ -203,6 +203,8 @@ func (h *AuthHandler) Refresh(c echo.Context) error {
 
 // Check は、アクセストークンの有効性を確認するエンドポイント。
 func (h *AuthHandler) Check(c echo.Context) error {
+	logger := zerolog.Ctx(c.Request().Context())
+
 	// アクセストークンの取得
 	accessTokenCookie, err := c.Cookie("access_token")
 	if err != nil {
@@ -216,6 +218,7 @@ func (h *AuthHandler) Check(c echo.Context) error {
 	// JWTの検証
 	_, err = h.jwtHandler.VerifyAccessToken(accessToken)
 	if err != nil {
+		logger.Warn().Err(err).Msg("/auth/check failed: access token verification")
 		return response.Respond(c, http.StatusUnauthorized, nil)
 	}
 
