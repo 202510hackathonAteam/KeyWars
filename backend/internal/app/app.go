@@ -97,7 +97,6 @@ func New(cfg *config.Config) (*Server, error) {
 	// Service 層の初期化
 	services := service.Services{
 		Auth:  service.NewAuthService(sqlrepos.User, jwtHandler),
-		Match: service.NewMatchService(redisRepos.Queue, redisRepos.Round),
 		Round: service.NewRoundService(redisRepos.Round),
 		// 下に追加していく
 	}
