@@ -97,6 +97,20 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		roomName:    "user:" + userID,
 		sendChannel: make(chan []byte, sendBufSize),
 	}
+
+	var (
+		previousStatus  string
+		previousMatchID string
+	)
+
+	if handler.Presence != nil {
+		presenceMap, err := handler.Presence.Get(requestContext, userID)
+		if err == nil {
+			previousStatus = presenceMap["status"]
+			previousMatchID = presenceMap["match_id"]
+		}
+	}
+
 	userRoom := clientConn.Room()
 
 	defer func() {
@@ -112,14 +126,37 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	// --- 3) Hub.Join（マッチング待機は個人ルームへ） ---
 	if handler.Hub != nil {
 		if err := handler.Hub.Join(requestContext, userRoom, clientConn); err != nil {
-			if errors.Is(err, ErrRoomFull) {
+			if errors.Is(err, ErrAlreadyJoined) {
+
+			} else if errors.Is(err, ErrRoomFull) {
 				_ = wsConn.WriteControl(
 					websocket.CloseMessage,
 					websocket.FormatCloseMessage(websocket.CloseTryAgainLater, "room full"),
 					time.Now().Add(writeWait),
 				)
+				_ = wsConn.Close()
+				return
+			} else {
+				_ = wsConn.Close()
+				return
 			}
-			return
+		}
+	}
+
+	isRejoingMatch := previousMatchID != "" &&
+		(previousStatus == "ingame" || previousStatus == "reconecting")
+	if handler.Presence != nil {
+		now := time.Now().UnixMilli()
+		if isRejoingMatch {
+			_ = handler.Presence.SetIngame(requestContext, userID, previousMatchID, now)
+		}
+	}
+
+	// ---- 対戦復帰の場合は match ルームへ移動 ----
+	if isRejoingMatch && handler.Hub != nil {
+		matchRoomName := "match:" + previousMatchID
+		if err := handler.Hub.Move(requestContext, clientConn, matchRoomName); err == nil {
+			clientConn.setRoom(matchRoomName)
 		}
 	}
 

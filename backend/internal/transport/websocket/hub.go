@@ -69,7 +69,7 @@ func (hub *Hub) Join(_ context.Context, roomName string, clientConn domain.Clien
 	defer hub.mutex.Unlock() // 関数終了時に必ず解除
 
 	// 同じルームに既にいるなら冪等動作
-	if current := clientConn.Room(); current != "" && current != roomName {
+	if clientConn.Room() == roomName {
 		return ErrAlreadyJoined
 	}
 
