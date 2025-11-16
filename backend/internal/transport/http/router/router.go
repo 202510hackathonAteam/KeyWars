@@ -23,6 +23,7 @@ func SetupRouter(e *echo.Echo, api *handler.API, authMiddleware echo.MiddlewareF
 	e.POST("/auth/signin", api.Auth.Signin)
 	e.POST("/auth/signup", api.Auth.Signup)
 	e.POST("/auth/refresh", api.Auth.Refresh)
+	e.POST("/auth/check", api.Auth.Check)
 
 	// 開発用: 認証なしWS（token=... はWS側で検証）
 	e.GET("/ws", echo.WrapHandler(wsHandler))

@@ -42,12 +42,6 @@ func New(cfg *config.Config) (*Server, error) {
 	e.Use(echomiddleware.Logger())
 	e.Use(echomiddleware.Recover())
 	e.Use(echomiddleware.RequestID())
-	e.Use(echomiddleware.CSRFWithConfig(echomiddleware.CSRFConfig{
-		CookieName:     "csrf_token",
-		CookiePath:     "/",
-		CookieHTTPOnly: true,
-		TokenLookup:    "header:X-CSRF-Token",
-	}))
 
 	baseLogger := zerolog.New(os.Stdout).With().Timestamp().Logger()
 	e.Use(httpmiddleware.RequestLogger(&baseLogger))
