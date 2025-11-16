@@ -67,11 +67,15 @@ func (service *Service) OnConnect(
 			if (status == "ingame" || status == "reconnecting") && matchID != "" {
 				matchRoomName := "match:" + matchID
 				userRoomName := "user:" + userID
+
 				clientConnections := service.websocketHub.Members(userRoomName)
 				if len(clientConnections) > 0 {
 					_ = service.websocketHub.Move(ctx, clientConnections[0], matchRoomName)
 
 					restoredState, _ := service.roundStateRepository.GetState(ctx, matchID)
+
+					_ = service.presenceRepository.SetIngame(ctx, userID, matchID, nowMs)
+
 					return map[string]any{
 						"type":    "match.restore",
 						"matchId": matchID,

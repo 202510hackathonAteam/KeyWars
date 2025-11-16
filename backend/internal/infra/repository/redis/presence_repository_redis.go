@@ -50,9 +50,12 @@ func (repository *PresenceRepositoryRedis) SetOnline(
 	key := presenceKey(userID)
 
 	pipe := repository.redisClient.TxPipeline()
-	pipe.HSet(ctx, key, "update_at", nowUnixMilli)
-	pipe.HSet(ctx, key, "status", "online")
-	pipe.HIncrBy(ctx, key, "socket_count", 1)
+	pipe.HSet(ctx, key,
+		"status", "online",
+		"match_id", "",
+		"updated_at", nowUnixMilli,
+	)
+	pipe.HSet(ctx, key, "socket_count", 1)
 	pipe.Expire(ctx, key, repository.ttl)
 
 	_, err := pipe.Exec(ctx)
@@ -136,30 +139,38 @@ func (repository *PresenceRepositoryRedis) Disconnect(
 	nowUnixMilli int64,
 ) error {
 	key := presenceKey(userID)
-
-	pipe := repository.redisClient.TxPipeline()
-	socketCountCmd := pipe.HIncrBy(ctx, key, "socket_count", -1)
-	pipe.HSet(ctx, key, "updated_at", nowUnixMilli)
-	pipe.PExpire(ctx, key, presenceTTL)
-
-	if _, err := pipe.Exec(ctx); err != nil {
+	values, err := repository.redisClient.HMGet(ctx, key, "status", "match_id", "socket_count").Result()
+	if err != nil {
 		return err
 	}
 
-	// 0 未満になった場合の補正と offline 落とし
-	if socketCountCmd.Val() <= 0 {
-		// 補正と状態更新（別Tx）
-		repair := repository.redisClient.TxPipeline()
-		repair.HSet(ctx, key,
-			"socket_count", 0,
-			"status", "offline",
-			"updated_at", nowUnixMilli,
-		)
-		repair.PExpire(ctx, key, presenceTTL)
-		_, _ = repair.Exec(ctx)
+	var status string
+	if len(values) > 0 && values[0] != nil {
+		status, _ = values[0].(string)
 	}
 
-	return nil
+	newCount, _ := repository.redisClient.HIncrBy(ctx, key, "socket_count", -1).Result()
+
+	if newCount > 0 {
+		repository.redisClient.PExpire(ctx, key, repository.ttl)
+		return nil
+	}
+
+	pipe := repository.redisClient.TxPipeline()
+	switch status {
+	case "ingame":
+		pipe.PExpire(ctx, key, repository.ttl)
+	default:
+		pipe.HSet(ctx, key,
+			"status", "offline",
+			"match_id", "",
+			"update_at", nowUnixMilli,
+		)
+		pipe.PExpire(ctx, key, repository.ttl)
+	}
+
+	_, err = pipe.Exec(ctx)
+	return err
 }
 
 // Get は現在のプレゼンスをそのまま返す。
