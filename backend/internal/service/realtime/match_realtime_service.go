@@ -66,8 +66,8 @@ func (service *Service) OnConnect(
 
 			if (status == "ingame" || status == "reconnecting") && matchID != "" {
 				matchRoomName := "match:" + matchID
-				usedrRoomName := "user:" + userID
-				clientConnections := service.websocketHub.Members(usedrRoomName)
+				userRoomName := "user:" + userID
+				clientConnections := service.websocketHub.Members(userRoomName)
 				if len(clientConnections) > 0 {
 					_ = service.websocketHub.Move(ctx, clientConnections[0], matchRoomName)
 
