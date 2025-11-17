@@ -199,15 +199,17 @@
 
 ### コーディング例
 ```go
+import (
   "github.com/rs/zerolog"
 
-	"keywars/backend/internal/transport/http/response"
+  "keywars/backend/internal/transport/http/response"
+)
 
-  logger := zerolog.Ctx(c.Request().Context())
-  logger.Warn().Err(err).Msg("signin failed: invalid credentials")
-  return response.Respond(c, http.StatusUnauthorized, echo.Map{
-    "message": "invalid credentials",
-  })
+logger := zerolog.Ctx(c.Request().Context())
+logger.Warn().Err(err).Msg("signin failed: invalid credentials")
+return response.Respond(c, http.StatusUnauthorized, echo.Map{
+  "message": "invalid credentials",
+})
 ```
 
 <br>  
