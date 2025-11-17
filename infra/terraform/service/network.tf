@@ -11,44 +11,69 @@ resource "google_compute_network" "vpc_network" {
 }
 
 # VPCピアリング用のPrivateIPを確保
-resource "google_compute_global_address" "private_ip_address" {
-  name          = "private-ip-address"
-  purpose       = "VPC_PEERING" # VPCピアリング用
-  address_type  = "INTERNAL"    # 内部(private)IPアドレス
-  prefix_length = 16
+# resource "google_compute_global_address" "private_ip_address" {
+#   name          = "private-ip-address"
+#   purpose       = "VPC_PEERING" # VPCピアリング用
+#   address_type  = "INTERNAL"    # 内部(private)IPアドレス
+#   prefix_length = 16
+#   network       = google_compute_network.vpc_network.id
+#   depends_on    = [google_compute_network.vpc_network]
+# }
+
+# CloudSQL用のIPアドレス確保
+resource "google_compute_global_address" "cloudsql_ip_range" {
+  name = "cloudsql-ip-range"
+  purpose = "VPC_PEERING"
+  address_type  = "INTERNAL"
+  prefix_length = 24
   network       = google_compute_network.vpc_network.id
   depends_on    = [google_compute_network.vpc_network]
+
+}
+
+# MemoryStore用のIPアドレス確保
+resource "google_compute_global_address" "memorystore_ip_range" {
+  name = "memorystore-ip-range"
+  purpose = "VPC_PEERING"
+  address_type  = "INTERNAL"
+  prefix_length = 24
+  network       = google_compute_network.vpc_network.id
+  depends_on    = [google_compute_network.vpc_network]
+
 }
 
 # VPCピアリング用PrivateIPとGoogleサービスのネットワークと接続する
 resource "google_service_networking_connection" "default" {
   network                 = google_compute_network.vpc_network.id
   service                 = "servicenetworking.googleapis.com"
-  reserved_peering_ranges = [google_compute_global_address.private_ip_address.name]
-  depends_on              = [google_project_service.servicenetworking_api, google_compute_global_address.private_ip_address]
+  reserved_peering_ranges = [
+    google_compute_global_address.cloudsql_ip_range.name,
+    google_compute_global_address.memorystore_ip_range.name
+    ]
+  depends_on              = [google_project_service.servicenetworking_api]
 }
 
 # サブネット作成
-resource "google_compute_subnetwork" "group1" {
-  name          = "subnet-connector"
-  ip_cidr_range = "10.0.1.0/28" # コネクタ用は/28
-  region        = var.region
-  network       = google_compute_network.vpc_network.id
-}
+# resource "google_compute_subnetwork" "group1" {
+#   name          = "subnet-connector"
+#   ip_cidr_range = "10.0.1.0/28" # コネクタ用は/28
+#   region        = var.region
+#   network       = google_compute_network.vpc_network.id
+# }
 
-resource "google_compute_subnetwork" "group2" {
-  name          = "subnet-sql"
-  ip_cidr_range = "10.0.2.0/24"
-  region        = var.region
-  network       = google_compute_network.vpc_network.id
-}
+# resource "google_compute_subnetwork" "group2" {
+#   name          = "subnet-sql"
+#   ip_cidr_range = "10.0.2.0/24"
+#   region        = var.region
+#   network       = google_compute_network.vpc_network.id
+# }
 
-resource "google_compute_subnetwork" "group3" {
-  name          = "subnet-ms"
-  ip_cidr_range = "10.0.3.0/24"
-  region        = var.region
-  network       = google_compute_network.vpc_network.id
-}
+# resource "google_compute_subnetwork" "group3" {
+#   name          = "subnet-ms"
+#   ip_cidr_range = "10.0.3.0/24"
+#   region        = var.region
+#   network       = google_compute_network.vpc_network.id
+# }
 
 resource "google_compute_subnetwork" "group4" {
   name          = "vpc-connector"
@@ -87,7 +112,16 @@ resource "google_compute_region_network_endpoint_group" "cloudrun_api_neg" {
   }
 }
 
-# バックエンドサービス
+resource "google_compute_region_network_endpoint_group" "cloudrun_websocket_neg" {
+  name                  = "cloudrun-websocket-neg"
+  region                = var.region
+  network_endpoint_type = "SERVERLESS"
+  cloud_run {
+    service = "cloudrun-websocket"
+  }
+}
+
+# API用バックエンドサービス
 resource "google_compute_backend_service" "api_service" {
   name                  = "api-service"
   load_balancing_scheme = "EXTERNAL_MANAGED"
@@ -95,10 +129,20 @@ resource "google_compute_backend_service" "api_service" {
   backend {
     group = google_compute_region_network_endpoint_group.cloudrun_api_neg.id
   }
-  #あとでWebsocket用追加？も一個作る？
-  # backend {
-  #   group = google_compute_region_network_endpoint_group.cloudrun_api_neg.id
-  # }
+
+  depends_on = [
+    google_project_service.compute_api,
+  ]
+}
+
+# WebSocket用バックエンドサービス
+resource "google_compute_backend_service" "websocket_service" {
+  name                  = "websocket-service"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+
+  backend {
+    group = google_compute_region_network_endpoint_group.cloudrun_websocket_neg.id
+  }
 
   depends_on = [
     google_project_service.compute_api,
@@ -112,31 +156,53 @@ resource "google_compute_url_map" "default" {
   # 指定したドメインに対して、使用するpath_matcherを指定
   host_rule {
     hosts        = ["keywars.jp"]
-    path_matcher = "allpaths"
+    path_matcher = "path-matcher"
   }
   # パスに応じて選択するバックエンドを指定
   path_matcher {
-    name            = "allpaths"
+    name            = "path-matcher"
     default_service = google_compute_backend_bucket.static_bucket.id # どれにも該当しないトラフィックの転送先
 
     # 特定のパターンに合致する場合の転送先
-    # テスト用
+    # WebSocket用 
     path_rule {
-      paths   = ["/hello"]
-      service = google_compute_backend_service.api_service.id
+      paths   = ["/api/v1/ws/*"]
+      service = google_compute_backend_service.websocket_service.id
+    }
+
+    path_rule {
+      paths   = ["/ws/*"]
+      service = google_compute_backend_service.websocket_service.id
     }
 
     # API用 
     path_rule {
-      paths   = ["/api/*"]
+      paths   = ["/api/v1/*"]
       service = google_compute_backend_service.api_service.id
     }
 
-    # WebSocket用 
-    # path_rule {
-    #   paths = ["/ws/*"]
-    #   service = 
-    # }
+    # テスト用
+    path_rule {
+      paths   = ["/healthz", "/healthz/*"]
+      service = google_compute_backend_service.api_service.id
+    }
+
+    # js, cssへのルーティングルール
+    path_rule {
+      paths = ["/assets/*"]
+      service = google_compute_backend_bucket.static_bucket.id
+    }
+
+    # そのほかのパス
+    path_rule {
+      paths = ["/*"]
+      route_action {
+        url_rewrite {
+          path_prefix_rewrite = "/index.html"
+        }
+      }
+      service = google_compute_backend_bucket.static_bucket.id
+    }
   }
 }
 

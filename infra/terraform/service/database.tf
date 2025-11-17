@@ -14,6 +14,7 @@ resource "google_sql_database_instance" "mysql" {
     ip_configuration {
       ipv4_enabled    = "false"                               # パブリックIPv4アドレスを無効
       private_network = google_compute_network.vpc_network.id # 接続するVPC指定
+      allocated_ip_range = google_compute_global_address.cloudsql_ip_range.name
     }
     password_validation_policy {
       min_length                  = 8
@@ -111,4 +112,16 @@ resource "google_secret_manager_secret_iam_member" "secretaccess_compute_dbname"
   secret_id = google_secret_manager_secret.dbname.id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${var.project_number}-compute@developer.gserviceaccount.com"
+}
+
+# MemoryStore
+resource "google_redis_instance" "redis" {
+  name           = "redis"
+  tier           = "BASIC"
+  memory_size_gb = 2
+  region         = var.region
+  redis_version  = "REDIS_7_0"
+  authorized_network = google_compute_network.vpc_network.id
+  connect_mode = "PRIVATE_SERVICE_ACCESS"
+  reserved_ip_range = google_compute_global_address.memorystore_ip_range.name
 }

@@ -1,3 +1,4 @@
+
 #----------------------------
 # CloudRun
 #----------------------------
@@ -43,7 +44,20 @@ locals {
     {
       name  = "MYSQL_PORT"
       value = "3306"
+    },
+    {
+      name  = "REDIS_ADDR"
+      value = "${google_redis_instance.redis.host}:6379"
+    },
+    {
+      name  = "REDIS_PASSWORD"
+      value = "redispass"
+    },
+    {
+      name  = "REDIS_DB"
+      value = "0"
     }
+
   ]
 }
 
@@ -92,6 +106,72 @@ resource "google_cloud_run_v2_service" "api" {
         network    = google_compute_network.vpc_network.name
         subnetwork = google_compute_subnetwork.group4.name
         tags       = ["api"]
+      }
+    }
+
+
+    volumes {
+      name = "cloudsql"
+      cloud_sql_instance {
+        instances = [google_sql_database_instance.mysql.connection_name]
+      }
+    }
+  }
+
+  ingress = "INGRESS_TRAFFIC_ALL" # IAMチェックを無効化
+  client  = "terraform"
+  depends_on = [
+    google_project_service.secretmanager_api,
+    google_project_service.cloudrun_api,
+    google_project_service.sqladmin_api
+  ]
+}
+
+# WebSocket用CloudRun
+resource "google_cloud_run_v2_service" "websocket" {
+  project  = var.project_id
+  name     = "cloudrun-websocket"
+  location = var.region
+
+  deletion_protection = false # 削除保護(本番ではtrue推奨)
+
+  template {
+    containers {
+      image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.ar-repository_name}/api-image:latest"
+
+      # MySQL用環境変数を展開
+      dynamic "env" {
+        for_each = local.mysql_env_vars
+        content {
+          name = env.value.name
+          # 値がvalueの場合
+          value = try(env.value.value, null)
+          # 値がvalue_sourceの場合
+          dynamic "value_source" {
+            for_each = try([env.value.value_source], [])
+            content {
+              secret_key_ref {
+                secret  = value_source.value.secret_key_ref.secret
+                version = value_source.value.secret_key_ref.version
+
+              }
+            }
+
+          }
+        }
+      }
+
+      volume_mounts {
+        name       = "cloudsql"
+        mount_path = "/cloudsql"
+      }
+    }
+    vpc_access {
+      # Direct VPC Egress使用
+      network_interfaces {
+        network    = google_compute_network.vpc_network.name
+        subnetwork = google_compute_subnetwork.group4.name
+        tags       = ["websocket"]
       }
     }
 

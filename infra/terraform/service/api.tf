@@ -56,3 +56,9 @@ resource "google_project_service" "artifactregistry_api" {
   service            = "artifactregistry.googleapis.com"
   disable_on_destroy = false
 }
+
+resource "google_project_service" "redis_api" {
+  project            = var.project_id
+  service            = "redis.googleapis.com"
+  disable_on_destroy = false
+}
