@@ -172,7 +172,7 @@
 
 ## ハンドラー層でのログ出力とレスポンス方針
 ### 原則
-ハンドラー層では、エラー発生時に **ログ出力とレスポンス返却（h.Respond）をセットで行います**。
+ハンドラー層では、エラー発生時に **ログ出力とレスポンス返却（response.Respond）をセットで行います**。
 
 サービス層・リポジトリ層ではログを出さず、`error` を返すのみとします。  
 これにより「どのリクエストで何が失敗したか」が必ずハンドラー側で記録されます。  
@@ -195,12 +195,17 @@
 ### 例外（ログ不要なケース）
 - 想定内のバリデーションエラー（username is requiredなど）
 - Cookie やヘッダが存在しないなど日常的な400系エラー
-→ h.Respond のみでOK（ログノイズ防止）
+→ response.Respond のみでOK（ログノイズ防止）
 
 ### コーディング例
 ```go
+  "github.com/rs/zerolog"
+
+	"keywars/backend/internal/transport/http/response"
+
+  logger := zerolog.Ctx(c.Request().Context())
   logger.Warn().Err(err).Msg("signin failed: invalid credentials")
-  return h.Respond(c, http.StatusUnauthorized, echo.Map{
+  return response.Respond(c, http.StatusUnauthorized, echo.Map{
     "message": "invalid credentials",
   })
 ```
@@ -260,7 +265,8 @@ backend/
 │  │  ├─ http/         # HTTP通信関連の処理をまとめる
 │  │  │  ├─ handler/       # 各エンドポイントのハンドラを定義
 │  │  │  ├─ middleware/    # 認証・ログなどのHTTPミドルウェアを定義
-│  │  │  └─ router/        # ルーティング設定を定義
+│  │  │  ├─ router/        # ルーティング設定を定義
+│  │  │  └─ response/      # 共通レスポンス生成処理（HTTPレスポンスの形式統一）
 │  │  └─ websocket/    # WebSocket通信関連の処理をまとめる
 │  └─ util/         # 汎用的な共通処理をまとめる（アプリ全体から再利用される）
 │     ├─ password/       # パスワードハッシュ化・検証などの共通ロジックを提供
