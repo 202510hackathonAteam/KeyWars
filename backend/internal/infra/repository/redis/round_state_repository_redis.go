@@ -59,10 +59,8 @@ func (repository *RoundStateRepositoryRedis) Start(contextObject context.Context
 	// ステータスを playing に更新
 	pipeline.HSet(contextObject, matchKey, "status", "playing")
 
-	// 主要キーに 1 時間の TTL を付与（ハング・リーク対策）
-	expiration := time.Hour
 	for _, suffix := range []string{"", ":state", ":events", ":deck"} {
-		pipeline.Expire(contextObject, matchKey+suffix, expiration)
+		pipeline.Expire(contextObject, matchKey+suffix, matchTTL)
 	}
 
 	_, err := pipeline.Exec(contextObject)
@@ -82,9 +80,8 @@ func (repository *RoundStateRepositoryRedis) Finish(contextObject context.Contex
 	)
 
 	// 終了後は 10 分で掃除（ミリ秒精度で設定）
-	expiration := 10 * time.Minute
 	for _, suffix := range []string{"", ":state", ":events", ":deck"} {
-		pipeline.PExpire(contextObject, matchKey+suffix, expiration)
+		pipeline.PExpire(contextObject, matchKey+suffix, matchTTLPostFin)
 	}
 
 	_, err := pipeline.Exec(contextObject)
@@ -204,4 +201,12 @@ func (repository *RoundStateRepositoryRedis) ApplyAnswer(contextObject context.C
 		_ = repository.redisClient.HSet(contextObject, stateKey, "last_event_id", eventID).Err()
 	}
 	return
+}
+
+func (repository *RoundStateRepositoryRedis) GetState(
+	ctx context.Context,
+	matchID string,
+) (map[string]string, error) {
+	stateKey := fmt.Sprintf("match:%s:state", matchID)
+	return repository.redisClient.HGetAll(ctx, stateKey).Result()
 }

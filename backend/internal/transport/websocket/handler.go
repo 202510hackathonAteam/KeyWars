@@ -94,20 +94,9 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	// 接続インスタンス（送信用チャネル付き）
 	clientConn := &Client{
 		userID:      userID,
-		roomName:    "user:" + userID,
 		sendChannel: make(chan []byte, sendBufSize),
 	}
-	userRoom := clientConn.Room()
-
-	defer func() {
-		if handler.Hub != nil {
-			_ = handler.Hub.Leave(requestContext, clientConn)
-		}
-		if handler.Presence != nil {
-			_ = handler.Presence.Disconnect(requestContext, userID, time.Now().UnixMilli())
-		}
-		_ = wsConn.Close()
-	}()
+	userRoom := "user:" + userID
 
 	// --- 3) Hub.Join（マッチング待機は個人ルームへ） ---
 	if handler.Hub != nil {
@@ -119,6 +108,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 					time.Now().Add(writeWait),
 				)
 			}
+			_ = wsConn.Close()
 			return
 		}
 	}
@@ -216,5 +206,11 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	}
 
 	// --- 6) 終了処理 ---
+	if handler.Hub != nil {
+		_ = handler.Hub.Leave(requestContext, clientConn)
+	}
+	if handler.Presence != nil {
+		_ = handler.Presence.Disconnect(requestContext, userID, time.Now().UnixMilli())
+	}
 	<-doneChan
 }
