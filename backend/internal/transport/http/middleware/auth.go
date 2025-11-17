@@ -4,8 +4,11 @@ import (
 	"net/http"
 	"context"
 
+	"github.com/rs/zerolog"
 	"github.com/labstack/echo/v4"
+
 	"keywars/backend/internal/infra/auth"
+	"keywars/backend/internal/transport/http/response"
 )
 
 // NewAuthenticationMiddleware は、JWT ベースの認証を行うミドルウェアの生成。
@@ -13,20 +16,19 @@ import (
 func NewAuthenticationMiddleware(jwtHandler *auth.JWTHandler) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
+			logger := zerolog.Ctx(c.Request().Context())
+
 			// Cookie からアクセストークンを取得
 			accessTokenCookie, err := c.Cookie("access_token")
-			if err != nil {
-				return echo.NewHTTPError(http.StatusUnauthorized, "missing access token")
-			}
-			accessToken := accessTokenCookie.Value
-			if accessToken == "" {
-				return echo.NewHTTPError(http.StatusUnauthorized, "invalid access token")
+			if err != nil || accessTokenCookie.Value == "" {
+				return response.Respond(c, http.StatusUnauthorized, nil)
 			}
 
 			// JWT の検証処理
-			userID, err := jwtHandler.VerifyAccessToken(accessToken)
+			userID, err := jwtHandler.VerifyAccessToken(accessTokenCookie.Value)
 			if err != nil {
-				return echo.NewHTTPError(http.StatusUnauthorized, "invalid or expired token")
+				logger.Warn().Err(err).Msg("access token verification failed")
+				return response.Respond(c, http.StatusUnauthorized, nil)
 			}
 
 			// 検証成功時：userID をコンテキストへ設定

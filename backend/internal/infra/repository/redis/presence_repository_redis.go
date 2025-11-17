@@ -26,11 +26,13 @@ const (
 // PresenceRepositoryRedis は、ユーザーのプレゼンスを Redis に保持・更新する実装。
 type PresenceRepositoryRedis struct {
 	redisClient *redis.Client
+	ttl         time.Duration
 }
 
-func NewPresenceRepositoryRedis(redisClient *redis.Client) *PresenceRepositoryRedis {
+func NewPresenceRepositoryRedis(redisClient *redis.Client, ttl time.Duration) *PresenceRepositoryRedis {
 	return &PresenceRepositoryRedis{
 		redisClient: redisClient,
+		ttl:         ttl,
 	}
 }
 
@@ -39,19 +41,40 @@ func presenceKey(userID string) string {
 	return fmt.Sprintf("user:%s:presence", userID)
 }
 
-// Heartbeat はクライアント側からの定期心拍で呼び出す。
-// - updated_at を now に更新
-// - TTL を 30s に延長（PEXPIRE）
-func (r *PresenceRepositoryRedis) Heartbeat(
+// setOnline は、ユーザーをオンライン状態にして、socket_countを+1する。
+func (repository *PresenceRepositoryRedis) SetOnline(
 	ctx context.Context,
 	userID string,
 	nowUnixMilli int64,
 ) error {
 	key := presenceKey(userID)
-	pipe := r.redisClient.TxPipeline()
+
+	pipe := repository.redisClient.TxPipeline()
+	pipe.HSet(ctx, key,
+		"status", "online",
+		"match_id", "",
+		"updated_at", nowUnixMilli,
+	)
+	pipe.HSet(ctx, key, "socket_count", 1)
+	pipe.Expire(ctx, key, repository.ttl)
+
+	_, err := pipe.Exec(ctx)
+	return err
+}
+
+// Heartbeat はクライアント側からの定期心拍で呼び出す。
+// - updated_at を now に更新
+// - TTL を 30s に延長（PEXPIRE）
+func (repository *PresenceRepositoryRedis) Heartbeat(
+	ctx context.Context,
+	userID string,
+	nowUnixMilli int64,
+) error {
+	key := presenceKey(userID)
+	pipe := repository.redisClient.TxPipeline()
 
 	pipe.HSet(ctx, key, "updated_at", nowUnixMilli)
-	pipe.PExpire(ctx, key, presenceTTL)
+	pipe.PExpire(ctx, key, repository.ttl)
 
 	_, err := pipe.Exec(ctx)
 	return err
@@ -62,21 +85,21 @@ func (r *PresenceRepositoryRedis) Heartbeat(
 // - match_id = {matchID}
 // - updated_at を now に
 // - TTL を 30s に延長（PEXPIRE）
-func (r *PresenceRepositoryRedis) SetIngame(
+func (repository *PresenceRepositoryRedis) SetIngame(
 	ctx context.Context,
 	userID string,
 	matchID string,
 	nowUnixMilli int64,
 ) error {
 	key := presenceKey(userID)
-	pipe := r.redisClient.TxPipeline()
+	pipe := repository.redisClient.TxPipeline()
 
 	pipe.HSet(ctx, key,
 		"status", "ingame",
 		"match_id", matchID,
 		"updated_at", nowUnixMilli,
 	)
-	pipe.PExpire(ctx, key, presenceTTL)
+	pipe.PExpire(ctx, key, repository.ttl)
 
 	_, err := pipe.Exec(ctx)
 	return err
@@ -110,37 +133,44 @@ func (r *PresenceRepositoryRedis) SetReconnecting(
 //   - ここでは match_id は「残す」とし、presence は TTLで自然消滅させる。
 //   - TTL は常に 30s に延長（PEXPIRE）
 //     （ブラウザがすぐ再接続する前提でも presence を短時間保持したい）
-func (r *PresenceRepositoryRedis) Disconnect(
+func (repository *PresenceRepositoryRedis) Disconnect(
 	ctx context.Context,
 	userID string,
 	nowUnixMilli int64,
 ) error {
 	key := presenceKey(userID)
-	// HINCRBY の結果を見て分岐したいので、TxPipelineで値を拾う
-	pipe := r.redisClient.TxPipeline()
-
-	socketCountCmd := pipe.HIncrBy(ctx, key, "socket_count", -1)
-	pipe.HSet(ctx, key, "updated_at", nowUnixMilli)
-	pipe.PExpire(ctx, key, presenceTTL)
-
-	if _, err := pipe.Exec(ctx); err != nil {
+	values, err := repository.redisClient.HMGet(ctx, key, "status", "match_id", "socket_count").Result()
+	if err != nil {
 		return err
 	}
 
-	// 0 未満になった場合の補正と offline 落とし
-	if socketCountCmd.Val() <= 0 {
-		// 補正と状態更新（別Tx）
-		repair := r.redisClient.TxPipeline()
-		repair.HSet(ctx, key,
-			"socket_count", 0,
-			"status", "offline",
-			"updated_at", nowUnixMilli,
-		)
-		repair.PExpire(ctx, key, presenceTTL)
-		_, _ = repair.Exec(ctx)
+	var status string
+	if len(values) > 0 && values[0] != nil {
+		status, _ = values[0].(string)
 	}
 
-	return nil
+	newCount, _ := repository.redisClient.HIncrBy(ctx, key, "socket_count", -1).Result()
+
+	if newCount > 0 {
+		repository.redisClient.PExpire(ctx, key, repository.ttl)
+		return nil
+	}
+
+	pipe := repository.redisClient.TxPipeline()
+	switch status {
+	case "ingame":
+		pipe.PExpire(ctx, key, repository.ttl)
+	default:
+		pipe.HSet(ctx, key,
+			"status", "offline",
+			"match_id", "",
+			"update_at", nowUnixMilli,
+		)
+		pipe.PExpire(ctx, key, repository.ttl)
+	}
+
+	_, err = pipe.Exec(ctx)
+	return err
 }
 
 // Get は現在のプレゼンスをそのまま返す。
