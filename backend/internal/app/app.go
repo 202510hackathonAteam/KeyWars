@@ -43,10 +43,10 @@ func New(cfg *config.Config) (*Server, error) {
 	e.Use(echomiddleware.Recover())
 	e.Use(echomiddleware.RequestID())
 	e.Use(echomiddleware.CSRFWithConfig(echomiddleware.CSRFConfig{
-		CookieName:     "csrf_token",
-		CookiePath:     "/",
+		CookieName: "csrf_token",
+		CookiePath: "/",
 		CookieHTTPOnly: true,
-		TokenLookup:    "header:X-CSRF-Token",
+		TokenLookup: "header:X-CSRF-Token",
 	}))
 
 	baseLogger := zerolog.New(os.Stdout).With().Timestamp().Logger()
@@ -97,7 +97,6 @@ func New(cfg *config.Config) (*Server, error) {
 	// Service 層の初期化
 	services := service.Services{
 		Auth:  service.NewAuthService(sqlrepos.User, jwtHandler),
-		Match: service.NewMatchService(redisRepos.Queue, redisRepos.Round),
 		Round: service.NewRoundService(redisRepos.Round),
 		// 下に追加していく
 	}

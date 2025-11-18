@@ -38,4 +38,5 @@ type RoundStateRepository interface {
 
 	// プレイヤーの回答を反映し、次の状態を更新する。
 	ApplyAnswer(contextObject context.Context, answerArg AnswerApplyArg) (eventID string, turn int64, err error)
+	GetState(ctx context.Context, matchID string) (map[string]string, error)
 }

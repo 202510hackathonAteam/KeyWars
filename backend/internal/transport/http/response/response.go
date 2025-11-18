@@ -1,5 +1,4 @@
-package handler
-
+package response
 import (
 	"github.com/labstack/echo/v4"
 )

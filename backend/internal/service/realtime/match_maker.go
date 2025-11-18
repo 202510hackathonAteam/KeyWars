@@ -47,7 +47,7 @@ func (service *Service) tryMakeMatch(ctx context.Context) {
 		// 競合発生 or 2名未満の場合は何もしない
 		return
 	}
-	// ※ DequeuePairAndInitMatch 内部で defer ReleaseLock 済み
+	// log.Printf("[matchmaker] matched: matchID=%s p1=%s p2=%s", matchID, user1ID, user2ID)
 
 	// 問題抽出
 	deck, err := service.promptRepository.GetDeckPrompts(ctx)

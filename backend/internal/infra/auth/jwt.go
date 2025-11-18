@@ -11,7 +11,6 @@ import (
 )
 
 
-
 // JWTHandler は、JWT の生成および検証処理を担当する構造体の定義。
 type JWTHandler struct {
 	Config config.JWTConfig

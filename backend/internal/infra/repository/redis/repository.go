@@ -2,6 +2,7 @@ package redisrepo
 
 import (
 	"keywars/backend/internal/domain/repository"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -19,6 +20,6 @@ func New(rdb *redis.Client) *Repos {
 	return &Repos{
 		Queue:    NewMatchQueueRepositoryRedis(rdb),
 		Round:    NewRoundStateRepositoryRedis(rdb),
-		Presence: NewPresenceRepositoryRedis(rdb),
+		Presence: NewPresenceRepositoryRedis(rdb, 30*time.Second),
 	}
 }

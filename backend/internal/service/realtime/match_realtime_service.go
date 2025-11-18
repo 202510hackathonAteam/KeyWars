@@ -55,6 +55,38 @@ func (service *Service) OnConnect(
 	userID string,
 	roomName string,
 ) (any, error) {
+	nowMs := time.Now().UnixMilli()
+
+	// Presence の状態を取得
+	if service.presenceRepository != nil {
+		presenceMap, err := service.presenceRepository.Get(ctx, userID)
+		if err == nil && len(presenceMap) > 0 {
+			status := presenceMap["status"]
+			matchID := presenceMap["match_id"]
+
+			if (status == "ingame" || status == "reconnecting") && matchID != "" {
+				matchRoomName := "match:" + matchID
+				userRoomName := "user:" + userID
+
+				clientConnections := service.websocketHub.Members(userRoomName)
+				if len(clientConnections) > 0 {
+					_ = service.websocketHub.Move(ctx, clientConnections[0], matchRoomName)
+
+					restoredState, _ := service.roundStateRepository.GetState(ctx, matchID)
+
+					_ = service.presenceRepository.SetIngame(ctx, userID, matchID, nowMs)
+
+					return map[string]any{
+						"type":    "match.restore",
+						"matchId": matchID,
+						"state":   restoredState,
+					}, nil
+				}
+			}
+		}
+		_ = service.presenceRepository.SetOnline(ctx, userID, nowMs)
+	}
+
 	return map[string]any{
 		"type": "welcome",
 		"uid":  userID,
