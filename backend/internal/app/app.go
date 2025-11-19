@@ -115,10 +115,10 @@ func New(cfg *config.Config) (*Server, error) {
 
 	// WebSocket Handler を生成（Service には realtimeService を渡す）
 	webSocketHandler := &ws.Handler{
-		Hub:      hub,
-		Service:  realtimeService,
-		Verifier: ws.DevTicket{}, // 開発用: token=dev:<userID>:<room>
-		Presence: redisRepos.Presence,
+		Hub:       hub,
+		Service:   realtimeService,
+		Presence:  redisRepos.Presence,
+		TokenAuth: *jwtHandler,
 	}
 
 	// matchmaker 起動（0.5s間隔など好みで）

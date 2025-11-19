@@ -26,7 +26,7 @@ func SetupRouter(e *echo.Echo, api *handler.API, authMiddleware echo.MiddlewareF
 	e.POST("/auth/check", api.Auth.Check)
 
 	// 開発用: 認証なしWS（token=... はWS側で検証）
-	e.GET("/ws", echo.WrapHandler(wsHandler))
+	// e.GET("/ws", echo.WrapHandler(wsHandler))
 
 	// ──────────────────────────────
 	// 認証必須のAPIグループ (/api/v1)
@@ -37,10 +37,7 @@ func SetupRouter(e *echo.Echo, api *handler.API, authMiddleware echo.MiddlewareF
 
 	// --- マッチングAPI ---
 	// 認証付きws
-	// v1.GET("/ws", func(c echo.Context) error {
-	// 	wsHandler.ServeHTTP(c.Response(), c.Request())
-	// 	return nil
-	// })
+	e.GET("/api/v1/ws", echo.WrapHandler(wsHandler))
 
 	return e
 }
