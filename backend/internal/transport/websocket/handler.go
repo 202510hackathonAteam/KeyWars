@@ -1,7 +1,6 @@
 package websocket
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"log"
@@ -10,6 +9,7 @@ import (
 
 	domain "keywars/backend/internal/domain/port"
 	"keywars/backend/internal/domain/repository"
+	"keywars/backend/internal/infra/auth"
 
 	"github.com/gorilla/websocket"
 )
@@ -31,21 +31,15 @@ const (
 	sendBufSize = 256
 )
 
-// TicketVerifier は、クエリ等で渡される「ルーム参加用トークン」を検証し、
-// ユーザーIDとルーム名を返す責務を持つ。
-type TicketVerifier interface {
-	VerifyRoomTicket(ctx context.Context, token string) (userID, roomName string, err error)
-}
-
 // Handler は WebSocket エンドポイントのハンドラ。
 // - Hub: 接続の出入りとブロードキャストを司る
 // - Service: アプリ固有の接続/メッセージ/切断処理
 // - Verifier: 参加用トークンの検証
 type Handler struct {
-	Hub      *Hub
-	Service  domain.RealtimeService
-	Verifier TicketVerifier
-	Presence repository.PresenceRepository
+	Hub       *Hub
+	Service   domain.RealtimeService
+	Presence  repository.PresenceRepository
+	TokenAuth auth.JWTHandler
 }
 
 // upgrader は HTTP から WebSocket へのアップグレード設定。
@@ -68,21 +62,18 @@ type IncomingMessage struct {
 func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	requestContext := request.Context()
 
-	// --- 1) 認証（roomTicket 必須） ---
-	if handler.Verifier == nil {
-		http.Error(writer, "server verifier not configured", http.StatusServiceUnavailable)
+	// --- 1) 認証 ---
+	cookie, err := request.Cookie("access_token")
+	if err != nil || cookie.Value == "" {
+		http.Error(writer, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	token := request.URL.Query().Get("token")
-	if token == "" {
-		http.Error(writer, "token is required", http.StatusBadRequest)
+	userID, err := handler.TokenAuth.VerifyAccessToken(cookie.Value)
+	if err != nil {
+		http.Error(writer, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	userID, roomName, err := handler.Verifier.VerifyRoomTicket(requestContext, token)
-	if err != nil || userID == "" || roomName == "" {
-		http.Error(writer, "invalid token", http.StatusUnauthorized)
-		return
-	}
+	roomName := "user:" + userID
 
 	// --- 2) Upgrade ---
 	wsConn, err := upgrader.Upgrade(writer, request, nil)
@@ -94,13 +85,13 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	// 接続インスタンス（送信用チャネル付き）
 	clientConn := &Client{
 		userID:      userID,
+		roomName:    roomName,
 		sendChannel: make(chan []byte, sendBufSize),
 	}
-	userRoom := "user:" + userID
 
 	// --- 3) Hub.Join（マッチング待機は個人ルームへ） ---
 	if handler.Hub != nil {
-		if err := handler.Hub.Join(requestContext, userRoom, clientConn); err != nil {
+		if err := handler.Hub.Join(requestContext, roomName, clientConn); err != nil {
 			if errors.Is(err, ErrRoomFull) {
 				_ = wsConn.WriteControl(
 					websocket.CloseMessage,
