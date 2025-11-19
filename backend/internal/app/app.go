@@ -45,7 +45,7 @@ func New(cfg *config.Config) (*Server, error) {
 	e.Use(echomiddleware.CSRFWithConfig(echomiddleware.CSRFConfig{
 		CookieName: "csrf_token",
 		CookiePath: "/",
-		CookieHTTPOnly: true,
+		CookieHTTPOnly: false,
 		TokenLookup: "header:X-CSRF-Token",
 	}))
 
