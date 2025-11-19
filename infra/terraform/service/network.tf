@@ -10,20 +10,10 @@ resource "google_compute_network" "vpc_network" {
   mtu                     = 1460
 }
 
-# VPCピアリング用のPrivateIPを確保
-# resource "google_compute_global_address" "private_ip_address" {
-#   name          = "private-ip-address"
-#   purpose       = "VPC_PEERING" # VPCピアリング用
-#   address_type  = "INTERNAL"    # 内部(private)IPアドレス
-#   prefix_length = 16
-#   network       = google_compute_network.vpc_network.id
-#   depends_on    = [google_compute_network.vpc_network]
-# }
-
 # CloudSQL用のIPアドレス確保
 resource "google_compute_global_address" "cloudsql_ip_range" {
-  name = "cloudsql-ip-range"
-  purpose = "VPC_PEERING"
+  name          = "cloudsql-ip-range"
+  purpose       = "VPC_PEERING"
   address_type  = "INTERNAL"
   prefix_length = 24
   network       = google_compute_network.vpc_network.id
@@ -33,8 +23,8 @@ resource "google_compute_global_address" "cloudsql_ip_range" {
 
 # MemoryStore用のIPアドレス確保
 resource "google_compute_global_address" "memorystore_ip_range" {
-  name = "memorystore-ip-range"
-  purpose = "VPC_PEERING"
+  name          = "memorystore-ip-range"
+  purpose       = "VPC_PEERING"
   address_type  = "INTERNAL"
   prefix_length = 24
   network       = google_compute_network.vpc_network.id
@@ -44,36 +34,14 @@ resource "google_compute_global_address" "memorystore_ip_range" {
 
 # VPCピアリング用PrivateIPとGoogleサービスのネットワークと接続する
 resource "google_service_networking_connection" "default" {
-  network                 = google_compute_network.vpc_network.id
-  service                 = "servicenetworking.googleapis.com"
+  network = google_compute_network.vpc_network.id
+  service = "servicenetworking.googleapis.com"
   reserved_peering_ranges = [
     google_compute_global_address.cloudsql_ip_range.name,
     google_compute_global_address.memorystore_ip_range.name
-    ]
-  depends_on              = [google_project_service.servicenetworking_api]
+  ]
+  depends_on = [google_project_service.servicenetworking_api]
 }
-
-# サブネット作成
-# resource "google_compute_subnetwork" "group1" {
-#   name          = "subnet-connector"
-#   ip_cidr_range = "10.0.1.0/28" # コネクタ用は/28
-#   region        = var.region
-#   network       = google_compute_network.vpc_network.id
-# }
-
-# resource "google_compute_subnetwork" "group2" {
-#   name          = "subnet-sql"
-#   ip_cidr_range = "10.0.2.0/24"
-#   region        = var.region
-#   network       = google_compute_network.vpc_network.id
-# }
-
-# resource "google_compute_subnetwork" "group3" {
-#   name          = "subnet-ms"
-#   ip_cidr_range = "10.0.3.0/24"
-#   region        = var.region
-#   network       = google_compute_network.vpc_network.id
-# }
 
 resource "google_compute_subnetwork" "group4" {
   name          = "vpc-connector"
@@ -166,30 +134,19 @@ resource "google_compute_url_map" "default" {
     # 特定のパターンに合致する場合の転送先
     # WebSocket用 
     path_rule {
-      paths   = ["/api/v1/ws/*"]
-      service = google_compute_backend_service.websocket_service.id
-    }
-
-    path_rule {
-      paths   = ["/ws/*"]
+      paths   = ["/api/v1/ws/*", "/ws/*"]
       service = google_compute_backend_service.websocket_service.id
     }
 
     # API用 
     path_rule {
-      paths   = ["/api/v1/*"]
+      paths   = ["/api/v1/*", "/auth/*", "/healthz", "/healthz/*"]
       service = google_compute_backend_service.api_service.id
     }
 
-    # テスト用
+    # js, css, jpegへのルーティングルール
     path_rule {
-      paths   = ["/healthz", "/healthz/*"]
-      service = google_compute_backend_service.api_service.id
-    }
-
-    # js, cssへのルーティングルール
-    path_rule {
-      paths = ["/assets/*"]
+      paths   = ["/assets/*"]
       service = google_compute_backend_bucket.static_bucket.id
     }
 
@@ -256,12 +213,6 @@ resource "google_compute_global_forwarding_rule" "http_rule" {
   ip_address            = google_compute_global_address.lb_ip.address
   load_balancing_scheme = "EXTERNAL"
 }
-
-# DNSゾーン作成
-# resource "google_dns_managed_zone" "zone" {
-#   name = "${var.project_id}-zone"
-#   dns_name = "keywars.jp."
-# }
 
 # Aレコード作成
 resource "google_dns_record_set" "A_record" {

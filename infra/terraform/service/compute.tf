@@ -217,10 +217,8 @@ resource "google_cloud_run_v2_job" "migration" {
                 secret_key_ref {
                   secret  = value_source.value.secret_key_ref.secret
                   version = value_source.value.secret_key_ref.version
-
                 }
               }
-
             }
           }
         }
@@ -322,9 +320,16 @@ resource "google_cloud_run_v2_job" "seed" {
 }
 
 # 認証なしでアクセスを許可する(公開する)
-resource "google_cloud_run_service_iam_member" "allow_unauthenticated" {
+resource "google_cloud_run_service_iam_member" "allow_unauthenticated_api" {
   location = google_cloud_run_v2_service.api.location
   service  = google_cloud_run_v2_service.api.name
+  role     = "roles/run.invoker" # 呼び出し許可
+  member   = "allUsers"
+}
+
+resource "google_cloud_run_service_iam_member" "allow_unauthenticated_websocket" {
+  location = google_cloud_run_v2_service.websocket.location
+  service  = google_cloud_run_v2_service.websocket.name
   role     = "roles/run.invoker" # 呼び出し許可
   member   = "allUsers"
 }
