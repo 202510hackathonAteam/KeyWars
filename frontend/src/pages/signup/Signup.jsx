@@ -1,13 +1,23 @@
 // src/assets/components/Signup/Signup.jsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import "./Signup.css";
 import LoginbackButton from "./components/LoginbackButton.jsx";
+import { getCookie } from "../../utils/cookieUtils.jsx";
+import { useNavigate } from "react-router-dom";
 
 export default function Signup() {
   const [userName, setUserName] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [error, setError] = useState("");
+  const navigate = useNavigate();
+
+  useEffect(() => {
+  const fetchCsrf = async () => {
+    await fetch("/healthz", { credentials: "include" });
+    };
+    fetchCsrf();
+  }, []);
 
   const handleSignup = async () => {
     setError("");
@@ -23,28 +33,33 @@ export default function Signup() {
     }
 
     try {
+      const csrfToken = getCookie("csrf_token");
       const response = await fetch("/auth/signup", {
         method: "POST",
         credentials: "include",           // ← Cookie 認証の要
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json",
+        ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}), 
+      },
         body: JSON.stringify({
-          player_name: userName,
+          user_name: userName,
           password: password,
           confirm_password: passwordConfirm,
         }),
       });
 
-      if (!response.ok) {
-        if (response.status === 409) {
-          setError("ユーザー名が既に使われています。");
-          return;
-        }
-        throw new Error("サーバーエラー");
-      }
+        // ここが重要：エラー時も JSON を読む
+      const data = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      setError(data?.message || "サーバーエラーが発生しました。");
+      return;
+    }
       // Cookie に token がセットされるので React 側で token を保存しない
       localStorage.setItem("user_name", userName.trim());
 
-      window.location.href = "/home";
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      navigate("/");
+      // window.location.href = "/";
     } catch (err) {
       setError("通信エラーが発生しました。");
       console.error(err);
@@ -92,7 +107,7 @@ export default function Signup() {
             "
           />
           <input 
-          type="text" 
+          type="password"
           placeholder="PASSWORD" 
           maxLength="12" 
           required
@@ -110,7 +125,7 @@ export default function Signup() {
             "
            />
           <input
-            type="text"
+            type="password"
             placeholder="PASSWORD CONFIRM"
             maxLength="12"
             required

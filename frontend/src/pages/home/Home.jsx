@@ -16,7 +16,7 @@ export default function Home() {
     // WebSocketオブジェクト生成し、接続
     const ws = new WebSocket(`${wsUrl}?user_id=${user_id}`);
     // 本番環境でhttpsが使えるなら、以下の方がいい
-    // const ws = new WebSocket(`wss://localhost:8080/ws?user_id=${user_id}`);
+    // const ws = new WebSocket(`wss://localhost:8080/api/v1/ws`);
 
     ws.onopen = () => {
       // 接続確立すると、以下のメッセージ

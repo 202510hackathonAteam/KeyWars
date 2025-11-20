@@ -1,13 +1,7 @@
 import React, { useState, useEffect } from "react";
 import "./Login.css";
+import { getCookie } from "../../utils/cookieUtils.jsx";
 
-// Cookie から任意の key の値を取得する関数
-function getCookie(name) {
-  const value = `; ${document.cookie}`;
-  const parts = value.split(`; ${name}=`);
-  if (parts.length === 2) return parts.pop().split(";").shift();
-  return null;
-}
 
 // loginファンクション
 export default function Login() {
