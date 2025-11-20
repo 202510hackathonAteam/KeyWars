@@ -8,6 +8,7 @@
 | 設定項目 | 本番値の例 | 説明 |
 |-----------|-------------|------|
 | `CookieConfig.Domain` | `"example.com"` | 配置先ドメイン名 |
+| `CookieConfig.SameSite` | `http.SameSiteStrictMode` | 同一サイト内のみで Cookie を送信する設定 |
 | `CookieConfig.Secure` | `true` | HTTPS通信専用Cookieにする（セキュリティ必須） |
 
 > 注意: `Secure=false` のままの場合、HTTP通信でもトークンが送信されるため危険です。
