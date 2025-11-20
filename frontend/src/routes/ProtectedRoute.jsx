@@ -1,35 +1,33 @@
-// src/routes/ProtectedRoute.jsx
-import { Navigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
+import { useState, useEffect } from "react";
 
 export default function ProtectedRoute({ children }) {
   const [isAuth, setIsAuth] = useState(null);
+  const location = useLocation();
+
+  // ログイン or サインアップページでは auth チェックしない
+  if (location.pathname === "/login" || location.pathname === "/signup") {
+    return children;
+  }
 
   useEffect(() => {
-    const checkAuth = async () => {
+    const check = async () => {
       try {
-        const res = await fetch("/auth/me", {
-          method: "GET",
-          credentials: "include", // Cookie が必須
+        const res = await fetch("/auth/check", {
+          method: "POST",
+          credentials: "include",
         });
 
-        if (res.ok) {
-          setIsAuth(true);
-        } else {
-          setIsAuth(false);
-        }
-      } catch (err) {
+        setIsAuth(res.ok);
+      } catch {
         setIsAuth(false);
       }
     };
 
-    checkAuth();
+    check();
   }, []);
 
-  // 認証状態が不明の間はローディング
   if (isAuth === null) return <div>Loading...</div>;
-
-  // 未認証なら login に飛ばす
   if (!isAuth) return <Navigate to="/login" replace />;
 
   return children;
