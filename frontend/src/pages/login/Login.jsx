@@ -48,6 +48,7 @@ export default function Login() {
 
      
       localStorage.setItem("user_name", userName.trim());
+      localStorage.setItem("justLoggedIn", "true");
       window.location.href = "/";
     } catch (error) {
       alert("ログインに失敗しました");

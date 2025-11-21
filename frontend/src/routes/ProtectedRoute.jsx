@@ -1,5 +1,5 @@
 import { Navigate, useLocation } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 function getCookie(name) {
   const value = `; ${document.cookie}`;
@@ -12,12 +12,21 @@ export default function ProtectedRoute({ children }) {
   const [isAuth, setIsAuth] = useState(null);
   const location = useLocation();
 
+  const justLoggedInRef = useRef(localStorage.getItem("justLoggedIn") === "true");
+
   // ログイン or サインアップでは auth チェックしない
   if (location.pathname === "/login" || location.pathname === "/signup") {
     return children;
   }
 
   useEffect(() => {
+        // ログイン直後はチェックをスキップ
+    if (justLoggedInRef.current) {
+      setIsAuth(true);
+      localStorage.removeItem("justLoggedIn");
+      return;
+    }
+
     const check = async () => {
       try {
         const csrfToken = getCookie("csrf_token");

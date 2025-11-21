@@ -3,24 +3,37 @@ import React, { useState, useEffect } from "react";
 import "./Signup.css";
 import LoginbackButton from "./components/LoginbackButton.jsx";
 import { getCookie } from "../../utils/cookieUtils.jsx";
-import { useNavigate } from "react-router-dom";
+
 
 export default function Signup() {
   const [userName, setUserName] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [error, setError] = useState("");
-  const navigate = useNavigate();
+  const [csrfToken, setCsrfToken] =useState("")
 
   useEffect(() => {
-  const fetchCsrf = async () => {
-    await fetch("/healthz", { credentials: "include" });
-    };
-    fetchCsrf();
+      const fetchCsrf = async () => {
+        try {
+          await fetch("/healthz", {
+            method: "GET",
+            credentials: "include",  // ← Cookie を受け取るために必要
+          });
+  
+          // /healthz のレスポンスで Set-Cookie された csrf_token を取得
+          const token = getCookie("csrf_token");
+          console.log("Retrieved CSRF Token from cookie:", token);
+          setCsrfToken(token);
+        } catch (error) {
+          console.error("failed to fetch CSRF:", error);
+        }
+      };
+      fetchCsrf();
   }, []);
 
-  const handleSignup = async () => {
-    setError("");
+  const handleSignup = async (e) => {
+    console.log("Signup CALLED");
+    e.preventDefault();
 
     // 入力チェック
     if (!userName || !password || !passwordConfirm) {
@@ -33,39 +46,39 @@ export default function Signup() {
     }
 
     try {
-      const csrfToken = getCookie("csrf_token");
-      const response = await fetch("/auth/signup", {
+      const signupresponse = await fetch("/auth/signup",{
         method: "POST",
-        credentials: "include",           // ← Cookie 認証の要
         headers: { "Content-Type": "application/json",
-        ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}), 
-      },
+          ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+        },
         body: JSON.stringify({
-          user_name: userName,
-          password: password,
-          confirm_password: passwordConfirm,
-        }),
+        user_name: userName,
+        password: password,
+        confirm_password: passwordConfirm,   // ← これが必須！！
+      }),
+        credentials: "include", 
       });
 
-        // ここが重要：エラー時も JSON を読む
-      const data = await response.json().catch(() => null);
+      // ここが重要：エラー時も JSON を読む
+      const data = await signupresponse.json().catch(() => null);
 
-    if (!response.ok) {
-      setError(data?.message || "サーバーエラーが発生しました。");
-      return;
-    }
+      if (!signupresponse.ok) {
+        setError(data?.message || "サーバーエラーが発生しました。");
+        return;
+      }
+
       // Cookie に token がセットされるので React 側で token を保存しない
       localStorage.setItem("user_name", userName.trim());
+      localStorage.setItem("justLoggedIn", "true");
+      window.location.href = "/";
 
-      await new Promise((resolve) => setTimeout(resolve, 200));
-      navigate("/");
-      // window.location.href = "/";
     } catch (err) {
       setError("通信エラーが発生しました。");
       console.error(err);
     }
-  };
 
+    
+  };
 
   return (
       <div className="
@@ -85,7 +98,7 @@ export default function Signup() {
         <div className="gate"></div>
 
         <form
-          onSubmit={(e) => e.preventDefault()} 
+          onSubmit={handleSignup} 
           className="flex flex-col items-center space-y-[clamp(0.5rem,2vh,1.5rem)] w-full"
         >
           <input 
@@ -148,8 +161,7 @@ export default function Signup() {
               </p>
             )}
           <button 
-          type="button"
-          onClick={handleSignup} 
+          type="submit"
           className="
                 min-w-[6rem] max-w-[10rem]
                 px-[clamp(0.4rem,0.5vw,0.5rem)]
