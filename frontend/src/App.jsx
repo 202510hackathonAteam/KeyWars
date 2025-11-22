@@ -1,15 +1,16 @@
 // src/App.jsx
 import AppRoutes from "./routes";
+import { AuthProvider } from "./context/AuthContext";
 
 console.log("ENV:", import.meta.env.VITE_API_URL);
 
 function App() {
-
   return (
-    
-    <div>
-      <AppRoutes />
-    </div>
+    <AuthProvider>
+      <div>
+        <AppRoutes />
+      </div>
+    </AuthProvider>
   );
 }
 
