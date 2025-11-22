@@ -32,7 +32,7 @@ export function WebSocketProvider({ children }) {
 
     socket.onopen = () => {
       console.log("WS: connected");
-      socket.send(JSON.stringify({ type: "hello" }));
+      socket.send(JSON.stringify({ type: "queue.join" }));
       setConnected(true);
       clearTimeout(reconnectTimer.current);
     };
@@ -55,7 +55,7 @@ export function WebSocketProvider({ children }) {
       console.log("WS Message:", event.data);
       const data = JSON.parse(event.data);
 
-      if (data.type === "match-found") {
+      if (data.type === "match.found") {
         navigate("/battle");
       }
     };
