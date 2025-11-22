@@ -1,0 +1,18 @@
+# ベースイメージ：軽量な Alpine 上の Go 環境を使用
+FROM golang:1.25.2-alpine3.22 AS builder
+
+# 作業ディレクトリを設定
+WORKDIR /app
+
+# モジュール依存関係を先にダウンロード（キャッシュを有効活用）
+COPY backend/go.mod backend/go.sum* ./
+RUN go mod download
+
+# ソースコードをコンテナ内にコピー
+COPY backend/ .
+
+# ビルド
+RUN go build -o main ./cmd/server
+
+# アプリ起動コマンド
+CMD ["./main"]
