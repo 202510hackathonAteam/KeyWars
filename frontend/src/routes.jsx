@@ -6,34 +6,37 @@ import Signup from "./pages/signup/Signup";
 import Battle from "./pages/battle/Battle";
 import Result from "./pages/result/Result";
 import ProtectedRoute from "./routes/ProtectedRoute";
+import { WebSocketProvider } from "./context/WebsocketContext";
 
 export default function AppRoutes() {
   return (
     <BrowserRouter>
-      <Routes>
-        {/* ログイン不要 */}
-        <Route path="/login" element={<Login />} />
-        <Route path="/signup" element={<Signup />} />
+      <WebSocketProvider>
+        <Routes>
+          {/* ログイン不要 */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
 
-        {/* ログイン必須ページ */}
-        <Route path="/" element={
-          <ProtectedRoute>
-            <Home />
-          </ProtectedRoute>
-        } />
+          {/* ログイン必須ページ */}
+          <Route path="/" element={
+            <ProtectedRoute>
+              <Home />
+            </ProtectedRoute>
+          } />
 
-        <Route path="/battle" element={
-          <ProtectedRoute>
-            <Battle />
-          </ProtectedRoute>
-        } />
+          <Route path="/battle" element={
+            <ProtectedRoute>
+              <Battle />
+            </ProtectedRoute>
+          } />
 
-        <Route path="/result" element={
-          <ProtectedRoute>
-            <Result />
-          </ProtectedRoute>
-        } />
-      </Routes>
+          <Route path="/result" element={
+            <ProtectedRoute>
+              <Result />
+            </ProtectedRoute>
+          } />
+        </Routes>
+      </WebSocketProvider>
     </BrowserRouter>
   );
 }

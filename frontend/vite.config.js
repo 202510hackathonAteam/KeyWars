@@ -27,11 +27,17 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+
+      "/api/v1/ws": {
+        target: "http://backend:8080",
+        ws: true,       // ❗必須
+        changeOrigin: true
+      }
     },
   },
 
 
   // 以下追加 //
   build: { outDir: 'dist' }, // ビルドしたファイルを出力するディレクトリ名
-  base: './', // ビルド後のHTMLからの参照を相対パスにする
+  base: './', // ビルド後のHTMLからの参照を相対パスにする設定
 })
