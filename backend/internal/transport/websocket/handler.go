@@ -91,7 +91,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	// 接続インスタンス（送信用チャネル付き）
 	clientConn := &Client{
 		userID:      userID,
-		roomName:    roomName,
+		roomName:    "",
 		sendChannel: make(chan []byte, sendBufSize),
 	}
 
