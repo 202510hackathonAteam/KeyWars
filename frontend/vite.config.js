@@ -12,6 +12,11 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 5173,
     proxy: {
+      "^/api/v1/ws$": {
+        target: "http://backend:8080",
+        ws: true,       // ❗必須
+        changeOrigin: true
+      },
       "/healthz": {
         target: "http://backend:8080",
         changeOrigin: true,
@@ -28,11 +33,7 @@ export default defineConfig({
         secure: false,
       },
 
-      "/api/v1/ws": {
-        target: "http://backend:8080",
-        ws: true,       // ❗必須
-        changeOrigin: true
-      }
+
     },
   },
 
