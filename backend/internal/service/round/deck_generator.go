@@ -1,4 +1,4 @@
-package realtime
+package round
 
 import (
 	"context"
@@ -25,12 +25,9 @@ func NewDeckGenerator(dbRepo repository.PromptRepository, redisClient *redis.Cli
 
 // DeckItem は Redis に保存する出題情報
 type DeckItem struct {
-	PromptID   int    `json:"prompt_id"`
-	Surface    string `json:"surface"`
-	Reading    string `json:"reading"`
-	Difficulty int    `json:"diff"`
-	CharCount  int    `json:"char_count"`
-	LimitMs    int    `json:"limit_ms"`
+	PromptTextJa string `json:"prompt_text_ja"`
+	TargetRomaji string `json:"target_romaji"`
+	LimitMs    	 int    `json:"limit_ms"`
 }
 
 // GenerateAndSaveDeck は、指定 matchID のデッキを作成して Redis に保存する。
@@ -45,12 +42,9 @@ func (g *DeckGenerator) GenerateAndSaveDeck(ctx context.Context, matchID string)
 
 	for _, p := range prompts {
 		item := DeckItem{
-			PromptID:   p.ID,
-			Surface:    p.PromptTextJa,
-			Reading:    p.TargetRomaji,
-			Difficulty: p.DifficultyLevel,
-			CharCount:  len([]rune(p.TargetRomaji)),
-			LimitMs:    p.TimeLimitMs,
+			PromptTextJa:    p.PromptTextJa,
+			TargetRomaji:    p.TargetRomaji,
+			LimitMs:    		 p.TimeLimitMs,
 		}
 		jsonBytes, _ := json.Marshal(item)
 		pipeline.RPush(ctx, key, jsonBytes)

@@ -16,7 +16,6 @@ type Repositories struct {
 // Services は、service 群の集約。
 type Services struct {
 	Auth  AuthService
-	Round *RoundService
 	// 下に他のサービスを追加していく
 }
 
@@ -24,7 +23,6 @@ type Services struct {
 func NewServices(repos Repositories, jwtHandler *auth.JWTHandler) Services {
 	return Services{
 		Auth:  NewAuthService(repos.User, jwtHandler),
-		Round: NewRoundService(repos.Round),
 		// 下に他のサービスを追加していく
 	}
 }
