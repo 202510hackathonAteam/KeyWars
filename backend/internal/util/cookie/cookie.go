@@ -13,14 +13,14 @@ import (
 func newCookie(name, value string, maxAge time.Duration) *http.Cookie {
 	cookieConfig := config.LoadCookieConfig()
 	return &http.Cookie{
-		Name: name,
-		Value: value,
-		Path: "/",
-		Domain: cookieConfig.Domain,
-		SameSite: http.SameSiteStrictMode,
-		MaxAge: int(maxAge.Seconds()),
+		Name:     name,
+		Value:    value,
+		Path:     "/",
+		Domain:   cookieConfig.Domain,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(maxAge.Seconds()),
 		HttpOnly: true,
-		Secure: cookieConfig.Secure,
+		Secure:   cookieConfig.Secure,
 	}
 }
 
@@ -68,14 +68,14 @@ func SetTokens(
 func ClearAccessToken(c echo.Context) {
 	cookieConfig := config.LoadCookieConfig()
 	c.SetCookie(&http.Cookie{
-		Name: "access_token",
-		Value: "",
-		Path: "/",
-		Domain: cookieConfig.Domain,
-		SameSite: http.SameSiteStrictMode,
-		MaxAge: -1,
+		Name:     "access_token",
+		Value:    "",
+		Path:     "/",
+		Domain:   cookieConfig.Domain,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
 		HttpOnly: true,
-		Secure: cookieConfig.Secure,
+		Secure:   cookieConfig.Secure,
 	})
 }
 
@@ -83,14 +83,14 @@ func ClearAccessToken(c echo.Context) {
 func ClearRefreshToken(c echo.Context) {
 	cookieConfig := config.LoadCookieConfig()
 	c.SetCookie(&http.Cookie{
-		Name: "refresh_token",
-		Value: "",
-		Path: "/",
-		Domain: cookieConfig.Domain,
-		SameSite: http.SameSiteStrictMode,
-		MaxAge: -1,
+		Name:     "refresh_token",
+		Value:    "",
+		Path:     "/",
+		Domain:   cookieConfig.Domain,
+		SameSite: http.SameSiteNoneMode,
+		MaxAge:   -1,
 		HttpOnly: true,
-		Secure: cookieConfig.Secure,
+		Secure:   cookieConfig.Secure,
 	})
 }
 
