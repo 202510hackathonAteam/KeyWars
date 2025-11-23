@@ -149,7 +149,7 @@ func (service *MatchRealtimeService) OnMessage(
 
 	// --- ラウンド完了 ---
 	case "round.finish":
-		var payload websocket.RoundEndPayload
+		var payload websocket.PlayerAnswerFinishedPayload
 		if err := json.Unmarshal(messagePayload, &payload); err != nil {
 			return websocket.NewErrorPayload(), nil
 		}
@@ -190,7 +190,7 @@ func (service *MatchRealtimeService) OnMessage(
 
 	// --- 時間切れ ---
 	case "round.timeout":
-		var payload websocket.RoundEndPayload
+		var payload websocket.PlayerAnswerFinishedPayload
 		if err := json.Unmarshal(messagePayload, &payload); err != nil {
 			return websocket.NewErrorPayload(), nil
 		}
