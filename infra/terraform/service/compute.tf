@@ -134,25 +134,6 @@ module "cloud_run_websocket" {
 #----------------------------
 # CloudRunJob
 #----------------------------
-
-# SecretManagerから取得する環境変数
-locals {
-  secret_env_vars_for_job = [
-    {
-      name = "MYSQL_PASSWORD"
-      secret_id  = google_secret_manager_secret.mysql_user_password.secret_id
-      version = "latest"
-
-    },
-    {
-      name = "MYSQL_ROOT_PASSWORD"
-      secret_id  = google_secret_manager_secret.mysql_root_password.secret_id
-      version = "latest"
-
-    },
-  ]
-}
-
 # マイグレーション用CloudRunJob
 module "cloud_run_migration" {
   source = "./modules/cloudrun_job"
@@ -164,7 +145,8 @@ module "cloud_run_migration" {
   image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.ar-repository_name}/migration-image:latest"
 
   mysql_env_vars  = local.mysql_env_vars
-  secret_env_vars = local.secret_env_vars_for_job
+  redis_env_vars = local.redis_env_vars
+  secret_env_vars = local.secret_env_vars
 
   volume_mounts = [{
     name       = "cloudsql"
@@ -197,7 +179,8 @@ module "cloud_run_seed" {
   image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.ar-repository_name}/seed-image:latest"
 
   mysql_env_vars  = local.mysql_env_vars
-  secret_env_vars = local.secret_env_vars_for_job
+  redis_env_vars = local.redis_env_vars
+  secret_env_vars = local.secret_env_vars
 
   volume_mounts = [{
     name       = "cloudsql"
@@ -233,4 +216,25 @@ resource "google_cloud_run_service_iam_member" "allow_unauthenticated_websocket"
   role     = "roles/run.invoker" # 呼び出し許可
   member   = "allUsers"
   depends_on = [ module.cloud_run_migration ]
+}
+
+
+# 踏み台GCE
+resource "google_compute_instance" "bastion" {
+  name         = "bastion-vm"
+  machine_type = "e2-micro"
+  zone         = "us-central1-a" # 無料枠利用のためアイオワ
+  tags = ["bastion-tag"]
+
+  boot_disk {
+    initialize_params {
+      image = "projects/ubuntu-os-cloud/global/images/ubuntu-minimal-2510-questing-amd64-v20251113"
+      size  = 10
+    }
+  }
+
+  network_interface {
+    network = google_compute_network.vpc_network.name
+    subnetwork  = google_compute_subnetwork.bastion.name
+  }
 }

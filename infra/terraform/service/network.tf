@@ -5,7 +5,7 @@
 
 # VPC作成
 resource "google_compute_network" "vpc_network" {
-  name                    = "${var.project_id}-vpc"
+  name                    = "${var.project_name}-vpc"
   auto_create_subnetworks = false
   mtu                     = 1460
 }
@@ -40,13 +40,27 @@ resource "google_service_networking_connection" "default" {
     google_compute_global_address.cloudsql_ip_range.name,
     google_compute_global_address.memorystore_ip_range.name
   ]
-  depends_on = [google_project_service.servicenetworking_api]
+  depends_on = [
+    google_project_service.servicenetworking_api,
+    google_compute_network.vpc_network,
+    google_compute_global_address.cloudsql_ip_range,
+    google_compute_global_address.memorystore_ip_range,
+  ]
 }
 
-resource "google_compute_subnetwork" "group4" {
+# Direct VPC Egress用サブネット
+resource "google_compute_subnetwork" "vpc_connector" {
   name          = "vpc-connector"
-  ip_cidr_range = "10.0.16.0/20" # Direct VPC Egressようなので広め
+  ip_cidr_range = "10.0.16.0/20" # Direct VPC Egress用なので広め
   region        = var.region
+  network       = google_compute_network.vpc_network.id
+}
+
+# 踏み台GCE用サブネット
+resource "google_compute_subnetwork" "bastion" {
+  name          = "bastion"
+  ip_cidr_range = "10.0.2.0/28" # 踏み台用なので狭め
+  region        = "us-central1" # 無料枠適用のためアイオワリージョン
   network       = google_compute_network.vpc_network.id
 }
 

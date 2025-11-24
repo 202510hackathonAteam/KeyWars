@@ -1,3 +1,17 @@
+# SSH用ファイアーウォール
+resource "google_compute_firewall" "ssh" {
+  name = "ssh-fw"
+  network = google_compute_network.vpc_network.name
+
+  direction = "INGRESS" # 内向き
+  allow {
+    protocol = "tcp"
+    ports = ["22"] # SSHのポートを許可
+  }  
+
+  target_tags = ["bastion-tag"] # 対象のタグ
+  source_ranges = ["35.235.240.0/20"] # IAPが使用する範囲のみ許可
+}
 
 ### CloudSQLのSecret作成
 # MySQLユーザーパスワードのsecret作成
