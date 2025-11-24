@@ -1,11 +1,126 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useContext } from "react";
 // import "./Battle.css";
 import { useNavigate } from "react-router-dom";
+import { checkTyping } from "../../utils/typingLogic"; 
+import { WebSocketContext } from "../../context/WebsocketContext";
 
+function renderHighlightedRomaji(target, progress) {
+  return (
+    <div className="flex gap-1 text-xl">
+      {target.split("").map((char, index) => {
+        const isTyped = index < progress;
+
+        return (
+          <span
+            key={index}
+            className={
+              isTyped
+                ? "text-[#3ce27a] font-bold drop-shadow-[0_0_5px_#3ce27a]"
+                : "text-white/40"
+            }
+          >
+            {char}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function GamePage() {
   const navigate = useNavigate();
   const inputRef = useRef(null); // ← 入力欄参照を作成
+
+  // typing用 state
+  const [input, setInput] = useState("");
+  const [progress, setProgress] = useState(0);
+  const [missCount, setMissCount] = useState(0);
+  const [targetRomaji, setTargetRomaji] = useState("");
+  const [promptText, setPromptText] = useState(""); 
+  const [limitMs, setLimitMs] = useState(60000);
+  const [timeLeft, setTimeLeft] = useState(60);
+
+  const [playerHp, setPlayerHp] = useState(100);
+  const [enemyHp, setEnemyHp] = useState(100);
+
+
+  const { wsRef, matchStartPayload } = useContext(WebSocketContext);
+
+  useEffect(() => {
+  if (!matchStartPayload) return;
+
+  console.log("🎯 match.start in GamePage:", matchStartPayload);
+
+  setTargetRomaji(matchStartPayload.prompt.target_romaji);
+  setPromptText(matchStartPayload.prompt.prompt_text_ja);
+  setLimitMs(matchStartPayload.prompt.limit_ms);
+
+  setTimeLeft(Math.floor(matchStartPayload.prompt.limit_ms / 1000));
+  inputRef.current?.focus();
+}, [matchStartPayload]);
+
+
+  const sendAnswerFinish = () => {
+  if (!wsRef.current) {
+    console.warn("WS not connected");
+    return;
+  }
+  if (!matchStartPayload) {
+    console.warn("match.start payload missing");
+    return;
+  }
+
+  const msg = {
+    type: "answer.finish",
+    match_id: matchStartPayload.match_id,
+    miss_count: missCount,
+  };
+
+  console.log("🔥 SEND answer.finish:", msg);
+  wsRef.current.send(JSON.stringify(msg));
+};
+
+const sendAnswerTimeout = () => {
+  if (!wsRef.current) {
+    console.warn("WS not connected");
+    return;
+  }
+  if (!matchStartPayload) {
+    console.warn("match.start payload missing");
+    return;
+  }
+
+  const msg = {
+    type: "answer.timeout",
+    match_id: matchStartPayload.match_id,
+    miss_count: missCount,
+  };
+
+  console.log("🔥 SEND answer.timeout:", msg);
+  wsRef.current.send(JSON.stringify(msg));
+};
+
+
+    // タイピング判定ロジック
+  const handleTyping = (e) => {
+    const val = e.target.value;
+    setInput(val);
+
+    const { newProgress, isCorrect, isFinish, miss } =
+      checkTyping(val, targetRomaji, progress);
+
+    if (!isCorrect) {
+      setMissCount((prev) => prev + miss);
+      return;
+    }
+
+    setProgress(newProgress);
+
+    if (isFinish) {
+      sendAnswerFinish(); // WebSocket送信（後で作る）
+    }
+  };
+
   const [timeLeft, setTimeLeft] = useState(60);
 
   const finishBattle = (didWin) => {
@@ -23,6 +138,7 @@ export default function GamePage() {
     setTimeLeft((prev) => {
       if (prev <= 1) {
         clearInterval(timer);
+        sendAnswerTimeout();  // ← 追加！
         finishBattle(false); // 0になったら終了処理へ
         return 0;
       }
@@ -65,7 +181,7 @@ export default function GamePage() {
                 <div className="h-[16px] bg-neutral-800 rounded-md overflow-hidden">
                   <div
                     className="h-full w-full bg-gradient-to-r from-[#3ce27a] to-[#afffb0] transition-all duration-300"
-                    style={{ width: "100%" }}
+                    style={{ width: `${playerHp}%` }}
                   ></div>
                 </div>
                 <div className="text-[10px] mt-1 opacity-90">
@@ -133,7 +249,8 @@ export default function GamePage() {
         <div className="bg-gradient-to-b from-[#260707] to-[#0c0404] p-3 rounded-md border border-white/5 flex items-center justify-center min-h-[60px] text-[clamp(1.2rem,2vw,7rem)]">
           <div>
             <span>Type "</span>
-            <span className="font-bold text-[#3ce27a]">example</span>
+            {renderHighlightedRomaji(targetRomaji, progress)}
+            {/* <span className="font-bold text-[#3ce27a]">{promptText}</span> */}
             <span>"</span>
           </div>
         </div>
@@ -141,6 +258,8 @@ export default function GamePage() {
         <input
           ref={inputRef}
           type="text"
+          value={input}
+          onChange={handleTyping}
           placeholder="Enterで攻撃開始　ここにタイプ"
           className="w-full p-[3vh] rounded-lg border-2 border-white/5 bg-transparent text-white font-['Press_Start_2P'] text-[] focus:outline-none focus:border-[#ffcc00] focus:shadow-[0_0_10px_#ffaa00]"
         />
@@ -148,7 +267,7 @@ export default function GamePage() {
         <div className="grid gap-2 mt-2">
           <div className="bg-[#24140f] p-3 rounded-lg text-center">
             <div className="text-[10px] opacity-80">TypeMiss（通算）</div>
-            <div className="text-[18px]">0</div>
+            <div className="text-[18px]">{missCount}</div>
           </div>
         </div>
 

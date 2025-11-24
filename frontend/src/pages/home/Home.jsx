@@ -1,6 +1,7 @@
 // src/pages/home/Home.jsx
-import React, { useEffect, useRef, useState, useContext } from "react";
+import React, { useEffect, useRef, useState, useContext, Component } from "react";
 import { WebSocketContext } from "../../context/WebsocketContext";
+import LogoutButton from "../../components/LogoutButton";
 // import "./Home.css";
 
 export default function Home() {
@@ -70,6 +71,7 @@ export default function Home() {
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gradient-radial from-neutral-900 to-black text-white font-['Press_Start_2P'] relative overflow-hidden">
+       <LogoutButton/>
       {/* 背景グラデーション */}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,0,0,0.2),transparent_70%),radial-gradient(circle_at_bottom,rgba(255,165,0,0.15),transparent_80%),radial-gradient(circle_at_top,rgba(0,0,255,0.15),transparent_70%)] animate-pulse z-0 pointer-events-none" ></div>
               <div className="home-body z-10 text-center">

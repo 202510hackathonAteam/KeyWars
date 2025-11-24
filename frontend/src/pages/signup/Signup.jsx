@@ -1,7 +1,7 @@
 // src/assets/components/Signup/Signup.jsx
 import React, { useState, useEffect } from "react";
 import "./Signup.css";
-import LoginbackButton from "./components/LoginbackButton.jsx";
+import LoginbackButton from "../../components/LoginbackButton.jsx";
 import { getCookie } from "../../utils/cookieUtils.jsx";
 
 

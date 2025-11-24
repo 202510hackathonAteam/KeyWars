@@ -10,6 +10,7 @@ export function WebSocketProvider({ children }) {
   const [connected, setConnected] = useState(false);
   const reconnectTimer = useRef(null);
   const navigate = useNavigate();
+  const [matchStartPayload, setMatchStartPayload] = useState(null);
 
   const getUserId = () => localStorage.getItem("user_name");
 
@@ -54,11 +55,27 @@ export function WebSocketProvider({ children }) {
     socket.onmessage = (event) => {
       console.log("WS Message:", event.data);
       const data = JSON.parse(event.data);
+      switch (data.type) {
+          case "match.start":
+            console.log("🔥 match.start received:", data);
 
-      if (data.type === "match.found") {
-        navigate("/battle");
-      }
-    };
+            // context に保存（GamePage がこれを読む）
+            setMatchStartPayload(data);
+            break;
+
+          case "match.found":
+            // 試合発見 → battle 画面へ遷移
+            navigate("/battle");
+            break;
+
+          case "match.end":
+            console.log("試合終了:", data);
+            break;
+
+          default:
+            console.log("WS message:", data);
+        }
+      };
 
     // setWs(socket);
 
@@ -73,7 +90,14 @@ export function WebSocketProvider({ children }) {
 
   return (
     <WebSocketContext.Provider
-      value={{ ws: wsRef.current, connected, connect, disconnect }}
+      // value={{ ws: wsRef.current, connected, connect, disconnect, matchStartPayload, }}
+      value={{
+        wsRef,            // ← これが必要！
+        connected,
+        connect,
+        disconnect,
+        matchStartPayload,
+      }}
     >
       {children}
     </WebSocketContext.Provider>
