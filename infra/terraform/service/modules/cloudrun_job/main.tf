@@ -18,6 +18,14 @@ resource "google_cloud_run_v2_job" "default" {
             value = env.value.value
           }
         }
+        # Redis用環境変数を展開
+        dynamic "env" {
+          for_each = var.redis_env_vars
+          content {
+            name  = env.value.name
+            value = env.value.value
+          }
+        }
 
         # SecretManagerからの環境変数を展開
         dynamic "env" {

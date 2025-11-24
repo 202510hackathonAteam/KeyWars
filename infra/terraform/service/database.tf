@@ -8,7 +8,7 @@ resource "google_sql_database_instance" "mysql" {
   name             = "mysql"
   region           = var.region
   database_version = "MYSQL_8_0"
-  root_password    = var.mysql_root_password # あとで再設定
+  root_password    = var.mysql_root_password # applyの最後で再設定
   settings {
     tier = "db-f1-micro"
     ip_configuration {
@@ -40,7 +40,7 @@ resource "google_sql_database" "mysql_db" {
 # ユーザー作成
 resource "google_sql_user" "mysql_user" {
   name     = var.mysql_user
-  password = var.mysql_user_password
+  password = var.mysql_user_password # applyの最後で再設定
   instance = google_sql_database_instance.mysql.name
 }
 

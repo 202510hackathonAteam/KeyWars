@@ -32,6 +32,14 @@ variable "mysql_env_vars" {
   description = "MySQL environment variables from tfvars"
 }
 
+variable "redis_env_vars" {
+  type = list(object({
+    name  = string
+    value = string
+  }))
+  description = "Redis environment variables from tfvars"
+}
+
 variable "secret_env_vars" {
   type = list(object({
     name         = string

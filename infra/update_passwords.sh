@@ -2,27 +2,27 @@
 set -e
 
 # 環境変数から取得
-PROJECT_ID=${PROJECT_ID}
-REGION=${REGION}
-SQL_INSTANCE=${SQL_INSTANCE}
-SQL_USER=${SQL_USER}
-CLOUD_RUN_SERVICES=("${CLOUD_RUN_SERVICE_API}" "${CLOUD_RUN_SERVICE_WS}")
-CLOUD_RUN_JOBS=("${CLOUD_RUN_JOB_MIGRATION}" "${CLOUD_RUN_JOB_SEED}")
+PROJECT_ID="keywars-477702"
+REGION="asia-northeast1"
+SQL_INSTANCE="mysql"
+SQL_USER="user"
+CLOUD_RUN_SERVICES=("cloudrun-api" "cloudrun-websocket")
+CLOUD_RUN_JOBS=("cloudrun-migration" "cloudrun-seed")
 
 # Secret名を指定
-MYSQL_USER_PASSWORD_SECRET=${MYSQL_USER_PASSWORD_SECRET}
-MYSQL_ROOT_PASSWORD_SECRET=${MYSQL_ROOT_PASSWORD_SECRET}
+MYSQL_USER_PASSWORD_SECRET="mysql-user-password"
+MYSQL_ROOT_PASSWORD_SECRET="mysql-root-password"
 
 
 # MySQLユーザーパスワードを設定
 update_mysql_user_password() {
     echo "[1/3]MySQL user password update"
-    # 新規パスワード生成
+    # 新規パスワード生成、SecretManager更新 
     echo -n $(openssl rand -base64 16) | \
         gcloud secrets versions add $MYSQL_USER_PASSWORD_SECRET \
             --project=$PROJECT_ID \
             --data-file=-
-    # SecretManager更新    
+    # SecretManagerから取り出し    
     MYSQL_USER_PASSWORD=$(gcloud secrets versions access latest \
     --secret=$MYSQL_USER_PASSWORD_SECRET \
     )
