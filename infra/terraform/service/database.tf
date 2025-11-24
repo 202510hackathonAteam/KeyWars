@@ -1,6 +1,6 @@
 
 #----------------------------
-# Database
+# CloudSQL
 #----------------------------
 
 # CloudSQL
@@ -43,6 +43,10 @@ resource "google_sql_user" "mysql_user" {
   password = var.mysql_user_password # applyの最後で再設定
   instance = google_sql_database_instance.mysql.name
 }
+
+#----------------------------
+# MemoryStore for Redis
+#----------------------------
 
 # MemoryStore
 resource "google_redis_instance" "redis" {

@@ -1,6 +1,6 @@
 
 #----------------------------
-#VPC・サブネット
+# VPC・サブネット
 #----------------------------
 
 # VPC作成
@@ -54,6 +54,7 @@ resource "google_compute_subnetwork" "vpc_connector" {
   ip_cidr_range = "10.0.16.0/20" # Direct VPC Egress用なので広め
   region        = var.region
   network       = google_compute_network.vpc_network.id
+  depends_on    = [google_compute_network.vpc_network]
 }
 
 # 踏み台GCE用サブネット
@@ -62,8 +63,8 @@ resource "google_compute_subnetwork" "bastion" {
   ip_cidr_range = "10.0.2.0/28" # 踏み台用なので狭め
   region        = "us-central1" # 無料枠適用のためアイオワリージョン
   network       = google_compute_network.vpc_network.id
+  depends_on    = [google_compute_network.vpc_network]
 }
-
 
 #----------------------------
 # ロードバランサ
@@ -148,7 +149,7 @@ resource "google_compute_url_map" "default" {
     # 特定のパターンに合致する場合の転送先
     # WebSocket用 
     path_rule {
-      paths   = ["/api/v1/ws/*", "/ws/*"]
+      paths   = ["/api/v1/ws/", "/ws/"]
       service = google_compute_backend_service.websocket_service.id
     }
 
@@ -227,6 +228,10 @@ resource "google_compute_global_forwarding_rule" "http_rule" {
   ip_address            = google_compute_global_address.lb_ip.address
   load_balancing_scheme = "EXTERNAL"
 }
+
+#----------------------------
+# CloudDNS
+#----------------------------
 
 # Aレコード作成
 resource "google_dns_record_set" "A_record" {

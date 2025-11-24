@@ -17,7 +17,6 @@ resource "google_cloud_run_v2_service" "default" {
           value = env.value.value
         }
       }
-
       # Redis用環境変数を展開
       dynamic "env" {
         for_each = var.redis_env_vars
@@ -26,7 +25,6 @@ resource "google_cloud_run_v2_service" "default" {
           value = env.value.value
         }
       }
-
       # SecretManagerからの環境変数を展開
       dynamic "env" {
         for_each = var.secret_env_vars
@@ -40,7 +38,6 @@ resource "google_cloud_run_v2_service" "default" {
           }
         }
       }
-
 
       # ボリュームマウント設定
       dynamic "volume_mounts" {

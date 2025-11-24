@@ -1,4 +1,4 @@
 output "current_account_email" {
   value       = data.google_client_openid_userinfo.current.email
-  description = "Terraform実行に使用されたサービスアカウントまたはユーザーのメールアドレス"
+  description = "email address of the service account or user used to run Terraform"
 }

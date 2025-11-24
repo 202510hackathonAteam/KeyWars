@@ -1,6 +1,6 @@
 
 #----------------------------
-# Strage
+# CloudStrage
 #----------------------------
 
 # CloudStrageバケット作成
@@ -24,7 +24,7 @@ resource "google_storage_bucket_iam_member" "default" {
   member = "allUsers"                   # プリンシバル(対象範囲)
 }
 
-# バケットにファイルアップロード
+# 拡張子別にバケットにファイルアップロード
 resource "google_storage_bucket_object" "html" {
   bucket       = google_storage_bucket.static.id
   for_each     = fileset(var.frontend_static_path, "*.html")

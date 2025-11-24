@@ -26,7 +26,6 @@ resource "google_cloud_run_v2_job" "default" {
             value = env.value.value
           }
         }
-
         # SecretManagerからの環境変数を展開
         dynamic "env" {
           for_each = var.secret_env_vars

@@ -1,17 +1,26 @@
+
+#----------------------------
+# Firewall
+#----------------------------
+
 # SSH用ファイアーウォール
 resource "google_compute_firewall" "ssh" {
-  name = "ssh-fw"
+  name    = "ssh-fw"
   network = google_compute_network.vpc_network.name
 
   direction = "INGRESS" # 内向き
   allow {
     protocol = "tcp"
-    ports = ["22"] # SSHのポートを許可
-  }  
+    ports    = ["22"] # SSHのポートを許可
+  }
 
-  target_tags = ["bastion-tag"] # 対象のタグ
+  target_tags   = ["bastion-tag"]     # 対象のタグ
   source_ranges = ["35.235.240.0/20"] # IAPが使用する範囲のみ許可
 }
+
+#----------------------------
+# SecretManager
+#----------------------------
 
 ### CloudSQLのSecret作成
 # MySQLユーザーパスワードのsecret作成
@@ -57,7 +66,6 @@ resource "google_secret_manager_secret_iam_member" "secretaccess_mysql_root_pass
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${var.project_number}-compute@developer.gserviceaccount.com"
 }
-
 
 # Redisパスワードのsecret作成
 resource "google_secret_manager_secret" "redis_password" {

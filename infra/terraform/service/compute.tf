@@ -1,6 +1,6 @@
 
 #----------------------------
-# CloudRunService
+# 環境変数
 #----------------------------
 
 # MySQL関連の環境変数
@@ -57,13 +57,17 @@ locals {
       version   = "latest"
     },
     {
-      name = "REDIS_PASSWORD"
+      name      = "REDIS_PASSWORD"
       secret_id = google_secret_manager_secret.redis_password.secret_id
       version   = "latest"
 
     },
   ]
 }
+
+#----------------------------
+# CloudRunService
+#----------------------------
 
 # API用CloudRun
 module "cloud_run_api" {
@@ -134,6 +138,7 @@ module "cloud_run_websocket" {
 #----------------------------
 # CloudRunJob
 #----------------------------
+
 # マイグレーション用CloudRunJob
 module "cloud_run_migration" {
   source = "./modules/cloudrun_job"
@@ -145,7 +150,7 @@ module "cloud_run_migration" {
   image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.ar-repository_name}/migration-image:latest"
 
   mysql_env_vars  = local.mysql_env_vars
-  redis_env_vars = local.redis_env_vars
+  redis_env_vars  = local.redis_env_vars
   secret_env_vars = local.secret_env_vars
 
   volume_mounts = [{
@@ -167,7 +172,6 @@ module "cloud_run_migration" {
   ]
 }
 
-
 # 初期データ挿入用CloudRunJob
 module "cloud_run_seed" {
   source = "./modules/cloudrun_job"
@@ -179,7 +183,7 @@ module "cloud_run_seed" {
   image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.ar-repository_name}/seed-image:latest"
 
   mysql_env_vars  = local.mysql_env_vars
-  redis_env_vars = local.redis_env_vars
+  redis_env_vars  = local.redis_env_vars
   secret_env_vars = local.secret_env_vars
 
   volume_mounts = [{
@@ -203,28 +207,31 @@ module "cloud_run_seed" {
 
 # 認証なしでアクセスを許可する(公開する)
 resource "google_cloud_run_service_iam_member" "allow_unauthenticated_api" {
-  location = module.cloud_run_api.region
-  service  = module.cloud_run_api.name
-  role     = "roles/run.invoker" # 呼び出し許可
-  member   = "allUsers"
-  depends_on = [ module.cloud_run_api ]
+  location   = module.cloud_run_api.region
+  service    = module.cloud_run_api.name
+  role       = "roles/run.invoker" # 呼び出し許可
+  member     = "allUsers"
+  depends_on = [module.cloud_run_api]
 }
 
 resource "google_cloud_run_service_iam_member" "allow_unauthenticated_websocket" {
-  location = module.cloud_run_websocket.region
-  service  = module.cloud_run_websocket.name
-  role     = "roles/run.invoker" # 呼び出し許可
-  member   = "allUsers"
-  depends_on = [ module.cloud_run_migration ]
+  location   = module.cloud_run_websocket.region
+  service    = module.cloud_run_websocket.name
+  role       = "roles/run.invoker" # 呼び出し許可
+  member     = "allUsers"
+  depends_on = [module.cloud_run_migration]
 }
 
+#----------------------------
+# Computer Engine
+#----------------------------
 
 # 踏み台GCE
 resource "google_compute_instance" "bastion" {
   name         = "bastion-vm"
   machine_type = "e2-micro"
   zone         = "us-central1-a" # 無料枠利用のためアイオワ
-  tags = ["bastion-tag"]
+  tags         = ["bastion-tag"]
 
   boot_disk {
     initialize_params {
@@ -234,7 +241,7 @@ resource "google_compute_instance" "bastion" {
   }
 
   network_interface {
-    network = google_compute_network.vpc_network.name
-    subnetwork  = google_compute_subnetwork.bastion.name
+    network    = google_compute_network.vpc_network.name
+    subnetwork = google_compute_subnetwork.bastion.name
   }
 }
