@@ -62,7 +62,8 @@ type IncomingMessage struct {
 // 1) トークン検証 → 2) Upgrade → 3) Hub への Join → 4) writer 起動 → 5) reader ループ → 6) クリーンアップ
 func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	requestCtx := request.Context()
-	// リクエスト全体の処理時間を制限
+
+	// WebSocket処理用のタイムアウト付きコンテキストを生成
 	timeoutCtx, cancel := context.WithTimeout(requestCtx, time.Second*10)
 	defer cancel()
 
