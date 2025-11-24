@@ -38,7 +38,7 @@ func (s *TimeoutRoundService) ScheduleRoundTimeoutCheck(ctx context.Context, mat
 				state, _ := s.roundStateRepo.LoadMatchState(ctx, matchID)
 				if !state.Player1AnswerFinished || !state.Player2AnswerFinished {
 					// 強制終了として計測機能処理を発動
-					s.forceFinishService.ForceFinish(context.Background(), matchID)
+					s.forceFinishService.ForceFinish(ctx, matchID)
 				}
 				return
 			}
