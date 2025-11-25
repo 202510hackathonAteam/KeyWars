@@ -42,17 +42,19 @@ func LoadJWTConfig() JWTConfig {
 // CookieConfig は、アプリケーションで使用する Cookie の共通設定を保持する構造体。
 type CookieConfig struct {
 	Domain string
+	SameSite string
 	Secure bool
 }
 
 // LoadCookieConfig は、CookieConfig のデフォルト設定を読み込む初期化関数。
 func LoadCookieConfig() CookieConfig {
 	return CookieConfig{
-		// // 本番環境ではドメイン名を記載すること
-		// Domain: "",
+		// 本番環境では必ずhttp.SameSiteStrictModeにすること
+		SameSite: http.SameSiteNoneMode,
+		// 本番環境ではドメイン名を記載すること
+		Domain: os.Getenv("COOKIE_DOMAIN"),
 		// 本番環境では必ずtrueにすること
 		// Secure: false,
-		Domain: os.Getenv("COOKIE_DOMAIN"),
 		Secure: os.Getenv("COOKIE_SECURE") == "true",
 	}
 }
