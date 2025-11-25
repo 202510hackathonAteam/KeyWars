@@ -1,4 +1,4 @@
-.PHONY: up down build prod delete alldelete front back db
+.PHONY: up down build prod delete alldelete front back db front_build
 
 include .env
 
@@ -24,3 +24,5 @@ back:
 	docker exec -it $(BACK_CONTAINER_ID) sh
 db:
 	docker exec -it $(DB_CONTAINER_ID) bash -c "mysql -u $(MYSQL_USER) -p"
+front_build:
+	docker compose run --rm frontend yarn vite build

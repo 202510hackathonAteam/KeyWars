@@ -2,8 +2,8 @@ package config
 
 import (
 	"fmt"
-	"time"
 	"os"
+	"time"
 )
 
 // DBConfig は、データベース接続に必要な設定情報の定義
@@ -23,18 +23,18 @@ type RedisConfig struct {
 
 // JWTConfig は、JWT の発行および検証に必要な設定値の定義。
 type JWTConfig struct {
-	IssuerName string
-	HMACSecretKey []byte
-	AccessTokenExpiry time.Duration
+	IssuerName         string
+	HMACSecretKey      []byte
+	AccessTokenExpiry  time.Duration
 	RefreshTokenExpiry time.Duration
 }
 
 // LoadJWTConfig は、JWT 認証ハンドラの初期化
 func LoadJWTConfig() JWTConfig {
 	return JWTConfig{
-		IssuerName: "keywars",
-		HMACSecretKey: []byte(os.Getenv("JWT_SECRET")),
-		AccessTokenExpiry: 1 * time.Hour,
+		IssuerName:         "keywars",
+		HMACSecretKey:      []byte(os.Getenv("JWT_SECRET")),
+		AccessTokenExpiry:  1 * time.Hour,
 		RefreshTokenExpiry: 30 * 24 * time.Hour,
 	}
 }
@@ -49,20 +49,21 @@ type CookieConfig struct {
 // LoadCookieConfig は、CookieConfig のデフォルト設定を読み込む初期化関数。
 func LoadCookieConfig() CookieConfig {
 	return CookieConfig{
-		// 本番環境ではドメイン名を記載すること
-		Domain: "",
 		// 本番環境では必ずhttp.SameSiteStrictModeにすること
 		SameSite: http.SameSiteNoneMode,
+		// 本番環境ではドメイン名を記載すること
+		Domain: os.Getenv("COOKIE_DOMAIN"),
 		// 本番環境では必ずtrueにすること
-		Secure: false,
+		// Secure: false,
+		Secure: os.Getenv("COOKIE_SECURE") == "true",
 	}
 }
 
 // Config は、アプリ全体の設定をまとめた構造体。
 type Config struct {
-	DB     DBConfig
-	Redis  RedisConfig
-	JWT JWTConfig
+	DB    DBConfig
+	Redis RedisConfig
+	JWT   JWTConfig
 }
 
 // DSN は、MySQL 用の接続文字列（Data Source Name）の生成

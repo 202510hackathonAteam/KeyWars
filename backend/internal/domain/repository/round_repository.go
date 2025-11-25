@@ -1,6 +1,10 @@
 package repository
 
-import "context"
+import (
+	"context"
+
+	"keywars/backend/internal/domain/model"
+)
 
 // AnswerApplyArg は、回答処理（answer）の適用時に必要なデータをまとめた引数構造体。
 // Redis の match:{matchID}:state や Streams に対して状態を更新する際に使用される。
@@ -32,11 +36,34 @@ type RoundStateRepository interface {
 	// match:{matchID}:deck に全単語を保存しておき、以降の出題でインデックス参照する。
 	SaveDeck(ctx context.Context, matchID string, deck []PromptWithDifficulty) error
 
-	// 指定したデッキインデックスの単語を取得する。
-	// Redis の配列から deckIndex 番目の単語を返す。
-	GetDeckItem(contextObject context.Context, matchID string, deckIndex int64) (string, error)
+	// 指定したデッキインデックスのmatch:{matchID}:deck の JSON を構造体に変換する。
+	LoadDeckPrompt(ctx context.Context, matchID string, deckIndex int64) (*model.DeckPrompt, error)
 
 	// プレイヤーの回答を反映し、次の状態を更新する。
-	ApplyAnswer(contextObject context.Context, answerArg AnswerApplyArg) (eventID string, turn int64, err error)
-	GetState(ctx context.Context, matchID string) (map[string]string, error)
+	ApplyAnswer(contextObject context.Context, answerArg AnswerApplyArg) (eventID string, round int64, err error)
+
+	// 次ラウンド開始のために
+	// ラウンド内で使用する一時的な state（予定時刻や計測フラグなど）を初期化する。
+	InitializeNextRoundState(ctx context.Context, matchID string) error
+
+	// Redis の match:{matchID}:state に保存されている現在の試合状態を取得する。
+	LoadMatchState(ctx context.Context, matchID string) (*model.MatchState, error)
+
+	// 次ラウンドへ進むために deck_index と round を1つプラスして更新する。
+	UpdateNextRound(ctx context.Context, matchID string) (int64, int64, error)
+
+	// ラウンドの開始予定時刻と終了予定時刻を、Redis の match:{matchID}:state に保存する。
+	UpdateRoundTiming(ctx context.Context, matchID string, roundStartAtMs int64, roundEndAtMs int64) error
+
+	// Redis に保存されたmatch:{matchID} のプレイヤー情報（player1 / player2）を取得する。
+	LoadMatchPlayers(ctx context.Context, matchID string) (*model.MatchPlayers, error)
+
+	// 試合開始直後に呼び出される初期化処理する。
+	InitMeasurementFinishCount(ctx context.Context, matchID string) error
+
+	// 指定された matchID に紐づく「計測完了人数（measurement_finished_count）」カウンタを 0 に初期化する。
+	InitializeMeasurementFinishCount(ctx context.Context, matchID string) error
+
+	// 指定された matchID に紐づく「計測完了人数（measurement_finished_count）」カウンタを +1 する。
+	IncrementMeasurementFinishCount(ctx context.Context, matchID string) (int64, error)
 }

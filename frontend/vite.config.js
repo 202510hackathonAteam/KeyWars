@@ -9,10 +9,36 @@ export default defineConfig({
     tailwindcss(),
   ],
   server: {
-    host: true,
+    host: "0.0.0.0",
     port: 5173,
+    proxy: {
+      "^/api/v1/ws$": {
+        target: "http://backend:8080",
+        ws: true,       // ❗必須
+        changeOrigin: true
+      },
+      "/healthz": {
+        target: "http://backend:8080",
+        changeOrigin: true,
+        secure: false,
+      },
+      "/auth": {
+        target: "http://backend:8080",
+        changeOrigin: true,
+        secure: false,
+      },
+      "/api": {
+        target: "http://backend:8080",
+        changeOrigin: true,
+        secure: false,
+      },
+
+
+    },
   },
+
+
   // 以下追加 //
   build: { outDir: 'dist' }, // ビルドしたファイルを出力するディレクトリ名
-  base: './', // ビルド後のHTMLからの参照を相対パスにする
+  base: './', // ビルド後のHTMLからの参照を相対パスにする設定
 })
