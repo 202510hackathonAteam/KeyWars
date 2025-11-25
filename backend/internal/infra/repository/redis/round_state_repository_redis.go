@@ -210,16 +210,39 @@ func (repository *RoundStateRepositoryRedis) ApplyAnswer(contextObject context.C
 	return
 }
 
+// StoreFinishEvent は、回答確定時のイベント（miss数・終了時刻・ラウンド情報）を
+// Redis Streams に保存するメソッド。
+func (repository *RoundStateRepositoryRedis) StoreFinishEvent(
+	ctx context.Context,
+	matchID,
+	userID string,
+	round,
+	missCount,
+	finishAtMs int64,
+) error {
+	eventsKey := fmt.Sprintf("match:%s:events", matchID)
+
+	_, err := repository.redisClient.XAdd(ctx, &redis.XAddArgs{
+		Stream: eventsKey,
+		Values: map[string]interface{}{
+			"player_id": userID,
+			"round": round,
+			"miss_count": missCount,
+			"finish_at_ms": finishAtMs,
+		},
+	}).Result()
+
+	return err
+}
+
 // InitializeNextRoundState は、次ラウンド開始のために
-// ラウンド内で使用する一時的な state（予定時刻や計測フラグなど）を初期化するメソッド。
+// ラウンド内で使用する一時的な state（予定時刻など）を初期化するメソッド。
 func (repository *RoundStateRepositoryRedis) InitializeNextRoundState(ctx context.Context, matchID string) error {
 	stateKey := fmt.Sprintf("match:%s:state", matchID)
 
 	return repository.redisClient.HSet(ctx, stateKey, map[string]interface{}{
 		"round_start_at_ms": 0,
 		"round_end_at_ms": 0,
-		"player1_answer_finished": false,
-		"player2_answer_finished": false,
 	}).Err()
 }
 
@@ -238,20 +261,41 @@ func (repository *RoundStateRepositoryRedis) LoadMatchState(ctx context.Context,
 
 	// int64に変換してセット
 	state := &model.MatchState{
-		DeckIndex:        		 					parseInt64Field(matchStateRow, "deck_index"),
-		Round:            		 					parseInt64Field(matchStateRow, "round"),
-		Player1AnswerFinished: 					parseBoolField(matchStateRow, "player1_answer_finished"),
-		Player2AnswerFinished: 					parseBoolField(matchStateRow, "player2_answer_finished"),
-		Player1Lifepoint: 		 					parseInt64Field(matchStateRow, "player1_lifepoint"),
-		Player2Lifepoint: 		 					parseInt64Field(matchStateRow, "player2_lifepoint"),
+		DeckIndex:      	parseInt64Field(matchStateRow, "deck_index"),
+		Round:          	parseInt64Field(matchStateRow, "round"),
+		RoundStartAtMS:  	parseInt64Field(matchStateRow, "round_start_at_ms"),
+		RoundEndAtMS:   	parseInt64Field(matchStateRow, "round_end_at_ms"),
+		Player1Lifepoint: parseInt64Field(matchStateRow, "player1_lifepoint"),
+		Player2Lifepoint: parseInt64Field(matchStateRow, "player2_lifepoint"),
 	}
 
 	return state, nil
 }
 
-// UpdateNextRound は、次ラウンドへ進むために deck_index と round を
+// UpdateTotalMissCount は、指定されたプレイヤー（player1 / player2）の
+// 累計ミス数カウントに missCount を加算するメソッド。
+func (repository *RoundStateRepositoryRedis) UpdateTotalMissCount(
+	ctx context.Context,
+	matchID,
+	playerField string,
+	missCount int64,
+) error {
+	stateKey := fmt.Sprintf("match:%s:state", matchID)
+	totalMissCountField := playerField + "_total_miss_count"
+
+	_, err := repository.redisClient.HIncrBy(
+		ctx,
+		stateKey,
+		totalMissCountField,
+		missCount,
+	).Result()
+
+	return err
+}
+
+// UpdateNextRoundState は、次ラウンドへ進むために deck_index と round を
 // 1つプラスして更新するメソッド。
-func (repository *RoundStateRepositoryRedis) UpdateNextRound(ctx context.Context, matchID string) (int64, int64, error) {
+func (repository *RoundStateRepositoryRedis) UpdateNextRoundState(ctx context.Context, matchID string) (int64, int64, error) {
 	stateKey := fmt.Sprintf("match:%s:state", matchID)
 
 	nextDeckIndex, err := repository.redisClient.HIncrBy(ctx, stateKey, "deck_index", 1).Result()
@@ -325,6 +369,39 @@ func (repository *RoundStateRepositoryRedis) IncrementMeasurementFinishCount(ctx
 	}
 
 	return measurementFinishedCount, nil
+}
+
+// RegisterPlayerAnswerFinishFlag は、プレイヤーの finish トリガーを
+// 原子的に「初回のみ」受け付けるメソッド。
+func (repository *RoundStateRepositoryRedis) RegisterPlayerAnswerFinishFlag(ctx context.Context, matchID, userID string) (bool, error) {
+	flagKey := fmt.Sprintf("match:%s:answer_finish_flag:%s", matchID, userID)
+
+	isFirstFinished, err := repository.redisClient.SetNX(ctx, flagKey, true, 0).Result()
+	if err != nil {
+		return false, err
+	}
+
+	return isFirstFinished, nil
+}
+
+// IsPlayerAnswerFinishFlagExists は、指定したプレイヤーの finish フラグキーが
+// Redis 上に存在するかどうかを返す。
+func (repository *RoundStateRepositoryRedis) IsPlayerAnswerFinishFlagExists(ctx context.Context, matchID, userID string) (bool, error) {
+	flagKey := fmt.Sprintf("match:%s:answer_finish_flag:%s", matchID, userID)
+
+	isPlayerFinishFlagExists, err := repository.redisClient.Exists(ctx, flagKey).Result()
+	if err != nil {
+		return false, err
+	}
+
+	return isPlayerFinishFlagExists==1, nil
+}
+
+// DeletePlayerAnswerFinishFlag は、プレイヤーの finish フラグキーを削除し、
+// 次のラウンドで再び RegisterPlayerFinishFlag の SetNX が成功するようにリセットするメソッド。
+func (repository *RoundStateRepositoryRedis) DeletePlayerAnswerFinishFlag(ctx context.Context, matchID, userID string) error {
+	flagKey := fmt.Sprintf("match:%s:answer_finish_flag:%s", matchID, userID)
+	return repository.redisClient.Del(ctx, flagKey).Err()
 }
 
 

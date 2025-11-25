@@ -39,18 +39,21 @@ type RoundStateRepository interface {
 	// 指定したデッキインデックスのmatch:{matchID}:deck の JSON を構造体に変換する。
 	LoadDeckPrompt(ctx context.Context, matchID string, deckIndex int64) (*model.DeckPrompt, error)
 
-	// プレイヤーの回答を反映し、次の状態を更新する。
-	ApplyAnswer(contextObject context.Context, answerArg AnswerApplyArg) (eventID string, round int64, err error)
+	// 回答確定時のイベント（miss数・終了時刻・ラウンド情報）を Redis Streams に保存する。
+	StoreFinishEvent(ctx context.Context, matchID, userID string, round, missCount, finishAtMs int64) error
 
 	// 次ラウンド開始のために
-	// ラウンド内で使用する一時的な state（予定時刻や計測フラグなど）を初期化する。
+	// ラウンド内で使用する一時的な state（予定時刻など）を初期化する。
 	InitializeNextRoundState(ctx context.Context, matchID string) error
 
 	// Redis の match:{matchID}:state に保存されている現在の試合状態を取得する。
 	LoadMatchState(ctx context.Context, matchID string) (*model.MatchState, error)
 
-	// 次ラウンドへ進むために deck_index と round を1つプラスして更新する。
-	UpdateNextRound(ctx context.Context, matchID string) (int64, int64, error)
+	// 指定されたプレイヤー（player1 / player2）の累計ミス数カウントに missCount を加算する。
+	UpdateTotalMissCount(ctx context.Context, matchID, playerField string, missCount int64) error
+
+// 次ラウンドへ進むために deck_index と round を1つプラスして更新する。
+	UpdateNextRoundState(ctx context.Context, matchID string) (int64, int64, error)
 
 	// ラウンドの開始予定時刻と終了予定時刻を、Redis の match:{matchID}:state に保存する。
 	UpdateRoundTiming(ctx context.Context, matchID string, roundStartAtMs int64, roundEndAtMs int64) error
@@ -66,4 +69,14 @@ type RoundStateRepository interface {
 
 	// 指定された matchID に紐づく「計測完了人数（measurement_finished_count）」カウンタを +1 する。
 	IncrementMeasurementFinishCount(ctx context.Context, matchID string) (int64, error)
+
+	// プレイヤーの finish トリガーを原子的に「初回のみ」受け付ける。
+	RegisterPlayerAnswerFinishFlag(ctx context.Context, matchID, userID string) (bool, error)
+
+	// 指定したプレイヤーの finish フラグキーが Redis 上に存在するかどうかを返す。
+	IsPlayerAnswerFinishFlagExists(ctx context.Context, matchID, userID string) (bool, error)
+
+	// プレイヤーの finish フラグキーを削除し、
+	// 次のラウンドで再び RegisterPlayerFinishFlag の SetNX が成功するようにリセットする。
+	DeletePlayerAnswerFinishFlag(ctx context.Context, matchID, userID string) error
 }

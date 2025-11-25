@@ -254,7 +254,8 @@ backend/
 │  ├─ domain/      # データ構造と契約層（Repositoryインターフェース）
 │  │  ├─ model/      # ドメインモデル定義（業務ルール中心）
 │  │  ├─ port/       # アプリ内外の接続インターフェース（port定義）
-│  │  └─ repository/ # Repositoryインターフェース（契約のみを定義）
+│  │  ├─ repository/ # Repositoryインターフェース（契約のみを定義）
+│  │  └─ constant/   # ドメイン共通の定数（イベント種別・エラー種別など）
 │  ├─ infra/       # データアクセス層（DBやRedisなど外部リソースへの実装）
 │  │  ├─ auth/         # JWTなどの認証関連の実装
 │  │  ├─ db/           # データベース接続の初期化や管理を担当

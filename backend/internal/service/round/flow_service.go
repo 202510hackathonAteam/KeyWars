@@ -53,9 +53,9 @@ func (s *RoundFlowService) StartFirstRound(ctx context.Context, matchID, user1ID
 		user1ID,
 		user2ID,
 		websocket.MatchState{
+			Round:           	config.InitialRound,
 			RoundStartAtMS: 	roundStartAtMs,
 			RoundEndAtMS:   	roundEndAtMs,
-			Round:           	config.InitialRound,
 			Player1Lifepoint: config.InitialLifePoint,
 			Player2Lifepoint: config.InitialLifePoint,
 		},
@@ -101,8 +101,8 @@ func (s *RoundFlowService) RunRoundFlow(ctx context.Context, matchID string) err
 		// 	players.Player1ID,
 		// 	players.Player2ID,
 		// 	winner,
-		// 	player1TotalMissCount,
-		// 	player2TotalMissCount,
+		// 	state.Player1TotalMissCount,
+		// 	state.Player2TotalMissCount,
 		// )
 	}
 
@@ -115,9 +115,21 @@ func (s *RoundFlowService) RunRoundFlow(ctx context.Context, matchID string) err
 	if err := s.roundStateRepo.InitializeMeasurementFinishCount(ctx, matchID); err != nil{
 		return err
 	}
+	players, err := s.roundStateRepo.LoadMatchPlayers(ctx, matchID)
+	if err != nil {
+		return err
+	}
+	s.roundStateRepo.DeletePlayerAnswerFinishFlag(ctx, matchID, players.Player1ID)
+	if err != nil {
+		return err
+	}
+	s.roundStateRepo.DeletePlayerAnswerFinishFlag(ctx, matchID, players.Player2ID)
+	if err != nil {
+		return err
+	}
 
 	// 次のラウンドへ値を更新
-	nextDeckIndex, nextRound, err := s.roundStateRepo.UpdateNextRound(ctx, matchID)
+	nextDeckIndex, nextRound, err := s.roundStateRepo.UpdateNextRoundState(ctx, matchID)
 
 	// 次ラウンドの問題取得
 	roundQuestion, err := s.nextRoundService.LoadNextPrompt(ctx, matchID, nextDeckIndex)
@@ -131,10 +143,6 @@ func (s *RoundFlowService) RunRoundFlow(ctx context.Context, matchID string) err
 		return err
 	}
 
-	players, err := s.roundStateRepo.LoadMatchPlayers(ctx, matchID)
-	if err != nil {
-		return err
-	}
 	// ===============================
 	// ③ WebSocketで次ラウンド開始通知
 	// ===============================
@@ -143,9 +151,9 @@ func (s *RoundFlowService) RunRoundFlow(ctx context.Context, matchID string) err
 		players.Player1ID,
 		players.Player2ID,
 		websocket.MatchState{
+			Round:           	nextRound,
 			RoundStartAtMS: 	roundStartAtMs,
 			RoundEndAtMS:   	roundEndAtMs,
-			Round:           	nextRound,
 			Player1Lifepoint: lifePoint1,
 			Player2Lifepoint: lifePoint2,
 		},

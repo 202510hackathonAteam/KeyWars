@@ -16,9 +16,9 @@ const (
 
 // MatchState は試合の進行状態（match.start などで配信）
 type MatchState struct {
+	Round          	 int64 `json:"round"`
 	RoundStartAtMS 	 int64 `json:"round_start_at_ms"`
 	RoundEndAtMS   	 int64 `json:"round_end_at_ms"`
-	Round          	 int64 `json:"round"`
 	Player1Lifepoint int64 `json:"player1_lifepoint"`
 	Player2Lifepoint int64 `json:"player2_lifepoint"`
 }

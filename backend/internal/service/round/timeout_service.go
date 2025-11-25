@@ -35,9 +35,20 @@ func (s *TimeoutRoundService) ScheduleRoundTimeoutCheck(ctx context.Context, mat
 		case <-ticker.C:
 			now := time.Now().UnixMilli()
 			if now >= deadlineMs {
-				state, _ := s.roundStateRepo.LoadMatchState(ctx, matchID)
-				if !state.Player1AnswerFinished || !state.Player2AnswerFinished {
-					// 強制終了として計測機能処理を発動
+				players, err := s.roundStateRepo.LoadMatchPlayers(context.Background(), matchID)
+				if err != nil {
+					return
+				}
+				isPlayer1AnswerFinish, err := s.roundStateRepo.IsPlayerAnswerFinishFlagExists(context.Background(), matchID, players.Player1ID)
+				if err != nil {
+					return
+				}
+				isPlayer2AnswerFinish, err := s.roundStateRepo.IsPlayerAnswerFinishFlagExists(context.Background(), matchID, players.Player2ID)
+				if err != nil {
+					return
+				}
+				if !isPlayer1AnswerFinish || !isPlayer2AnswerFinish {
+					// 強制終了としてを発動
 					s.forceFinishService.ForceFinish(context.Background(), matchID)
 				}
 				return

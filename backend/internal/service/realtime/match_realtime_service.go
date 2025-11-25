@@ -10,6 +10,7 @@ import (
 	"keywars/backend/internal/transport/websocket"
 	"keywars/backend/internal/service/round"
 	"keywars/backend/internal/config"
+	"keywars/backend/internal/domain/constant"
 )
 
 //
@@ -148,24 +149,43 @@ func (service *MatchRealtimeService) OnMessage(
 		}, nil
 
 	// --- ラウンド完了 ---
-	case "answer.finish":
+	case constant.TriggerAnswerFinish:
 		var payload websocket.PlayerAnswerFinishedPayload
 		if err := json.Unmarshal(messagePayload, &payload); err != nil {
+			service.logger.Error().
+				Err(err).
+        Str("event", constant.TriggerAnswerFinish).
+				Str("match_id", payload.MatchID).
+				Msg("failed to unmarshal payload")
 			return websocket.NewErrorPayload(), nil
 		}
 
 		// プレイヤー認証
 		players, err := service.roundStateRepository.LoadMatchPlayers(ctx, payload.MatchID)
 		if err != nil {
+			service.logger.Error().
+				Err(err).
+				Str("event", constant.TriggerAnswerFinish).
+				Str("match_id", payload.MatchID).
+				Msg("failed to load match players")
 			return websocket.NewErrorPayload(), nil
     }
 		if userID != players.Player1ID && userID != players.Player2ID {
+      service.logger.Warn().
+        Str("event", constant.TriggerAnswerFinish).
+        Str("match_id", payload.MatchID).
+        Msg("unauthorized player")
 			return websocket.NewErrorPayload(), nil
 		}
 
 		// 計測機能実行
-		err = service.measurementRoundService.SaveMeasurement(ctx, payload.MatchID, userID, payload.MissCount)
+		err = service.measurementRoundService.SaveMeasurement(ctx, payload.MatchID, userID, payload.MissCount, constant.TriggerAnswerFinish)
 		if err != nil {
+			service.logger.Error().
+        Err(err).
+        Str("event", constant.TriggerAnswerFinish).
+        Str("match_id", payload.MatchID).
+        Msg("failed to increment measurementFinishedCount")
 			return websocket.NewErrorPayload(), nil
 		}
 
@@ -175,38 +195,72 @@ func (service *MatchRealtimeService) OnMessage(
 			return websocket.NewErrorPayload(), nil
 		}
 
-		// 2人揃ったか確認
+		// 両プレイヤーが揃うまで終了処理は実行しない
 		if measurementFinishedCount < config.RequiredPlayers {
 			return nil, nil
 		}
 
-		// ラウンドフローを実行（メイン処理）
+		// プレイヤー数が規定値を超えている場合 → 本来発生しない異常状態。
+		if measurementFinishedCount > config.RequiredPlayers {
+			service.logger.Error().
+        Int64("count", measurementFinishedCount).
+        Str("event", constant.TriggerAnswerFinish).
+        Str("match_id", payload.MatchID).
+        Msg("unexpected measurement count (too large)")
+			return websocket.NewErrorPayload(), nil
+		}
+
+		// プレイヤーが規定値の場合 → ラウンドフローを実行
 		err = service.roundFlowService.RunRoundFlow(ctx, payload.MatchID)
 		if err != nil {
+			service.logger.Error().
+        Err(err).
+        Str("event", constant.TriggerAnswerFinish).
+        Str("match_id", payload.MatchID).
+        Msg("RunRoundFlow failed")
 			return websocket.NewErrorPayload(), nil
 		}
 
 		return nil, nil
 
 	// --- 時間切れ ---
-	case "answer.timeout":
+	case constant.TriggerAnswerTimeout:
 		var payload websocket.PlayerAnswerFinishedPayload
 		if err := json.Unmarshal(messagePayload, &payload); err != nil {
+			service.logger.Error().
+				Err(err).
+        Str("event", constant.TriggerAnswerTimeout).
+				Str("match_id", payload.MatchID).
+				Msg("failed to unmarshal payload")
 			return websocket.NewErrorPayload(), nil
 		}
 
 		// プレイヤー認証
 		players, err := service.roundStateRepository.LoadMatchPlayers(ctx, payload.MatchID)
 		if err != nil {
+			service.logger.Error().
+				Err(err).
+				Str("event", constant.TriggerAnswerTimeout).
+				Str("match_id", payload.MatchID).
+				Msg("failed to load match players")
 			return websocket.NewErrorPayload(), nil
     }
 		if userID != players.Player1ID && userID != players.Player2ID {
+      service.logger.Warn().
+        Str("event", constant.TriggerAnswerTimeout).
+        Str("match_id", payload.MatchID).
+        Msg("unauthorized player")
 			return websocket.NewErrorPayload(), nil
 		}
 
 		// 計測機能実行
-		err = service.measurementRoundService.SaveMeasurement(ctx, payload.MatchID, userID, payload.MissCount)
+		err = service.measurementRoundService.SaveMeasurement(ctx, payload.MatchID, userID, payload.MissCount, constant.TriggerAnswerTimeout)
 		if err != nil {
+			service.logger.Error().
+        Err(err).
+        Str("event", constant.TriggerAnswerTimeout).
+        Str("match_id", payload.MatchID).
+        Msg("failed to increment measurementFinishedCount")
 			return websocket.NewErrorPayload(), nil
 		}
 
@@ -216,14 +270,29 @@ func (service *MatchRealtimeService) OnMessage(
 			return websocket.NewErrorPayload(), nil
 		}
 
-		// 2人揃ったか確認
+		// 両プレイヤーが揃うまで終了処理は実行しない
 		if measurementFinishedCount < config.RequiredPlayers {
 			return nil, nil
 		}
 
-		// ラウンドフローを実行（メイン処理）
+		// プレイヤー数が規定値を超えている場合 → 本来発生しない異常状態。
+		if measurementFinishedCount > config.RequiredPlayers {
+			service.logger.Error().
+        Int64("count", measurementFinishedCount).
+        Str("event", constant.TriggerAnswerTimeout).
+        Str("match_id", payload.MatchID).
+        Msg("unexpected measurement count (too large)")
+			return websocket.NewErrorPayload(), nil
+		}
+
+		// プレイヤーが規定値の場合 → ラウンドフローを実行
 		err = service.roundFlowService.RunRoundFlow(ctx, payload.MatchID)
 		if err != nil {
+			service.logger.Error().
+        Err(err).
+        Str("event", constant.TriggerAnswerTimeout).
+        Str("match_id", payload.MatchID).
+        Msg("RunRoundFlow failed")
 			return websocket.NewErrorPayload(), nil
 		}
 

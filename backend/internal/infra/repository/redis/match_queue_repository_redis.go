@@ -146,12 +146,10 @@ func (repository *MatchQueueRepositoryRedis) DequeuePairAndInitMatch(contextObje
 		fmt.Sprintf("match:%s:state", matchID),
 		"deck_index", config.InitialDeckIndex,
 		"round", config.InitialRound,
-		"player1_answer_finished", false,
-		"player2_answer_finished", false,
 		"player1_lifepoint", config.InitialLifePoint,
 		"player2_lifepoint", config.InitialLifePoint,
-		"player1_total_misses", 0,
-		"player2_total_misses", 0,
+		"player1_total_miss_count", 0,
+		"player2_total_miss_count", 0,
 	)
 
 	// ---  試合開始時点で TTL を設定 ---
