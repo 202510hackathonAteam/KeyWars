@@ -5,17 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"time"
 
 	"github.com/redis/go-redis/v9"
 
 	drepo "keywars/backend/internal/domain/repository"
 	"keywars/backend/internal/domain/model"
-)
-
-const (
-	matchTTL        = time.Hour        // 試合開始時 EXPIRE 1h
-	matchTTLPostFin = 10 * time.Minute // 終了後 PEXPIRE 10m は別箇所で
+	"keywars/backend/internal/config"
 )
 
 // RoundStateRepositoryRedis は、対戦進行中の「メタ情報・状態・イベント・デッキ」を
@@ -25,6 +20,10 @@ const (
 //   - match:{matchID}:state   ... 進行状態（deck_index, round_start_at_ms, round_end_at_ms, round, p{userID}:lp, last_event_id）
 //   - match:{matchID}:events  ... イベント Streams（answer などの出来事）
 //   - match:{matchID}:deck    ... 出題デッキ（LIST; 要素はJSON文字列）
+//   - match:{matchID}:measurement_finished_count
+//     ... ラウンド内で「計測完了した人数」を保持するカウンタ（0 → 1 → 2）
+//   - match:{matchID}:answer_finish_flag:{userID}
+//     ... 各プレイヤーの finish トリガー受付フラグ（SetNX による冪等制御用）
 type RoundStateRepositoryRedis struct {
 	// redisClient は go-redis v9 のクライアント。
 	// 1インスタンスを本構造体で共有して各操作に使用する。
@@ -61,7 +60,7 @@ func (repository *RoundStateRepositoryRedis) Start(contextObject context.Context
 	pipeline.HSet(contextObject, matchKey, "status", "playing")
 
 	for _, suffix := range []string{"", ":state", ":events", ":deck"} {
-		pipeline.Expire(contextObject, matchKey+suffix, matchTTL)
+		pipeline.Expire(contextObject, matchKey+suffix, config.MatchExpiryOnStart)
 	}
 
 	_, err := pipeline.Exec(contextObject)
@@ -82,7 +81,7 @@ func (repository *RoundStateRepositoryRedis) Finish(contextObject context.Contex
 
 	// 終了後は 10 分で掃除（ミリ秒精度で設定）
 	for _, suffix := range []string{"", ":state", ":events", ":deck"} {
-		pipeline.PExpire(contextObject, matchKey+suffix, matchTTLPostFin)
+		pipeline.PExpire(contextObject, matchKey+suffix, config.MatchExpiryOnFinish)
 	}
 
 	_, err := pipeline.Exec(contextObject)
@@ -113,8 +112,8 @@ func (repository *RoundStateRepositoryRedis) SaveDeck(ctx context.Context, match
 		pipe.RPush(ctx, keyDeck, args...)
 	}
 	// 試合開始時に 1h で揃える（Meta が無いケースでも Deck 側へ設定しておく）
-	pipe.Expire(ctx, keyDeck, matchTTL)
-	pipe.Expire(ctx, keyMeta, matchTTL)
+	pipe.Expire(ctx, keyDeck, config.MatchExpiryOnStart)
+	pipe.Expire(ctx, keyMeta, config.MatchExpiryOnStart)
 
 	_, err := pipe.Exec(ctx)
 	return err
@@ -347,7 +346,7 @@ func (repository *RoundStateRepositoryRedis) LoadMatchPlayers(ctx context.Contex
 func (repository *RoundStateRepositoryRedis) InitMeasurementFinishCount(ctx context.Context, matchID string) error {
 	measurementFinishedCountKey := fmt.Sprintf("match:%s:measurement_finished_count", matchID)
 
-	return repository.redisClient.Set(ctx, measurementFinishedCountKey, 0, 1*time.Hour).Err()
+	return repository.redisClient.Set(ctx, measurementFinishedCountKey, 0, config.MatchExpiryOnStart).Err()
 }
 
 // InitializeMeasurementFinishCount は、指定された matchID に紐づく
@@ -355,7 +354,7 @@ func (repository *RoundStateRepositoryRedis) InitMeasurementFinishCount(ctx cont
 func (repository *RoundStateRepositoryRedis) InitializeMeasurementFinishCount(ctx context.Context, matchID string) error {
 	measurementFinishedCountKey := fmt.Sprintf("match:%s:measurement_finished_count", matchID)
 
-	return repository.redisClient.Set(ctx, measurementFinishedCountKey, 0, 1*time.Hour).Err()
+	return repository.redisClient.Set(ctx, measurementFinishedCountKey, 0, config.MatchExpiryOnStart).Err()
 }
 
 // IncrementMeasurementFinishCount は、指定された matchID に紐づく
@@ -376,7 +375,7 @@ func (repository *RoundStateRepositoryRedis) IncrementMeasurementFinishCount(ctx
 func (repository *RoundStateRepositoryRedis) RegisterPlayerAnswerFinishFlag(ctx context.Context, matchID, userID string) (bool, error) {
 	flagKey := fmt.Sprintf("match:%s:answer_finish_flag:%s", matchID, userID)
 
-	isFirstFinished, err := repository.redisClient.SetNX(ctx, flagKey, true, 0).Result()
+	isFirstFinished, err := repository.redisClient.SetNX(ctx, flagKey, true, config.MatchExpiryOnStart).Result()
 	if err != nil {
 		return false, err
 	}
