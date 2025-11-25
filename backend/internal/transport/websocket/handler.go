@@ -1,12 +1,12 @@
 package websocket
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
 	"time"
-	"context"
 
 	domain "keywars/backend/internal/domain/port"
 	"keywars/backend/internal/domain/repository"
@@ -67,6 +67,12 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	timeoutCtx, cancel := context.WithTimeout(requestCtx, time.Second*10)
 	defer cancel()
 
+	// 🔍 ここ！Upgrade 前の通常 HTTP リクエストなので全部見える
+	log.Println("[WS] Cookie Header:", request.Header.Get("Cookie"))
+	log.Println("[WS] X-CSRF-Token Header:", request.Header.Get("X-CSRF-Token"))
+	log.Println("[WS] Origin:", request.Header.Get("Origin"))
+	log.Println("[WS] User-Agent:", request.Header.Get("User-Agent"))
+
 	// --- 1) 認証 ---
 	cookie, err := request.Cookie("access_token")
 	if err != nil || cookie.Value == "" {
@@ -90,7 +96,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	// 接続インスタンス（送信用チャネル付き）
 	clientConn := &Client{
 		userID:      userID,
-		roomName:    roomName,
+		roomName:    "",
 		sendChannel: make(chan []byte, sendBufSize),
 	}
 
@@ -181,6 +187,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	for {
 		_, rawData, err := wsConn.ReadMessage()
 		if err != nil {
+			log.Println("[WS-ReadError]", err)
 			break
 		}
 		var incoming IncomingMessage

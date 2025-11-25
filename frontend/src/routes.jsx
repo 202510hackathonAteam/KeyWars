@@ -1,21 +1,42 @@
 // src/routes.jsx
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Home from "./assets/home/Home";
-import Login from "./assets/login/Login";
-import Signup from "./assets/signup/Signup";
-import Battle from "./assets/battle/Battle";
-import Result from "./assets/result/Result";
+import Home from "./pages/home/Home";
+import Login from "./pages/login/Login";
+import Signup from "./pages/signup/Signup";
+import Battle from "./pages/battle/Battle";
+import Result from "./pages/result/Result";
+import ProtectedRoute from "./routes/ProtectedRoute";
+import { WebSocketProvider } from "./context/WebsocketContext";
 
 export default function AppRoutes() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/signup" element={<Signup />} />
-        <Route path="/battle" element={<Battle />} />
-        <Route path="/result" element={<Result />} />
-      </Routes>
+      <WebSocketProvider>
+        <Routes>
+          {/* ログイン不要 */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
+
+          {/* ログイン必須ページ */}
+          <Route path="/" element={
+            <ProtectedRoute>
+              <Home />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/battle" element={
+            <ProtectedRoute>
+              <Battle />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/result" element={
+            <ProtectedRoute>
+              <Result />
+            </ProtectedRoute>
+          } />
+        </Routes>
+      </WebSocketProvider>
     </BrowserRouter>
   );
 }
