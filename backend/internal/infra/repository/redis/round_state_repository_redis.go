@@ -17,7 +17,9 @@ import (
 // Redis 上の複数キーに分割して管理するリポジトリ実装。
 // キー構成：
 //   - match:{matchID}         ... メタ情報（status, created_at, player1, player2, winner_user_id）
-//   - match:{matchID}:state   ... 進行状態（deck_index, round_start_at_ms, round_end_at_ms, round, p{userID}:lp, last_event_id）
+//   - match:{matchID}:state   ... 進行状態（deck_index, round, round_start_at_ms, round_end_at_ms,
+//                                     player1_lifepoint, player2_lifepoint,
+//                                     player1_total_miss_count, player2_total_miss_count）
 //   - match:{matchID}:events  ... イベント Streams（answer などの出来事）
 //   - match:{matchID}:deck    ... 出題デッキ（LIST; 要素はJSON文字列）
 //   - match:{matchID}:measurement_finished_count
