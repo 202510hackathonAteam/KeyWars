@@ -6,20 +6,6 @@ import (
 	"keywars/backend/internal/domain/model"
 )
 
-// AnswerApplyArg は、回答処理（answer）の適用時に必要なデータをまとめた引数構造体。
-// Redis の match:{matchID}:state や Streams に対して状態を更新する際に使用される。
-type AnswerApplyArg struct {
-	MatchID              string
-	OpponentUserID       string
-	NewOpponentLifePoint int64
-	NextDeckIndex        int64
-	CurrentServerTimeMs  int64
-
-	// イベントストリーム（match:{matchID}:events）に追加するフィールド群
-	// 例: {"answer_user_id": "u1", "word": "apple", "correct": "1"}
-	EventFields map[string]string
-}
-
 // RoundStateRepository は、対戦中の進行状態（ラウンド状態）を管理するリポジトリインターフェース。
 // Redis の `match:{matchID}:state` や `match:{matchID}:events` に対する操作を抽象化する。
 type RoundStateRepository interface {
@@ -52,7 +38,7 @@ type RoundStateRepository interface {
 	// 指定されたプレイヤー（player1 / player2）の累計ミス数カウントに missCount を加算する。
 	UpdateTotalMissCount(ctx context.Context, matchID, playerField string, missCount int64) error
 
-// 次ラウンドへ進むために deck_index と round を1つプラスして更新する。
+	// 次ラウンドへ進むために deck_index と round を1つプラスして更新する。
 	UpdateNextRoundState(ctx context.Context, matchID string) (int64, int64, error)
 
 	// ラウンドの開始予定時刻と終了予定時刻を、Redis の match:{matchID}:state に保存する。
