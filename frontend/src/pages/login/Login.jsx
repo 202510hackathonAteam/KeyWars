@@ -1,25 +1,55 @@
-import React, { useState } from "react";
+// Login.jsx
+import React, { useState, useEffect } from "react";
 import "./Login.css";
+import { getCookie } from "../../utils/cookieUtils.jsx";
+
 
 // loginファンクション
 export default function Login() {
   // UserNameとPasswordの状態管理
   const [userName, setUserName] = useState("");
   const [password, setPassword] = useState("");
+  const [csrfToken, setCsrfToken] = useState("");
+
+  // ★ ① 初回レンダリング時に /healthz を叩いて CSRF Cookie を取得
+  useEffect(() => {
+    const fetchCsrf = async () => {
+      try {
+        await fetch("/healthz", {
+          method: "GET",
+          credentials: "include",  // ← Cookie を受け取るために必要
+        });
+
+        // /healthz のレスポンスで Set-Cookie された csrf_token を取得
+        const token = getCookie("csrf_token");
+        console.log("Retrieved CSRF Token from cookie:", token);
+        setCsrfToken(token);
+      } catch (error) {
+        console.error("failed to fetch CSRF:", error);
+      }
+    };
+
+    fetchCsrf();
+  }, []);
 
   const enterArena = async (e) => {
+    console.log("ENTER ARENA CALLED");
     e.preventDefault();
+
     try {
-      const response = await fetch("/api/login", {
+      const response = await fetch("/auth/signin", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json",
+          ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+        },
         body: JSON.stringify({ user_name: userName, password }),
+        credentials: "include", 
       });
       if (!response.ok) throw new Error("Login failed");
 
-      const data = await response.json();
-      localStorage.setItem("token", data.token);
+     
       localStorage.setItem("user_name", userName.trim());
+      localStorage.setItem("justLoggedIn", "true");
       window.location.href = "/";
     } catch (error) {
       alert("ログインに失敗しました");
@@ -45,7 +75,7 @@ export default function Login() {
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,0,0,0.2),transparent_70%),radial-gradient(circle_at_bottom,rgba(255,165,0,0.15),transparent_80%),radial-gradient(circle_at_top,rgba(0,0,255,0.15),transparent_70%)] animate-pulse z-0 pointer-events-none" ></div>
 
       {/* メインコンテンツ */}
-      <div className="flex flex-col items-center gap-[clamp(1.5rem,5vh,3rem)] z-10">
+      <div className="flex flex-col items-center gap-[clamp(1.5rem,5vh,3rem)] z-50">
         <div
           className="title"
         >
@@ -56,6 +86,7 @@ export default function Login() {
 
         <form
           onSubmit={enterArena}
+          onChange={() => console.log("FORM CHANGED")}
           className="flex flex-col space-y-[clamp(0.5rem,2vh,1.5rem)] w-full"
         >
           <input
