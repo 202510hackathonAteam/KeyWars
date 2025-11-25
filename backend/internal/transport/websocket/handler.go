@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"time"
+	"context"
 
 	domain "keywars/backend/internal/domain/port"
 	"keywars/backend/internal/domain/repository"
@@ -60,7 +61,11 @@ type IncomingMessage struct {
 // ServeHTTP は WebSocket エンドポイントのエントリポイント。
 // 1) トークン検証 → 2) Upgrade → 3) Hub への Join → 4) writer 起動 → 5) reader ループ → 6) クリーンアップ
 func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-	requestContext := request.Context()
+	requestCtx := request.Context()
+
+	// WebSocket処理用のタイムアウト付きコンテキストを生成
+	timeoutCtx, cancel := context.WithTimeout(requestCtx, time.Second*10)
+	defer cancel()
 
 	// 🔍 ここ！Upgrade 前の通常 HTTP リクエストなので全部見える
 	log.Println("[WS] Cookie Header:", request.Header.Get("Cookie"))
@@ -97,7 +102,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 
 	// --- 3) Hub.Join（マッチング待機は個人ルームへ） ---
 	if handler.Hub != nil {
-		if err := handler.Hub.Join(requestContext, roomName, clientConn); err != nil {
+		if err := handler.Hub.Join(timeoutCtx, roomName, clientConn); err != nil {
 			log.Println("[WS] Hub.Join error:", err)
 			if errors.Is(err, ErrRoomFull) {
 				_ = wsConn.WriteControl(
@@ -147,7 +152,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 					return
 				}
 
-			case <-requestContext.Done():
+			case <-timeoutCtx.Done():
 				// サーバ都合で閉じる
 				_ = wsConn.WriteControl(
 					websocket.CloseMessage,
@@ -161,8 +166,8 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 
 	// --- 接続直後の初期メッセージ（writer 起動後に） ---
 	if handler.Service != nil {
-		if reply, err := handler.Service.OnConnect(requestContext, userID, clientConn.Room()); err == nil && reply != nil {
-			_ = clientConn.SendJSON(requestContext, reply)
+		if reply, err := handler.Service.OnConnect(timeoutCtx, userID, clientConn.Room()); err == nil && reply != nil {
+			_ = clientConn.SendJSON(timeoutCtx, reply)
 		}
 	}
 
@@ -172,7 +177,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	wsConn.SetPongHandler(func(_ string) error {
 		_ = wsConn.SetReadDeadline(time.Now().Add(pongWait))
 		if handler.Presence != nil {
-			_ = handler.Presence.Heartbeat(requestContext, userID, time.Now().UnixMilli())
+			_ = handler.Presence.Heartbeat(timeoutCtx, userID, time.Now().UnixMilli())
 		}
 		return nil
 	})
@@ -192,12 +197,12 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		}
 		if handler.Service != nil {
 			room := clientConn.Room()
-			if reply, err := handler.Service.OnMessage(requestContext, userID, room, incoming.Type, incoming.Body); err == nil && reply != nil {
-				_ = clientConn.SendJSON(requestContext, reply)
+			if reply, err := handler.Service.OnMessage(timeoutCtx, userID, room, incoming.Type, incoming.Body); err == nil && reply != nil {
+				_ = clientConn.SendJSON(timeoutCtx, reply)
 			}
 		}
 		if handler.Service == nil {
-			_ = clientConn.SendJSON(requestContext, map[string]any{
+			_ = clientConn.SendJSON(timeoutCtx, map[string]any{
 				"echo": string(rawData),
 			})
 			continue
@@ -206,10 +211,10 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 
 	// --- 6) 終了処理 ---
 	if handler.Hub != nil {
-		_ = handler.Hub.Leave(requestContext, clientConn)
+		_ = handler.Hub.Leave(timeoutCtx, clientConn)
 	}
 	if handler.Presence != nil {
-		_ = handler.Presence.Disconnect(requestContext, userID, time.Now().UnixMilli())
+		_ = handler.Presence.Disconnect(timeoutCtx, userID, time.Now().UnixMilli())
 	}
 	<-doneChan
 }

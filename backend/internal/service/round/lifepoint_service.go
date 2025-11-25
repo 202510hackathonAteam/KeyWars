@@ -1,4 +1,9 @@
-package realtime
+package round
+
+// func (s *lifepointService) {
+// 	// ライフポイント管理機能の実行
+// 	// プレイヤーごとにではなく、ラウンドごとの1回処理すること
+// }
 
 // MaxLP は 1プレイヤーの最大LP（現在は 100 固定）。
 const MaxLP int64 = 100
