@@ -1,70 +1,71 @@
-// src/assets/components/Home/Home.jsx
-import React, { useEffect, useRef, useState } from "react";
+// src/pages/home/Home.jsx
+import React, { useEffect, useRef, useState, useContext } from "react";
+import { WebSocketContext } from "../../context/WebsocketContext";
 // import "./Home.css";
 
 export default function Home() {
   // 現在接続中かどうかを保持するstate(connectによって再描画される。)
-  const [connected, setConnected] = useState(false);
-  // Websocketオブジェクト保持用のref(参照)＝再度レンダリングしても値はかわらない
-  const wsRef = useRef(null);
+  const { connect, connected } = useContext(WebSocketContext);
+
+  const storedUserName = localStorage.getItem("user_name") || "GUEST";
   // Websocketの接続を担う関数 
-  const connectWebSocket = () => {
-    // 固定の user_id を送る
-    const user_id = "user_1234";
-    const wsUrl = import.meta.env.VITE_WS_URL;
+  // const connectWebSocket = () => {
+  //   // 固定の user_id を送る
+  //   const user_id = "user_1234";
+  //   const wsUrl = import.meta.env.VITE_WS_URL;
 
-    // WebSocketオブジェクト生成し、接続
-    const ws = new WebSocket(`${wsUrl}?user_id=${user_id}`);
-    // 本番環境でhttpsが使えるなら、以下の方がいい
-    // const ws = new WebSocket(`wss://localhost:8080/ws?user_id=${user_id}`);
+  //   // WebSocketオブジェクト生成し、接続
+  //   const ws = new WebSocket(`${wsUrl}?user_id=${user_id}`);
+  //   // 本番環境でhttpsが使えるなら、以下の方がいい
+  //   // const ws = new WebSocket(`wss://localhost:8080/api/v1/ws`);
 
-    ws.onopen = () => {
-      // 接続確立すると、以下のメッセージ
-      console.log("✅ WebSocket 接続完了");
-      // stateを更新
-      setConnected(true);
-      // ここでバックエンドに初期メッセージを送ってもOK
-      ws.send(JSON.stringify({ type: "join", user_id }));
-    };
+  //   ws.onopen = () => {
+  //     // 接続確立すると、以下のメッセージ
+  //     console.log("✅ WebSocket 接続完了");
+  //     // stateを更新
+  //     setConnected(true);
+  //     // ここでバックエンドに初期メッセージを送ってもOK
+  //     ws.send(JSON.stringify({ type: "join", user_id }));
+  //   };
 
-    ws.onmessage = (event) => {
-      console.log("📩 受信:", event.data);
-    };
+  //   ws.onmessage = (event) => {
+  //     console.log("📩 受信:", event.data);
+  //   };
 
-    ws.onclose = () => {
-      console.log("❌ 接続が閉じられました");
-      // stateを更新
-      setConnected(false);
-    };
+  //   ws.onclose = () => {
+  //     console.log("❌ 接続が閉じられました");
+  //     // stateを更新
+  //     setConnected(false);
+  //   };
 
-    ws.onerror = (err) => {
-      console.error("⚠️ WebSocket エラー:", err);
-    };
+  //   ws.onerror = (err) => {
+  //     console.error("⚠️ WebSocket エラー:", err);
+  //   };
 
 
-    wsRef.current = ws;
-  };
+  //   wsRef.current = ws;
+  // };
   
 
-  // ✅ ページ離脱時（アンマウント時）に自動close
-  useEffect(() => {
-    // クリーンアップ関数
-    return () => {
-      if (wsRef.current) {
-        console.log("🔌 ページ離脱によりWebSocketを閉じます");
-        wsRef.current.close();
-      }
-    };
-  }, []); // ← 空配列でマウント/アンマウント時のみ実行
+  // // ✅ ページ離脱時（アンマウント時）に自動close
+  // useEffect(() => {
+  //   // クリーンアップ関数
+  //   return () => {
+  //     if (wsRef.current) {
+  //       console.log("🔌 ページ離脱によりWebSocketを閉じます");
+  //       wsRef.current.close();
+  //     }
+  //   };
+  // }, []); // ← 空配列でマウント/アンマウント時のみ実行
 
-  // WebSocket切断関数
-  // ws.readyStateがOpenとかcloseの値を保持している
-  const closeWebSocket = () => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      console.log("🔌 WebSocket を手動で閉じます");
-      wsRef.current.close();
-    }
-  };
+  // // WebSocket切断関数
+  // // ws.readyStateがOpenとかcloseの値を保持している
+  // const closeWebSocket = () => {
+  //   if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+  //     console.log("🔌 WebSocket を手動で閉じます");
+  //     wsRef.current.close();
+  //   }
+  // };
 
 
   return (
@@ -95,7 +96,7 @@ export default function Home() {
 
           {/* プレイヤー情報 */}
           <div className="text-[4vh] text-[#00ff99] mb-2 mt-[5vh] drop-shadow-[0_0_5px_#00ff99]">
-            PLAYER: GUEST
+            PLAYER:  {(storedUserName || "GUEST").toUpperCase()}
           </div>
 
           {/* ルール説明 */}
@@ -109,7 +110,7 @@ export default function Home() {
           <div className="flex flex-col items-center gap-5">
             <button
               className="px-6 py-3 bg-[#ff0000] border-2 border-[#ffcc00] rounded-lg text-white text-[3vh] uppercase shadow-[0_0_15px_#ff0000] transition-transform hover:bg-[#ff8800] hover:shadow-[0_0_25px_#ffaa00] hover:scale-110"
-              onClick={connectWebSocket}
+              onClick={connect}
               disabled={connected}
             >
               {connected ? "接続中..." : "対戦相手をさがす"}
