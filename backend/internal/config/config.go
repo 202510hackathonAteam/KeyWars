@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"time"
+	"net/http"
 )
 
 // DBConfig は、データベース接続に必要な設定情報の定義
@@ -42,7 +43,7 @@ func LoadJWTConfig() JWTConfig {
 // CookieConfig は、アプリケーションで使用する Cookie の共通設定を保持する構造体。
 type CookieConfig struct {
 	Domain string
-	SameSite string
+	SameSite http.SameSite
 	Secure bool
 }
 
