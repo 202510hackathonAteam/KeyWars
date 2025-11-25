@@ -6,7 +6,6 @@ export const WebSocketContext = createContext();
 
 export function WebSocketProvider({ children }) {
   const wsRef = useRef(null);
-  const [ws, setWs] = useState(null);
   const [connected, setConnected] = useState(false);
   const reconnectTimer = useRef(null);
   const navigate = useNavigate();
@@ -42,10 +41,10 @@ export function WebSocketProvider({ children }) {
       console.log("WS: disconnected");
       setConnected(false);
 
-      reconnectTimer.current = setTimeout(() => {
-        console.log("WS: reconnecting...");
-        connect();
-      }, 3000);
+      // reconnectTimer.current = setTimeout(() => {
+      //   console.log("WS: reconnecting...");
+      //   connect();
+      // }, 3000);
     };
 
     socket.onerror = (e) => {
@@ -81,6 +80,23 @@ export function WebSocketProvider({ children }) {
 
   };
 
+
+  // ===========================
+  // 🔥 対戦をやめる（queue.left）
+  // ===========================
+  const leaveQueue = () => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      console.warn("WS not connected → queue.left を送信できません");
+      return;
+    }
+
+    wsRef.current.send(JSON.stringify({ type: "queue.left" }));
+    console.log("📤 Sent: queue.left");
+
+    // 自動再接続も止めたい場合、disconnect する
+    disconnect();
+  };
+
   const disconnect = () => {
     if (wsRef.current) wsRef.current.close();
     wsRef.current = null;
@@ -96,6 +112,7 @@ export function WebSocketProvider({ children }) {
         connected,
         connect,
         disconnect,
+        leaveQueue,
         matchStartPayload,
       }}
     >

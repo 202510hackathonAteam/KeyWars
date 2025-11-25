@@ -121,8 +121,6 @@ const sendAnswerTimeout = () => {
     }
   };
 
-  const [timeLeft, setTimeLeft] = useState(60);
-
   const finishBattle = (didWin) => {
     const result = didWin ? "victory" : "defeat";
     navigate("/result", { state: { result } });
