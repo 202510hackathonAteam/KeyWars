@@ -8,10 +8,10 @@ set -euo pipefail
 : "${MYSQL_PASSWORD:?required}"
 : "${MYSQL_DATABASE:?required}"
 
-# DB起動待機（最大60秒）
-for i in $(seq 1 30); do
-  nc -z "${MYSQL_HOST}" "${MYSQL_PORT}" && break
-  echo "[seed] waiting for DB..."
+# DB起動待機
+for i in $(seq 1 120); do
+  mysqladmin ping -h "${MYSQL_HOST}" -u "${MYSQL_USER}" -p"${MYSQL_PASSWORD}" --silent && break
+  echo "[seed] waiting for MySQL to be ready..."
   sleep 2
 done
 
