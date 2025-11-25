@@ -103,22 +103,35 @@ func (hub *Hub) Leave(_ context.Context, clientConn domain.ClientConn) error {
 	var needClose bool
 
 	hub.mutex.Lock()
-	roomName := clientConn.Room()
+	currentRoomName := clientConn.Room()
+
+	// roomName が空 → Hub.rooms を走査して探す
+	if currentRoomName == "" {
+		for candidateRoomName, memberSet := range hub.rooms {
+			if _, exists := memberSet[clientConn]; exists {
+				currentRoomName = candidateRoomName
+				break
+			}
+		}
+	}
 
 	// 所属ルームがある場合のみ処理
-	if roomName != "" {
-		if memberSet, exists := hub.rooms[roomName]; exists {
-			// 対象の接続を削除
-			if _, present := memberSet[clientConn]; present {
+	if currentRoomName != "" {
+		if memberSet, roomExists := hub.rooms[currentRoomName]; roomExists {
+			if _, exists := memberSet[clientConn]; exists {
+				// 1) このクライアントをルームから外す
 				delete(memberSet, clientConn)
-				if c, ok := clientConn.(*Client); ok {
-					c.clearRoom() // 所属情報をクリア
+
+				// 2) Client 内の roomName もクリア
+				if client, ok := clientConn.(*Client); ok {
+					client.clearRoom()
 				}
 				needClose = true
 			}
-			// 全員いなくなったらルームを削除
+
+			// 3) ルームが空になったら rooms から削除
 			if len(memberSet) == 0 {
-				delete(hub.rooms, roomName)
+				delete(hub.rooms, currentRoomName)
 			}
 		}
 	}
