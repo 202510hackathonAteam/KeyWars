@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+
+	"keywars/backend/internal/config"
 )
 
 const (
@@ -135,16 +137,21 @@ func (repository *MatchQueueRepositoryRedis) DequeuePairAndInitMatch(contextObje
 		fmt.Sprintf("match:%s", matchID),
 		"status", "waiting",
 		"created_at", currentTimeMs,
-		"p1", user1ID,
-		"p2", user2ID,
+		"player1", user1ID,
+		"player2", user2ID,
 	)
 
 	// match:{matchID}:state : 進行状態（初期値）
 	pipeline.HSet(contextObject,
 		fmt.Sprintf("match:%s:state", matchID),
-		"deck_idx", 0,
-		"q_started_at_ms", currentTimeMs,
-		"turn", 0,
+		"deck_index", config.InitialDeckIndex,
+		"round", config.InitialRound,
+		"player1_answer_finished", false,
+		"player2_answer_finished", false,
+		"player1_lifepoint", config.InitialLifePoint,
+		"player2_lifepoint", config.InitialLifePoint,
+		"player1_total_misses", 0,
+		"player2_total_misses", 0,
 	)
 
 	// ---  試合開始時点で TTL を設定 ---

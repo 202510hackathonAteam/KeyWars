@@ -18,6 +18,7 @@ import (
 	sqlrepository "keywars/backend/internal/infra/repository/sql"
 	"keywars/backend/internal/service"
 	"keywars/backend/internal/service/realtime"
+	"keywars/backend/internal/service/round"
 	"keywars/backend/internal/transport/http/handler"
 	httpmiddleware "keywars/backend/internal/transport/http/middleware"
 	ws "keywars/backend/internal/transport/websocket"
@@ -97,7 +98,6 @@ func New(cfg *config.Config) (*Server, error) {
 	// Service 層の初期化
 	services := service.Services{
 		Auth:  service.NewAuthService(sqlrepos.User, jwtHandler),
-		Round: service.NewRoundService(redisRepos.Round),
 		// 下に追加していく
 	}
 
@@ -110,14 +110,39 @@ func New(cfg *config.Config) (*Server, error) {
 	// WebSocket Hub / Handler / Realtime Service
 	hub := ws.NewHub()
 
+	nextRoundService := round.NewNextRoundService(redisRepos.Round)
+	roundFlowService := round.NewRoundFlowService(
+		redisRepos.Round,
+		hub,
+		nextRoundService,
+		nil,
+	)
+
+	measurementService := round.NewMeasurementRoundService(redisRepos.Round)
+	forceFinishService := round.NewForceFinishService(
+		redisRepos.Round,
+		roundFlowService,
+		measurementService,
+	)
+
+	timeoutRoundService := round.NewTimeoutRoundService(
+		redisRepos.Round,
+		forceFinishService,
+	)
+
 	// Realtime Service を生成（Redis実装とHubを注入）
-	realtimeService := realtime.NewService(
+	realtimeService := realtime.NewMatchRealtimeService(
 		redisRepos.Queue,
 		redisRepos.Round,
 		redisRepos.Presence,
 		sqlrepos.Prompt,
 		hub,
+		&baseLogger,
+		roundFlowService,
+		measurementService,
 	)
+
+	roundFlowService.SetTimeoutService(timeoutRoundService)
 
 	// WebSocket Handler を生成（Service には realtimeService を渡す）
 	webSocketHandler := &ws.Handler{
