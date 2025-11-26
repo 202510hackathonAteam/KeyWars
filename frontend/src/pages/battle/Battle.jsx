@@ -4,12 +4,12 @@ import { useNavigate } from "react-router-dom";
 import { checkTyping } from "../../utils/typingLogic"; 
 import { WebSocketContext } from "../../context/WebsocketContext";
 
+// === ターゲットローマ字のハイライト表示 ===
 function renderHighlightedRomaji(target, progress) {
   return (
     <div className="flex gap-1 text-xl">
       {target.split("").map((char, index) => {
         const isTyped = index < progress;
-
         return (
           <span
             key={index}
@@ -29,79 +29,161 @@ function renderHighlightedRomaji(target, progress) {
 
 export default function GamePage() {
   const navigate = useNavigate();
-  const inputRef = useRef(null); // ← 入力欄参照を作成
+  const inputRef = useRef(null);
 
-  // typing用 state
+  // 入力状態
   const [input, setInput] = useState("");
   const [progress, setProgress] = useState(0);
   const [missCount, setMissCount] = useState(0);
   const [targetRomaji, setTargetRomaji] = useState("");
-  const [promptText, setPromptText] = useState(""); 
-  const [limitMs, setLimitMs] = useState(60000);
+  const [promptText, setPromptText] = useState("");
+
+  // 時間 & HP
   const [timeLeft, setTimeLeft] = useState(60);
+  const [playerHp, setPlayerHp] = useState(150);
+  const [enemyHp, setEnemyHp] = useState(150);
 
-  const [playerHp, setPlayerHp] = useState(100);
-  const [enemyHp, setEnemyHp] = useState(100);
+  // カウントダウン
+  const [countdown, setCountdown] = useState(null);
 
-
+  // WebSocket
   const { wsRef, matchStartPayload } = useContext(WebSocketContext);
 
-  useEffect(() => {
-  if (!matchStartPayload) return;
+  // タイマー管理
+  const timerRef = useRef(null);
+  const countdownRef = useRef(null);
+  const finishSentRef = useRef(false);
 
-  console.log("🎯 match.start in GamePage:", matchStartPayload);
+  // === ラウンド単位の一意IDを保持（タイマー二重起動防止）===
+  const roundIdRef = useRef(null);
 
-  setTargetRomaji(matchStartPayload.prompt.target_romaji);
-  setPromptText(matchStartPayload.prompt.prompt_text_ja);
-  setLimitMs(matchStartPayload.prompt.limit_ms);
+  // ============================================
+  // answer.finish / answer.timeout を1回だけ送る
+  // ============================================
+  const doFinishOnce = (type) => {
+    if (finishSentRef.current){
+      console.log("🚫 doFinishOnce SKIP (already sent)", type);
+       return;
+    }
+    
 
-  setTimeLeft(Math.floor(matchStartPayload.prompt.limit_ms / 1000));
-  inputRef.current?.focus();
-}, [matchStartPayload]);
+    console.log("✅ doFinishOnce FIRST SEND:", type, {
+    match_id: matchStartPayload?.match_id,
+    miss_count: missCount,
+    });
 
+    finishSentRef.current = true;
+
+    clearInterval(timerRef.current);
+
+    const msg = {
+      type,
+      body: {
+        match_id: matchStartPayload.match_id,
+        miss_count: missCount,
+      },
+    };
+
+    console.log("🔥 SEND", msg);
+    wsRef.current.send(JSON.stringify(msg));
+  };
 
   const sendAnswerFinish = () => {
-  if (!wsRef.current) {
-    console.warn("WS not connected");
-    return;
+  console.log("🔵 sendAnswerFinish called");
+  doFinishOnce("answer.finish");
   }
-  if (!matchStartPayload) {
-    console.warn("match.start payload missing");
-    return;
+  const sendAnswerTimeout = () => {
+  console.log("🟠 sendAnswerTimeout called");
+  doFinishOnce("answer.timeout");
   }
 
-  const msg = {
-    type: "answer.finish",
-    match_id: matchStartPayload.match_id,
-    miss_count: missCount,
+  // ============================================
+  // 🕒 ラウンドタイマー（1秒間隔）
+  // ============================================
+  const startBattleTimer = (roundId) => {
+    clearInterval(timerRef.current);
+
+    timerRef.current = setInterval(() => {
+      // もし別ラウンドになっていたらこのタイマーは古いので終了
+      if (roundIdRef.current !== roundId) {
+        clearInterval(timerRef.current);
+        return;
+      }
+
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current);
+          sendAnswerTimeout();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
   };
 
-  console.log("🔥 SEND answer.finish:", msg);
-  wsRef.current.send(JSON.stringify(msg));
-};
+  // ============================================
+  // 🔥 match.start を受け取ったときのメイン処理
+  // ============================================
+  useEffect(() => {
+    if (!matchStartPayload) return;
 
-const sendAnswerTimeout = () => {
-  if (!wsRef.current) {
-    console.warn("WS not connected");
-    return;
-  }
-  if (!matchStartPayload) {
-    console.warn("match.start payload missing");
-    return;
-  }
+    console.log("【🐱 新しいラウンド開始】", matchStartPayload.state.round);
 
-  const msg = {
-    type: "answer.timeout",
-    match_id: matchStartPayload.match_id,
-    miss_count: missCount,
-  };
+    // 🔥 ラウンドID を設定（これで二重ラウンドを防ぐ）
+    roundIdRef.current = matchStartPayload.state.round;
 
-  console.log("🔥 SEND answer.timeout:", msg);
-  wsRef.current.send(JSON.stringify(msg));
-};
+    // 🔥 finish フラグをリセット
+    finishSentRef.current = false;
 
+    // // 🔥 古いタイマーを完全停止
+    // clearInterval(timerRef.current);
+    // clearInterval(countdownRef.current);
 
-    // タイピング判定ロジック
+    // 状態リセット
+    setInput("");
+    setProgress(0);
+    setMissCount(0);
+    setTargetRomaji(matchStartPayload.prompt.target_romaji);
+    setPromptText(matchStartPayload.prompt.prompt_text_ja);
+
+    const sec = Math.floor(matchStartPayload.prompt.limit_ms / 1000);
+    setTimeLeft(sec);
+
+    // === 3秒カウントダウン開始 ===
+    let count = 3;
+    setCountdown(count);
+
+    countdownRef.current = setInterval(() => {
+      count -= 1;
+
+      if (roundIdRef.current !== matchStartPayload.state.round) {
+        clearInterval(countdownRef.current);
+        return;
+      }
+
+      if (count > 0) {
+        setCountdown(count);
+      } else {
+        clearInterval(countdownRef.current);
+        setCountdown(null);
+
+        // 入力欄フォーカス
+        inputRef.current?.focus();
+
+        // バトルタイマー開始
+        startBattleTimer(roundIdRef.current);
+      }
+    }, 1000);
+
+    // return () => {
+    //   clearInterval(timerRef.current);
+    //   clearInterval(countdownRef.current);
+    // };
+  }, [matchStartPayload]);
+
+  // ============================================
+  // 📝 入力処理
+  // ============================================
   const handleTyping = (e) => {
     const val = e.target.value;
     setInput(val);
@@ -117,36 +199,18 @@ const sendAnswerTimeout = () => {
     setProgress(newProgress);
 
     if (isFinish) {
-      sendAnswerFinish(); // WebSocket送信（後で作る）
+      sendAnswerFinish();
     }
   };
 
+  // ============================================
+  // 🔚 バトル終了
+  // ============================================
   const finishBattle = (didWin) => {
-    const result = didWin ? "victory" : "defeat";
-    navigate("/result", { state: { result } });
-  };
-
-    // ページ表示時にフォーカスを当てる
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
-  const timer = setInterval(() => {
-    setTimeLeft((prev) => {
-      if (prev <= 1) {
-        clearInterval(timer);
-        sendAnswerTimeout();  // ← 追加！
-        finishBattle(false); // 0になったら終了処理へ
-        return 0;
-      }
-      return prev - 1;
+    navigate("/result", {
+      state: { result: didWin ? "victory" : "defeat" },
     });
-  }, 1000); // 1秒ごと
-
-  return () => clearInterval(timer); // コンポーネントが消えたらタイマー停止
-}, []);
-
+  };
 
   return (
     <div className="
@@ -157,8 +221,8 @@ const sendAnswerTimeout = () => {
     h-[85vh]
     from-white/5 
     to-black/5 
-    shadow-[0_8px_30px_rgba(252,2,2,0.6)]"
-    gap-y-6   /* ← 内部要素間に余白を取る */
+    shadow-[0_8px_30px_rgba(252,2,2,0.6)]
+    gap-y-6"   /* ← 内部要素間に余白を取る */
     >
       {/* 戦闘エリア */}
       <div className="relative flex flex-col justify-between rounded-lg bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.02),transparent_40%)] p-5 overflow-hidden">
@@ -183,7 +247,7 @@ const sendAnswerTimeout = () => {
                   ></div>
                 </div>
                 <div className="text-[10px] mt-1 opacity-90">
-                  <span>100</span> / 100
+                  <span>150</span> / 150
                 </div>
               </div>
             </div>
@@ -197,11 +261,11 @@ const sendAnswerTimeout = () => {
                 <div className="h-[16px] bg-neutral-800 rounded-md overflow-hidden">
                   <div
                     className="h-full w-full bg-gradient-to-r from-[#3ce27a] to-[#afffb0]"
-                    style={{ width: "100%" }}
+                    style={{ width: `${enemyHp}%` }}
                   ></div>
                 </div>
                 <div className="text-[10px] mt-1 opacity-90 text-center">
-                  <span>100</span> / 100
+                  <span>150</span> / 150
                 </div>
               </div>
             </div>
@@ -246,6 +310,19 @@ const sendAnswerTimeout = () => {
 
         <div className="bg-gradient-to-b from-[#260707] to-[#0c0404] p-3 rounded-md border border-white/5 flex items-center justify-center min-h-[60px] text-[clamp(1.2rem,2vw,7rem)]">
           <div>
+            {countdown !== null && (
+            <div className="absolute inset-0 flex items-center justify-center text-[clamp(3rem,6vw,10rem)] 
+              font-bold text-white drop-shadow-[0_0_20px_#ffaa00]">
+              {countdown}
+            </div>
+          )}
+
+              {/* 日本語のお題 */}
+            <div className="text-white text-lg font-bold tracking-wide">
+              {promptText}
+            </div>
+
+
             <span>Type "</span>
             {renderHighlightedRomaji(targetRomaji, progress)}
             {/* <span className="font-bold text-[#3ce27a]">{promptText}</span> */}
@@ -258,7 +335,13 @@ const sendAnswerTimeout = () => {
           type="text"
           value={input}
           onChange={handleTyping}
-          placeholder="Enterで攻撃開始　ここにタイプ"
+          onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            sendAnswerFinish();
+          }
+        }}
+          placeholder="Enterで攻撃　ここにタイプ"
           className="w-full p-[3vh] rounded-lg border-2 border-white/5 bg-transparent text-white font-['Press_Start_2P'] text-[] focus:outline-none focus:border-[#ffcc00] focus:shadow-[0_0_10px_#ffaa00]"
         />
 
