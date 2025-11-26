@@ -248,6 +248,8 @@ func (repository *RoundStateRepositoryRedis) LoadMatchState(ctx context.Context,
 		RoundEndAtMS:   	parseInt64FromHash(matchStateRow, "round_end_at_ms"),
 		Player1Lifepoint: parseInt64FromHash(matchStateRow, "player1_lifepoint"),
 		Player2Lifepoint: parseInt64FromHash(matchStateRow, "player2_lifepoint"),
+		Player1TotalMissCount: parseInt64FromHash(matchStateRow, "player1_total_miss_count"),
+		Player2TotalMissCount: parseInt64FromHash(matchStateRow, "player2_total_miss_count"),
 	}
 
 	return state, nil
