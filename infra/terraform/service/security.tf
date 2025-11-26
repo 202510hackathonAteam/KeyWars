@@ -19,6 +19,73 @@ resource "google_compute_firewall" "ssh" {
 }
 
 #----------------------------
+# CloudArmor
+#----------------------------
+
+resource "google_compute_security_policy" "default" {
+  name = "${var.project_name}-security-policy"
+  description = "OWASP Top 10 protection with Cloud Armor"
+
+  # デフォルトルール(すべて許可)
+  rule {
+    action = "allow"
+    priority = 2147483647 # 優先度
+    match {
+      versioned_expr = "SRC_IPS_V1" # IPアドレスベースのマッチング式
+      config {
+        src_ip_ranges = ["*"] # すべてのIPアドレスが対象
+      }
+    }
+  }
+
+  # レート制限（DDoS対策）
+  rule {
+    action   = "rate_based_ban" # 閾値を超えたIPを一定時間BANする
+    priority = 1000
+    match {
+      versioned_expr = "SRC_IPS_V1"
+      config {
+        src_ip_ranges = ["*"]
+      }
+    }
+    rate_limit_options {
+      conform_action = "allow" # 制限内のリクエストは許可
+      exceed_action  = "deny(429)" # 制限超過時は429エラーを返す
+      enforce_on_key = "IP" # IPアドレスごとにカウント
+      
+      rate_limit_threshold {
+        count        = 300 # IPアドレス1つにつき、60秒に300アクセスまで
+        interval_sec = 60
+      }
+      ban_duration_sec = 600 # BANする時間
+    }
+  }
+
+  # SQLインジェクション、XSS対策
+  rule {
+    action = "deny(403)"
+    priority = 2000
+    match {
+      expr {
+        expression = <<-EOT
+                        evaluatePreconfiguredExpr("sqli-v33-stable")
+                        || evaluatePreconfiguredExpr("xss-v33-stable")
+        EOT
+      }
+    }
+  }
+
+  # 自動DDos検知(トラフィックパターンを学習して異常なトラフィックを自動検出・遮断)
+  adaptive_protection_config {
+    layer_7_ddos_defense_config {
+      enable = true
+      rule_visibility = "STANDARD"
+    }
+  }
+}
+
+
+#----------------------------
 # SecretManager
 #----------------------------
 

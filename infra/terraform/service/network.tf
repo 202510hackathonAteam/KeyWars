@@ -112,6 +112,7 @@ resource "google_compute_backend_service" "api_service" {
   backend {
     group = google_compute_region_network_endpoint_group.cloudrun_api_neg.id
   }
+  security_policy = google_compute_security_policy.default.self_link
 
   depends_on = [
     google_project_service.compute_api,
@@ -126,6 +127,7 @@ resource "google_compute_backend_service" "websocket_service" {
   backend {
     group = google_compute_region_network_endpoint_group.cloudrun_websocket_neg.id
   }
+  security_policy = google_compute_security_policy.default.self_link
 
   depends_on = [
     google_project_service.compute_api,
@@ -149,7 +151,7 @@ resource "google_compute_url_map" "default" {
     # 特定のパターンに合致する場合の転送先
     # WebSocket用 
     path_rule {
-      paths   = ["/api/v1/ws/", "/ws/"]
+      paths   = ["/api/v1/ws", "/ws"]
       service = google_compute_backend_service.websocket_service.id
     }
 
@@ -161,7 +163,7 @@ resource "google_compute_url_map" "default" {
 
     # js, css, jpegへのルーティングルール
     path_rule {
-      paths   = ["/assets/*"]
+      paths   = ["/assets/*", "/public/*"]
       service = google_compute_backend_bucket.static_bucket.id
     }
 
@@ -187,7 +189,7 @@ resource "google_compute_managed_ssl_certificate" "default" {
   }
 }
 
-# HTTPS転送ターゲットプロキシ
+# HTTPS転送ターゲットプロキシ(証明書とフロントエンドとの関連付け)
 resource "google_compute_target_https_proxy" "default" {
   name             = "https-proxy"
   url_map          = google_compute_url_map.default.id
