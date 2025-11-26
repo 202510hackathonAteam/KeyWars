@@ -111,11 +111,13 @@ func New(cfg *config.Config) (*Server, error) {
 	hub := ws.NewHub()
 
 	nextRoundService := round.NewNextRoundService(redisRepos.Round)
+	lifepointService := round.NewLifepointService(redisRepos.Round)
 	roundFlowService := round.NewRoundFlowService(
 		redisRepos.Round,
 		hub,
 		nextRoundService,
 		nil,
+		lifepointService,
 	)
 
 	measurementService := round.NewMeasurementRoundService(redisRepos.Round)

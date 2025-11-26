@@ -26,10 +26,6 @@ const (
 	// lockTTL はロック自動解放までの有効期限。
 	// フェイル時のスタック状態を防ぐ（best-effort）。
 	lockTTL = 3 * time.Second
-
-	// --- マッチ関連のTTLポリシー ---
-	matchTTLOnStart  = 1 * time.Hour    // 試合開始時：1時間保持
-	matchTTLOnFinish = 10 * time.Minute // 試合終了後：10分保持
 )
 
 // MatchQueueRepositoryRedis は、Redis を利用した待機キュー操作（ZSET）と
@@ -146,17 +142,15 @@ func (repository *MatchQueueRepositoryRedis) DequeuePairAndInitMatch(contextObje
 		fmt.Sprintf("match:%s:state", matchID),
 		"deck_index", config.InitialDeckIndex,
 		"round", config.InitialRound,
-		"player1_answer_finished", false,
-		"player2_answer_finished", false,
 		"player1_lifepoint", config.InitialLifePoint,
 		"player2_lifepoint", config.InitialLifePoint,
-		"player1_total_misses", 0,
-		"player2_total_misses", 0,
+		"player1_total_miss_count", 0,
+		"player2_total_miss_count", 0,
 	)
 
 	// ---  試合開始時点で TTL を設定 ---
-	pipeline.Expire(contextObject, matchKey, matchTTLOnStart)
-	pipeline.Expire(contextObject, matchStateKey, matchTTLOnStart)
+	pipeline.Expire(contextObject, matchKey, config.MatchExpiryOnStart)
+	pipeline.Expire(contextObject, matchStateKey, config.MatchExpiryOnStart)
 
 	// 5) 実行。失敗時は 2 名をキューへ戻して整合性を保つ
 	if _, err = pipeline.Exec(contextObject); err != nil {
