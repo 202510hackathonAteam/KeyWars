@@ -2,6 +2,7 @@ package round
 
 import (
 	"context"
+	"fmt"
 
 	"keywars/backend/internal/domain/repository"
 	"keywars/backend/internal/transport/websocket"
@@ -21,15 +22,17 @@ type RoundFlowService struct {
 	websocketHub         *websocket.Hub
 	nextRoundService     *NextRoundService
 	timeoutRoundService  *TimeoutRoundService
+	lifepointService		 *LifepointService
 }
 
 // NewRoundFlowService は RoundFlowService のコンストラクタ。
-func NewRoundFlowService(roundStateRepo repository.RoundStateRepository, websocketHub *websocket.Hub, nextRoundService *NextRoundService, timeoutRoundService *TimeoutRoundService) *RoundFlowService {
+func NewRoundFlowService(roundStateRepo repository.RoundStateRepository, websocketHub *websocket.Hub, nextRoundService *NextRoundService, timeoutRoundService *TimeoutRoundService, lifepointService *LifepointService) *RoundFlowService {
 	return &RoundFlowService{
 		roundStateRepo: 		 roundStateRepo,
 		websocketHub: 			 websocketHub,
 		nextRoundService: 	 nextRoundService,
 		timeoutRoundService: timeoutRoundService,
+		lifepointService:		 lifepointService,
 	}
 }
 
@@ -73,14 +76,18 @@ func (s *RoundFlowService) StartFirstRound(ctx context.Context, matchID, user1ID
 	return nil
 }
 
-// RunRoundFlow は、計測完了後に実行されるメソッド。
-func (s *RoundFlowService) RunRoundFlow(ctx context.Context, matchID string) error {
-	// ライフポイント管理機能の実行
-	// プレイヤーごとにではなく、ラウンドごとの1回処理すること
+// ProcessRoundResult は、両プレイヤーの回答が揃ったあとに呼ばれ、
+// ダメージ計算 → 勝敗判定 → 次ラウンド準備 → WebSocket通知 を実行するメソッド。
+// ラウンド終了後の全処理を一括で実行するフロー関数。
+func (s *RoundFlowService) ProcessRoundResult(ctx context.Context, matchID string) error {
+	// ラウンド結果に基づきダメージを適用
+	if err := s.lifepointService.ApplyRoundDamage(ctx, matchID); err != nil {
+		return fmt.Errorf("failed to apply round damage: %w", err)
+	}
 
 	state, err := s.roundStateRepo.LoadMatchState(ctx, matchID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to load state: %w", err)
 	}
 	currentRound := state.Round
 	lifePoint1 := state.Player1Lifepoint
@@ -104,43 +111,47 @@ func (s *RoundFlowService) RunRoundFlow(ctx context.Context, matchID string) err
 		// 	state.Player1TotalMissCount,
 		// 	state.Player2TotalMissCount,
 		// )
+		return nil
 	}
 
 	// ===============================
 	// ② 続行 → 次ラウンド初期化
 	// ===============================
 	if err := s.roundStateRepo.InitializeNextRoundState(ctx, matchID); err != nil{
-		return err
+		return fmt.Errorf("failed to prepare next round state: %w", err)
 	}
 	if err := s.roundStateRepo.InitializeMeasurementFinishCount(ctx, matchID); err != nil{
-		return err
+		return fmt.Errorf("failed to reset measurement finish count: %w", err)
 	}
 	players, err := s.roundStateRepo.LoadMatchPlayers(ctx, matchID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to load players: %w", err)
 	}
 	s.roundStateRepo.DeletePlayerAnswerFinishFlag(ctx, matchID, players.Player1ID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to clear p1 flag: %w", err)
 	}
 	s.roundStateRepo.DeletePlayerAnswerFinishFlag(ctx, matchID, players.Player2ID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to clear p2 flag: %w", err)
 	}
 
-	// 次のラウンドへ値を更新
+	// デッキ番号・ラウンド番号の更新
 	nextDeckIndex, nextRound, err := s.roundStateRepo.UpdateNextRoundState(ctx, matchID)
+	if err != nil {
+		return fmt.Errorf("failed to update next round state: %w", err)
+	}
 
-	// 次ラウンドの問題取得
+	// 次ラウンドの問題・時間情報を取得
 	roundQuestion, err := s.nextRoundService.LoadNextPrompt(ctx, matchID, nextDeckIndex)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to load next prompt: %w", err)
 	}
 
 	// 開始予定時刻＋終了予定時刻取得
 	roundStartAtMs, roundEndAtMs, err := s.nextRoundService.SaveRoundTiming(ctx, matchID, roundQuestion.LimitMs)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to save round timing: %w", err)
 	}
 
 	// ===============================

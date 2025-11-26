@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"keywars/backend/internal/domain/model"
+	"keywars/backend/internal/domain/types"
 )
 
 // RoundStateRepository は、対戦中の進行状態（ラウンド状態）を管理するリポジトリインターフェース。
@@ -25,6 +26,10 @@ type RoundStateRepository interface {
 	// 指定したデッキインデックスのmatch:{matchID}:deck の JSON を構造体に変換する。
 	LoadDeckPrompt(ctx context.Context, matchID string, deckIndex int64) (*model.DeckPrompt, error)
 
+	// Redis Stream に記録された FinishEvent から
+	// 指定ラウンドのイベントだけを最大 RequiredPlayers 件（通常2件）読み込み、返す。
+	LoadFinishEventsByRound(ctx context.Context, matchID string, round int64) ([]model.MatchFinishEvents, error)
+
 	// 回答確定時のイベント（miss数・終了時刻・ラウンド情報）を Redis Streams に保存する。
 	StoreFinishEvent(ctx context.Context, matchID, userID string, round, missCount, finishAtMs int64) error
 
@@ -37,6 +42,9 @@ type RoundStateRepository interface {
 
 	// 指定されたプレイヤー（player1 / player2）の累計ミス数カウントに missCount を加算する。
 	UpdateTotalMissCount(ctx context.Context, matchID, playerField string, missCount int64) error
+
+	// 指定されたプレイヤーのライフポイントを指定したダメージ分だけ減算する。
+	ReduceLifepoint(ctx context.Context, matchID, playerField string, damage int64) error
 
 	// 次ラウンドへ進むために deck_index と round を1つプラスして更新する。
 	UpdateNextRoundState(ctx context.Context, matchID string) (int64, int64, error)
@@ -54,7 +62,7 @@ type RoundStateRepository interface {
 	InitializeMeasurementFinishCount(ctx context.Context, matchID string) error
 
 	// 指定された matchID に紐づく「計測完了人数（measurement_finished_count）」カウンタを +1 する。
-	IncrementMeasurementFinishCount(ctx context.Context, matchID string) (int64, error)
+	IncrementMeasurementFinishCount(ctx context.Context, matchID string) (types.PlayerCount, error)
 
 	// プレイヤーの finish トリガーを原子的に「初回のみ」受け付ける。
 	RegisterPlayerAnswerFinishFlag(ctx context.Context, matchID, userID string) (bool, error)

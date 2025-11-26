@@ -179,8 +179,7 @@ func (service *MatchRealtimeService) OnMessage(
 		}
 
 		// 計測機能実行
-		err = service.measurementRoundService.SaveMeasurement(ctx, payload.MatchID, userID, payload.MissCount, constant.TriggerAnswerFinish)
-		if err != nil {
+		if err := service.measurementRoundService.SaveMeasurement(ctx, payload.MatchID, userID, payload.MissCount, constant.TriggerAnswerFinish); err != nil {
 			service.logger.Error().
         Err(err).
         Str("event", constant.TriggerAnswerFinish).
@@ -203,7 +202,6 @@ func (service *MatchRealtimeService) OnMessage(
 		// プレイヤー数が規定値を超えている場合 → 本来発生しない異常状態。
 		if measurementFinishedCount > config.RequiredPlayers {
 			service.logger.Error().
-        Int64("count", measurementFinishedCount).
         Str("event", constant.TriggerAnswerFinish).
         Str("match_id", payload.MatchID).
         Msg("unexpected measurement count (too large)")
@@ -211,13 +209,12 @@ func (service *MatchRealtimeService) OnMessage(
 		}
 
 		// プレイヤーが規定値の場合 → ラウンドフローを実行
-		err = service.roundFlowService.RunRoundFlow(ctx, payload.MatchID)
-		if err != nil {
+		if err := service.roundFlowService.ProcessRoundResult(ctx, payload.MatchID); err != nil {
 			service.logger.Error().
         Err(err).
         Str("event", constant.TriggerAnswerFinish).
         Str("match_id", payload.MatchID).
-        Msg("RunRoundFlow failed")
+        Msg("ProcessRoundResult failed")
 			return websocket.NewErrorPayload(), nil
 		}
 
@@ -254,8 +251,7 @@ func (service *MatchRealtimeService) OnMessage(
 		}
 
 		// 計測機能実行
-		err = service.measurementRoundService.SaveMeasurement(ctx, payload.MatchID, userID, payload.MissCount, constant.TriggerAnswerTimeout)
-		if err != nil {
+		if err := service.measurementRoundService.SaveMeasurement(ctx, payload.MatchID, userID, payload.MissCount, constant.TriggerAnswerTimeout); err != nil {
 			service.logger.Error().
         Err(err).
         Str("event", constant.TriggerAnswerTimeout).
@@ -278,7 +274,6 @@ func (service *MatchRealtimeService) OnMessage(
 		// プレイヤー数が規定値を超えている場合 → 本来発生しない異常状態。
 		if measurementFinishedCount > config.RequiredPlayers {
 			service.logger.Error().
-        Int64("count", measurementFinishedCount).
         Str("event", constant.TriggerAnswerTimeout).
         Str("match_id", payload.MatchID).
         Msg("unexpected measurement count (too large)")
@@ -286,13 +281,12 @@ func (service *MatchRealtimeService) OnMessage(
 		}
 
 		// プレイヤーが規定値の場合 → ラウンドフローを実行
-		err = service.roundFlowService.RunRoundFlow(ctx, payload.MatchID)
-		if err != nil {
+		if err := service.roundFlowService.ProcessRoundResult(ctx, payload.MatchID); err != nil {
 			service.logger.Error().
         Err(err).
         Str("event", constant.TriggerAnswerTimeout).
         Str("match_id", payload.MatchID).
-        Msg("RunRoundFlow failed")
+        Msg("ProcessRoundResult failed")
 			return websocket.NewErrorPayload(), nil
 		}
 
