@@ -43,13 +43,18 @@ func (s *MeasurementRoundService) SaveMeasurement(ctx context.Context, matchID, 
 
 	// 終了時刻の決定
 	var finishAtMs int64
+	nowAtMs := time.Now().UnixMilli()
 	switch trigger {
 	case constant.TriggerAnswerFinish:
-		finishAtMs = time.Now().UnixMilli()
+		if state.RoundEndAtMs < nowAtMs {
+			finishAtMs = state.RoundEndAtMs
+		} else {
+			finishAtMs = nowAtMs
+		}
 	case constant.TriggerAnswerTimeout:
-		finishAtMs = state.RoundEndAtMS
+		finishAtMs = state.RoundEndAtMs
 	case constant.TriggerServerForceFinish:
-		finishAtMs = state.RoundEndAtMS
+		finishAtMs = state.RoundEndAtMs
 	default:
 		return fmt.Errorf("unexpected finish trigger: %s", trigger)
 	}
