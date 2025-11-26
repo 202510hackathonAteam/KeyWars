@@ -100,9 +100,9 @@ func (repository *RoundStateRepositoryRedis) SaveDeck(ctx context.Context, match
 	for _, p := range deck {
 		// フロントが欲しい形に最低限整える（必要に応じて項目名調整）
 		payload := map[string]any{
-			"promptTextJa": p.PromptTextJa,
-			"reading":    	p.TargetRomaji,
-			"limit_ms":   	p.TimeLimitMs,
+			"prompt_text_ja": p.PromptTextJa,
+			"target_romaji": p.TargetRomaji,
+			"limit_ms": p.TimeLimitMs,
 		}
 		b, _ := json.Marshal(payload)
 		args = append(args, b)
@@ -128,12 +128,16 @@ func (repository *RoundStateRepositoryRedis) LoadDeckPrompt(ctx context.Context,
 		return nil, err
 	}
 
-	var nextPrompt model.DeckPrompt
-	if err := json.Unmarshal([]byte(nextPromptJson), &nextPrompt); err != nil {
+	var nextPromptRaw map[string]interface{}
+	if err := json.Unmarshal([]byte(nextPromptJson), &nextPromptRaw); err != nil {
 		return nil, err
 	}
 
-	return &nextPrompt, nil
+	return &model.DeckPrompt{
+		PromptTextJa: fmt.Sprintf("%v", nextPromptRaw["prompt_text_ja"]),
+		TargetRomaji: fmt.Sprintf("%v", nextPromptRaw["target_romaji"]),
+		LimitMs:      int64(nextPromptRaw["limit_ms"].(float64)),
+	}, nil
 }
 
 // ApplyAnswer は、回答結果を state に反映し（LP, deck_index, q_started_at_ms, round）、

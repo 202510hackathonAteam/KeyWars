@@ -61,11 +61,9 @@ type IncomingMessage struct {
 // ServeHTTP は WebSocket エンドポイントのエントリポイント。
 // 1) トークン検証 → 2) Upgrade → 3) Hub への Join → 4) writer 起動 → 5) reader ループ → 6) クリーンアップ
 func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-	requestCtx := request.Context()
-
-	// WebSocket処理用のタイムアウト付きコンテキストを生成
-	timeoutCtx, cancel := context.WithTimeout(requestCtx, time.Second*10)
-	defer cancel()
+	// WebSocket生存期間用
+	connCtx, connCancel := context.WithCancel(context.Background())
+	defer connCancel()
 
 	// 🔍 ここ！Upgrade 前の通常 HTTP リクエストなので全部見える
 	log.Println("[WS] Cookie Header:", request.Header.Get("Cookie"))
@@ -102,7 +100,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 
 	// --- 3) Hub.Join（マッチング待機は個人ルームへ） ---
 	if handler.Hub != nil {
-		if err := handler.Hub.Join(timeoutCtx, roomName, clientConn); err != nil {
+		if err := handler.Hub.Join(connCtx, roomName, clientConn); err != nil {
 			log.Println("[WS] Hub.Join error:", err)
 			if errors.Is(err, ErrRoomFull) {
 				_ = wsConn.WriteControl(
@@ -152,7 +150,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 					return
 				}
 
-			case <-timeoutCtx.Done():
+			case <-connCtx.Done():
 				// サーバ都合で閉じる
 				_ = wsConn.WriteControl(
 					websocket.CloseMessage,
@@ -166,8 +164,8 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 
 	// --- 接続直後の初期メッセージ（writer 起動後に） ---
 	if handler.Service != nil {
-		if reply, err := handler.Service.OnConnect(timeoutCtx, userID, clientConn.Room()); err == nil && reply != nil {
-			_ = clientConn.SendJSON(timeoutCtx, reply)
+		if reply, err := handler.Service.OnConnect(connCtx, userID, clientConn.Room()); err == nil && reply != nil {
+			_ = clientConn.SendJSON(connCtx, reply)
 		}
 	}
 
@@ -177,11 +175,12 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	wsConn.SetPongHandler(func(_ string) error {
 		_ = wsConn.SetReadDeadline(time.Now().Add(pongWait))
 		if handler.Presence != nil {
-			_ = handler.Presence.Heartbeat(timeoutCtx, userID, time.Now().UnixMilli())
+			_ = handler.Presence.Heartbeat(connCtx, userID, time.Now().UnixMilli())
 		}
 		return nil
 	})
 	wsConn.SetCloseHandler(func(_ int, _ string) error {
+		connCancel()
 		return nil
 	})
 
@@ -197,12 +196,12 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		}
 		if handler.Service != nil {
 			room := clientConn.Room()
-			if reply, err := handler.Service.OnMessage(timeoutCtx, userID, room, incoming.Type, incoming.Body); err == nil && reply != nil {
-				_ = clientConn.SendJSON(timeoutCtx, reply)
+			if reply, err := handler.Service.OnMessage(connCtx, userID, room, incoming.Type, incoming.Body); err == nil && reply != nil {
+				_ = clientConn.SendJSON(connCtx, reply)
 			}
 		}
 		if handler.Service == nil {
-			_ = clientConn.SendJSON(timeoutCtx, map[string]any{
+			_ = clientConn.SendJSON(connCtx, map[string]any{
 				"echo": string(rawData),
 			})
 			continue
@@ -211,10 +210,10 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 
 	// --- 6) 終了処理 ---
 	if handler.Hub != nil {
-		_ = handler.Hub.Leave(timeoutCtx, clientConn)
+		_ = handler.Hub.Leave(context.Background(), clientConn)
 	}
 	if handler.Presence != nil {
-		_ = handler.Presence.Disconnect(timeoutCtx, userID, time.Now().UnixMilli())
+		_ = handler.Presence.Disconnect(context.Background(), userID, time.Now().UnixMilli())
 	}
 	<-doneChan
 }
