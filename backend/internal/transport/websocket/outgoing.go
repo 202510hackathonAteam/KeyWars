@@ -96,22 +96,28 @@ func NewRoundStartPayload(matchID, player1, player2 string, state MatchState, pr
 type MatchEndPayload struct {
 	Type    string `json:"type"`    // "match.end"
 	MatchID string `json:"match_id"` // 例: "cd4d6af01a..."
+	Result  string `json:"result"`	// "win" | "draw"
 	Winner  string `json:"winner"`  // 勝者ユーザーID（未決なら空文字でも可）
 	Player1 string `json:"player1"`
 	Player2 string `json:"player2"`
 	Player1TotalMissCount int64 `json:"player1_total_miss_count"`
 	Player2TotalMissCount int64 `json:"player2_total_miss_count"`
+	Player1TotalDamageDealt int64 `json:"player1_total_damage_dealt"`
+	Player2TotalDamageDealt int64 `json:"player2_total_damage_dealt"`
 }
 
-func NewMatchEndPayload(matchID, player1, player2, winnerUserID string, player1TotalMissCount, player2TotalMissCount int64) MatchEndPayload {
+func NewMatchEndPayload(matchID, result, winnerUserID, player1, player2 string, player1TotalMissCount, player2TotalMissCount, player1TotalDamageDealt, player2TotalDamageDealt int64) MatchEndPayload {
 	return MatchEndPayload{
 		Type:    TypeMatchEnd,
 		MatchID: matchID,
+		Result:  result,
+		Winner:  winnerUserID,
 		Player1: player1,
 		Player2: player2,
-		Winner:  winnerUserID,
 		Player1TotalMissCount: player1TotalMissCount,
 		Player2TotalMissCount: player2TotalMissCount,
+		Player1TotalDamageDealt: player1TotalDamageDealt,
+		Player2TotalDamageDealt: player2TotalDamageDealt,
 	}
 }
 

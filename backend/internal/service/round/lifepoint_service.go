@@ -22,23 +22,23 @@ func NewLifepointService(roundStateRepo repository.RoundStateRepository) *Lifepo
 // ApplyRoundDamage は、指定された matchID のラウンド終了後に、
 // 各プレイヤーの回答完了時刻・ミス数をもとに
 // 与えるダメージを計算し、ライフポイントへ反映するメソッド。
-func (s *LifepointService) ApplyRoundDamage(ctx context.Context, matchID string) error {
+func (s *LifepointService) ApplyRoundDamage(ctx context.Context, matchID string) (int64, int64, error) {
 	// マッチ状態のロード
 	state, err := s.roundStateRepo.LoadMatchState(ctx, matchID)
 	if err != nil {
-		return fmt.Errorf("failed to load match state: %w", err)
+		return 0, 0, fmt.Errorf("failed to load match state: %w", err)
 	}
 
 	// 今ラウンドのプレイヤー分の試合結果の取得
 	events, err := s.roundStateRepo.LoadFinishEventsByRound(ctx, matchID, state.Round)
 	if err != nil {
-		return fmt.Errorf("failed to load finish events: %w", err)
+		return 0, 0, fmt.Errorf("failed to load finish events: %w", err)
 	}
 
 	// プレイヤーID情報をロード
 	players, err := s.roundStateRepo.LoadMatchPlayers(ctx, matchID)
 	if err != nil {
-		return fmt.Errorf("failed to load match players: %w", err)
+		return 0, 0, fmt.Errorf("failed to load match players: %w", err)
 	}
 
 	// イベントを player1 / player2 に振り分け
@@ -54,13 +54,13 @@ func (s *LifepointService) ApplyRoundDamage(ctx context.Context, matchID string)
 		case players.Player2ID:
 			player2Event = event
 		default:
-			return fmt.Errorf("unknown playerId in FinishEvents: %s", event.PlayerID)
+			return 0, 0, fmt.Errorf("unknown playerId in FinishEvents: %s", event.PlayerID)
 		}
 	}
 
 	// 必要分の件数が揃っているかチェック
 	if player1Event == nil || player2Event == nil {
-		return fmt.Errorf("required finish events not found")
+		return 0, 0, fmt.Errorf("required finish events not found")
 	}
 
 	// ダメージ計算
@@ -83,18 +83,22 @@ func (s *LifepointService) ApplyRoundDamage(ctx context.Context, matchID string)
 		player2Damage += player2Event.MissCount * 2
 	}
 
+	var player1Lifepoint, player2Lifepoint int64
+
 	// ライフポイント減算を適用
 	if player1Damage > 0 {
-		if err := s.roundStateRepo.ReduceLifepoint(ctx, matchID, "player1", player1Damage); err != nil {
-			return fmt.Errorf("failed to apply damage player1: %w", err)
+		player1Lifepoint, err = s.roundStateRepo.ReduceLifepoint(ctx, matchID, "player1", player1Damage)
+		if err != nil {
+			return 0, 0, fmt.Errorf("failed to apply damage player1: %w", err)
 		}
 	}
 
 	if player2Damage > 0 {
-		if err := s.roundStateRepo.ReduceLifepoint(ctx, matchID, "player2", player2Damage); err != nil {
-			return fmt.Errorf("failed to apply damage player2: %w", err)
+		player2Lifepoint, err = s.roundStateRepo.ReduceLifepoint(ctx, matchID, "player2", player2Damage)
+		if err != nil {
+			return 0, 0, fmt.Errorf("failed to apply damage player2: %w", err)
 		}
 	}
 
-	return nil
+	return player1Lifepoint, player2Lifepoint, nil
 }

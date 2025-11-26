@@ -274,16 +274,28 @@ func (repository *RoundStateRepositoryRedis) UpdateTotalMissCount(
 	return err
 }
 
-func (repository *RoundStateRepositoryRedis) ReduceLifepoint(ctx context.Context, matchID string, playerField string, damage int64) error {
+// ReduceLifepoint は、指定されたプレイヤーのライフポイントを指定したダメージ分だけ減算するメソッド。
+func (repository *RoundStateRepositoryRedis) ReduceLifepoint(ctx context.Context, matchID string, playerField string, damage int64) (int64, error) {
 	stateKey := fmt.Sprintf("match:%s:state", matchID)
 	playerLifepointField := playerField + "_lifepoint"
 
-	return repository.redisClient.HIncrBy(
+	lifepoint, err := repository.redisClient.HIncrBy(
 		ctx,
 		stateKey,
 		playerLifepointField,
 		-damage,
-	).Err()
+	).Result()
+
+	if err != nil {
+		return 0, err
+	}
+
+	if lifepoint < 0 {
+		lifepoint = 0
+		_ = repository.redisClient.HSet(ctx, stateKey, playerLifepointField, 0).Err()
+	}
+
+	return lifepoint, nil
 }
 
 // UpdateNextRoundState は、次ラウンドへ進むために deck_index と round を

@@ -44,7 +44,7 @@ type RoundStateRepository interface {
 	UpdateTotalMissCount(ctx context.Context, matchID, playerField string, missCount int64) error
 
 	// 指定されたプレイヤーのライフポイントを指定したダメージ分だけ減算する。
-	ReduceLifepoint(ctx context.Context, matchID, playerField string, damage int64) error
+	ReduceLifepoint(ctx context.Context, matchID string, playerField string, damage int64) (int64, error)
 
 	// 次ラウンドへ進むために deck_index と round を1つプラスして更新する。
 	UpdateNextRoundState(ctx context.Context, matchID string) (int64, int64, error)

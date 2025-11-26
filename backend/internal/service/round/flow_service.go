@@ -81,7 +81,8 @@ func (s *RoundFlowService) StartFirstRound(ctx context.Context, matchID, user1ID
 // ラウンド終了後の全処理を一括で実行するフロー関数。
 func (s *RoundFlowService) ProcessRoundResult(ctx context.Context, matchID string) error {
 	// ラウンド結果に基づきダメージを適用
-	if err := s.lifepointService.ApplyRoundDamage(ctx, matchID); err != nil {
+	player1Lifepoint, player2Lifepoint, err := s.lifepointService.ApplyRoundDamage(ctx, matchID)
+	if err != nil {
 		return fmt.Errorf("failed to apply round damage: %w", err)
 	}
 
@@ -90,19 +91,17 @@ func (s *RoundFlowService) ProcessRoundResult(ctx context.Context, matchID strin
 		return fmt.Errorf("failed to load state: %w", err)
 	}
 	currentRound := state.Round
-	lifePoint1 := state.Player1Lifepoint
-	lifePoint2 := state.Player2Lifepoint
 
 	// ===============================
 	// ① 終了条件（勝敗判定へ）
 	// ===============================
-	if currentRound >= 20 || lifePoint1 <= 0 || lifePoint2 <= 0 {
+	if currentRound >= 20 || player1Lifepoint <= 0 || player2Lifepoint <= 0 {
 		// 勝敗判定機能を書く
 
-		// players, err := s.roundStateRepo.LoadMatchPlayers(ctx, matchID)
-		// if err != nil {
-		// 	return err
-		// }
+		players, err := s.roundStateRepo.LoadMatchPlayers(ctx, matchID)
+		if err != nil {
+			return fmt.Errorf("failed to load players: %w", err)
+		}
 		// payload := websocket.NewMatchEndPayload(
 		// 	matchID,
 		// 	players.Player1ID,
@@ -111,6 +110,22 @@ func (s *RoundFlowService) ProcessRoundResult(ctx context.Context, matchID strin
 		// 	state.Player1TotalMissCount,
 		// 	state.Player2TotalMissCount,
 		// )
+		// 仮
+		payload := websocket.NewMatchEndPayload(
+			matchID,
+			"win",
+			"user123",
+			players.Player1ID,
+			players.Player2ID,
+			state.Player1TotalMissCount,
+			state.Player2TotalMissCount,
+			15,
+			15,
+		)
+
+		// WebSocket ブロードキャスト
+		s.websocketHub.Broadcast(ctx, "match:"+matchID, payload)
+
 		return nil
 	}
 
@@ -165,8 +180,8 @@ func (s *RoundFlowService) ProcessRoundResult(ctx context.Context, matchID strin
 			Round:           	nextRound,
 			RoundStartAtMS: 	roundStartAtMs,
 			RoundEndAtMS:   	roundEndAtMs,
-			Player1Lifepoint: lifePoint1,
-			Player2Lifepoint: lifePoint2,
+			Player1Lifepoint: player1Lifepoint,
+			Player2Lifepoint: player2Lifepoint,
 		},
 		websocket.PromptPayload{
 			PromptTextJa: roundQuestion.PromptTextJa,
