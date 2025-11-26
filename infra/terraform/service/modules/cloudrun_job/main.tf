@@ -70,4 +70,14 @@ resource "google_cloud_run_v2_job" "default" {
 
   client  = "terraform"
   depends_on = [var.depends_on_services]
+
+  lifecycle {
+    # 変更を無視する
+    ignore_changes = [
+      client,
+    client_version,
+      template[0].template[0].containers[0].env, # 環境変数の変更を無視する
+      template[0].template[0].containers[0].image, # イメージの変更
+     ]
+  }
 }

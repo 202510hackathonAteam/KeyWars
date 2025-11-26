@@ -70,4 +70,15 @@ resource "google_cloud_run_v2_service" "default" {
   ingress = var.ingress # デフォルトでIAMチェックを無効化
   client  = "terraform"
   depends_on = [var.depends_on_services]
+
+  lifecycle {
+    # 変更を無視する
+    ignore_changes = [
+      client,
+    client_version,
+      template[0].containers[0].env, # 環境変数の変更
+      template[0].containers[0].image, # イメージの変更
+      template[0].revision, # リビジョン名の変更を無視
+     ]
+  }
 }

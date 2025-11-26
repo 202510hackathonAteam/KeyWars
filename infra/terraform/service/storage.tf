@@ -60,7 +60,7 @@ resource "google_storage_bucket_object" "svg" {
 resource "google_storage_bucket_object" "jpeg" {
   bucket       = google_storage_bucket.static.id
   for_each     = fileset(var.frontend_static_path, "img/*.jpeg")
-  name         = each.value # GCS内でのファイル名
+  name         = "public/${each.value}" # GCS内でのファイル名
   source       = "${var.frontend_static_path}/${each.value}"
   content_type = "image/jpeg"
 }
