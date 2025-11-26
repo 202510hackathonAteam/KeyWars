@@ -51,7 +51,7 @@ func toDomain(u *inframodel.User) *domainmodel.User {
 }
 
 // Create は新規ユーザーをデータベースに登録する処理。
-func (r *userRepo) Create(ctx context.Context, user *domainmodel.User) error {
+func (r *userRepo) Create(ctx context.Context, user *domainmodel.User) (string, error) {
 	userRecord := toRecord(user)
 
 	// データベース登録処理
@@ -62,16 +62,16 @@ func (r *userRepo) Create(ctx context.Context, user *domainmodel.User) error {
 	if errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {
 		// user_name のユニーク制約違反を検出する処理
 		if strings.Contains(strings.ToLower(mysqlErr.Message), "ux_users_user_name") {
-			return errors.New("user_name already exists")
+			return "", errors.New("user_name already exists")
 		}
 	}
 
 	// その他のエラー処理
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	return nil
+	return userRecord.ID, nil
 }
 
 // ExistsByUsername は、指定されたユーザー名のレコードが存在するかを確認する関数。

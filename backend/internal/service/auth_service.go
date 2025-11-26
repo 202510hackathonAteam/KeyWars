@@ -59,7 +59,8 @@ func (s *authService) Signup(ctx context.Context, username, passwordPlain string
 	}
 
 	// ユーザーをデータベースに登録
-	if err := s.userRepo.Create(ctx, user); err != nil {
+	userID, err := s.userRepo.Create(ctx, user)
+	if err != nil {
 		if strings.Contains(err.Error(), "user_name already exists") {
 			return "", "", ErrUserExists
 		}
@@ -67,7 +68,7 @@ func (s *authService) Signup(ctx context.Context, username, passwordPlain string
 	}
 
 	// トークン生成
-	accessToken, refreshToken, err := s.jwtHandler.GenerateTokens(user.ID)
+	accessToken, refreshToken, err := s.jwtHandler.GenerateTokens(userID)
 	if err != nil {
 		return "", "", fmt.Errorf("generate tokens: %w", err)
 	}

@@ -5,26 +5,28 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"time"
 
 	"github.com/redis/go-redis/v9"
 
 	drepo "keywars/backend/internal/domain/repository"
 	"keywars/backend/internal/domain/model"
-)
-
-const (
-	matchTTL        = time.Hour        // 試合開始時 EXPIRE 1h
-	matchTTLPostFin = 10 * time.Minute // 終了後 PEXPIRE 10m は別箇所で
+	"keywars/backend/internal/config"
+	"keywars/backend/internal/domain/types"
 )
 
 // RoundStateRepositoryRedis は、対戦進行中の「メタ情報・状態・イベント・デッキ」を
 // Redis 上の複数キーに分割して管理するリポジトリ実装。
 // キー構成：
 //   - match:{matchID}         ... メタ情報（status, created_at, player1, player2, winner_user_id）
-//   - match:{matchID}:state   ... 進行状態（deck_index, round_start_at_ms, round_end_at_ms, round, p{userID}:lp, last_event_id）
+//   - match:{matchID}:state   ... 進行状態（deck_index, round, round_start_at_ms, round_end_at_ms,
+//                                     player1_lifepoint, player2_lifepoint,
+//                                     player1_total_miss_count, player2_total_miss_count）
 //   - match:{matchID}:events  ... イベント Streams（answer などの出来事）
 //   - match:{matchID}:deck    ... 出題デッキ（LIST; 要素はJSON文字列）
+//   - match:{matchID}:measurement_finished_count
+//     ... ラウンド内で「計測完了した人数」を保持するカウンタ（0 → 1 → 2）
+//   - match:{matchID}:answer_finish_flag:{userID}
+//     ... 各プレイヤーの finish トリガー受付フラグ（SetNX による冪等制御用）
 type RoundStateRepositoryRedis struct {
 	// redisClient は go-redis v9 のクライアント。
 	// 1インスタンスを本構造体で共有して各操作に使用する。
@@ -61,7 +63,7 @@ func (repository *RoundStateRepositoryRedis) Start(contextObject context.Context
 	pipeline.HSet(contextObject, matchKey, "status", "playing")
 
 	for _, suffix := range []string{"", ":state", ":events", ":deck"} {
-		pipeline.Expire(contextObject, matchKey+suffix, matchTTL)
+		pipeline.Expire(contextObject, matchKey+suffix, config.MatchExpiryOnStart)
 	}
 
 	_, err := pipeline.Exec(contextObject)
@@ -82,7 +84,7 @@ func (repository *RoundStateRepositoryRedis) Finish(contextObject context.Contex
 
 	// 終了後は 10 分で掃除（ミリ秒精度で設定）
 	for _, suffix := range []string{"", ":state", ":events", ":deck"} {
-		pipeline.PExpire(contextObject, matchKey+suffix, matchTTLPostFin)
+		pipeline.PExpire(contextObject, matchKey+suffix, config.MatchExpiryOnFinish)
 	}
 
 	_, err := pipeline.Exec(contextObject)
@@ -100,9 +102,9 @@ func (repository *RoundStateRepositoryRedis) SaveDeck(ctx context.Context, match
 	for _, p := range deck {
 		// フロントが欲しい形に最低限整える（必要に応じて項目名調整）
 		payload := map[string]any{
-			"promptTextJa": p.PromptTextJa,
-			"reading":    	p.TargetRomaji,
-			"limit_ms":   	p.TimeLimitMs,
+			"prompt_text_ja": p.PromptTextJa,
+			"target_romaji": p.TargetRomaji,
+			"limit_ms": p.TimeLimitMs,
 		}
 		b, _ := json.Marshal(payload)
 		args = append(args, b)
@@ -113,8 +115,8 @@ func (repository *RoundStateRepositoryRedis) SaveDeck(ctx context.Context, match
 		pipe.RPush(ctx, keyDeck, args...)
 	}
 	// 試合開始時に 1h で揃える（Meta が無いケースでも Deck 側へ設定しておく）
-	pipe.Expire(ctx, keyDeck, matchTTL)
-	pipe.Expire(ctx, keyMeta, matchTTL)
+	pipe.Expire(ctx, keyDeck, config.MatchExpiryOnStart)
+	pipe.Expire(ctx, keyMeta, config.MatchExpiryOnStart)
 
 	_, err := pipe.Exec(ctx)
 	return err
@@ -128,98 +130,100 @@ func (repository *RoundStateRepositoryRedis) LoadDeckPrompt(ctx context.Context,
 		return nil, err
 	}
 
-	var nextPrompt model.DeckPrompt
-	if err := json.Unmarshal([]byte(nextPromptJson), &nextPrompt); err != nil {
+	var nextPromptRaw map[string]interface{}
+	if err := json.Unmarshal([]byte(nextPromptJson), &nextPromptRaw); err != nil {
 		return nil, err
 	}
 
-	return &nextPrompt, nil
+	return &model.DeckPrompt{
+		PromptTextJa: fmt.Sprintf("%v", nextPromptRaw["prompt_text_ja"]),
+		TargetRomaji: fmt.Sprintf("%v", nextPromptRaw["target_romaji"]),
+		LimitMs:      int64(nextPromptRaw["limit_ms"].(float64)),
+	}, nil
 }
 
-// ApplyAnswer は、回答結果を state に反映し（LP, deck_index, q_started_at_ms, round）、
-// 続けて events Streams に answer イベントを追加する 2 フェーズ処理。
-// Phase A: WATCH + TxPipelined で round 競合を回避しつつ state 更新
-// Phase B: XADD でイベントを記録し、last_event_id を best-effort で更新
-func (repository *RoundStateRepositoryRedis) ApplyAnswer(contextObject context.Context, answerArgs drepo.AnswerApplyArg) (eventID string, round int64, err error) {
-	stateKey := fmt.Sprintf("match:%s:state", answerArgs.MatchID)
-	eventsKey := fmt.Sprintf("match:%s:events", answerArgs.MatchID)
+// StoreFinishEvent は、回答確定時のイベント（miss数・終了時刻・ラウンド情報）を
+// Redis Streams に保存するメソッド。
+func (repository *RoundStateRepositoryRedis) StoreFinishEvent(
+	ctx context.Context,
+	matchID,
+	userID string,
+	round,
+	missCount,
+	finishAtMs int64,
+) error {
+	eventsKey := fmt.Sprintf("match:%s:events", matchID)
 
-	// --- Phase A: 状態更新（round の整合性確保のため WATCH を使用）---
-	err = repository.redisClient.Watch(contextObject, func(transaction *redis.Tx) error {
-		// 現在の round を取得。未設定なら 0 とみなす。
-		values, err := transaction.HMGet(contextObject, stateKey, "round").Result()
-		if err != nil {
-			return err
-		}
+	_, err := repository.redisClient.XAdd(ctx, &redis.XAddArgs{
+		Stream: eventsKey,
+		Values: map[string]interface{}{
+			"player_id": userID,
+			"round": round,
+			"miss_count": missCount,
+			"finish_at_ms": finishAtMs,
+		},
+	}).Result()
 
-		var currentRound int64
-		if len(values) > 0 && values[0] != nil {
-			// HMGet は interface{} を返すため、string にキャストしてから parse
-			currentRound, _ = strconv.ParseInt(values[0].(string), 10, 64)
-		}
+	return err
+}
 
-		// TxPipelined: WATCH 中の原子的更新
-		_, err = transaction.TxPipelined(contextObject, func(pipeliner redis.Pipeliner) error {
-			// 対戦相手の LP を更新。キーは p{userID}:lp（例: p123:lp）
-			pipeliner.HSet(contextObject, stateKey, fmt.Sprintf("p%s:lp", answerArgs.OpponentUserID), answerArgs.NewOpponentLifePoint)
-
-			// ターンを +1（競合があれば WATCH により失敗→再実行 or エラー）
-			pipeliner.HIncrBy(contextObject, stateKey, "round", 1)
-
-			// 次の問題へ進む場合のみ、deck_idx と q_started_at_ms を更新
-			if answerArgs.NextDeckIndex >= 0 {
-				pipeliner.HSet(contextObject, stateKey,
-					"deck_index", answerArgs.NextDeckIndex,
-					"q_started_at_ms", answerArgs.CurrentServerTimeMs,
-				)
-			}
-			return nil
-		})
-		if err == nil {
-			// 呼び出し側に「更新後の round 」を返す
-			round = currentRound + 1
-		}
-		return err
-	}, stateKey)
+// LoadFinishEventsByRound は、Redis Stream に記録された MatchFinishEvents から
+// 指定ラウンドのイベントだけを最大 RequiredPlayers 件（通常2件）読み込み、返すメソッド。
+func (repository *RoundStateRepositoryRedis) LoadFinishEventsByRound(ctx context.Context, matchID string, round int64) ([]model.MatchFinishEvents, error) {
+	eventsKey := fmt.Sprintf("match:%s:events", matchID)
+	streamMessages, err := repository.redisClient.XRange(ctx, eventsKey, "-", "+").Result()
 	if err != nil {
-		return "", 0, err
+		return nil, err
 	}
 
-	// --- Phase B: イベント追加（予約済みフィールドを除外して積む）---
-	eventValues := []interface{}{
-		"type", "answer",
-		"round", strconv.FormatInt(round, 10),
-		"server_ts", strconv.FormatInt(answerArgs.CurrentServerTimeMs, 10),
-	}
-	for key, value := range answerArgs.EventFields {
-		// 予約済みキーは上書きしない
-		if key == "type" || key == "round" || key == "server_ts" {
+	var finishEvents []model.MatchFinishEvents
+
+	// 取得した全イベントを走査
+	for _, streamMessage := range streamMessages {
+		// Values は map[string]interface{}
+		eventValues := streamMessage.Values
+
+		// round フィールド取得（int64）
+		eventRound := parseInt64FromStream(eventValues, "round")
+		if eventRound != round {
 			continue
 		}
-		eventValues = append(eventValues, key, value)
+
+		// 各値を取得
+		eventPlayerID := parseStringFromStream(eventValues, "player_id")
+		eventMissCount := parseInt64FromStream(eventValues, "miss_count")
+		eventFinishAtMs := parseInt64FromStream(eventValues, "finish_at_ms")
+
+		// 結果に追加
+		finishEvents = append(finishEvents, model.MatchFinishEvents{
+			PlayerID:   eventPlayerID,
+			Round:      eventRound,
+			MissCount:  eventMissCount,
+			FinishAtMs: eventFinishAtMs,
+		})
+
+		// 規定値そろったら終了
+		if len(finishEvents) == int(config.RequiredPlayers) {
+			break
+		}
 	}
 
-	// Streams にイベントを追加。成功時のみ last_event_id を best-effort で更新。
-	eventID, err = repository.redisClient.XAdd(contextObject, &redis.XAddArgs{
-		Stream: eventsKey,
-		Values: eventValues,
-	}).Result()
-	if err == nil {
-		_ = repository.redisClient.HSet(contextObject, stateKey, "last_event_id", eventID).Err()
+	if len(finishEvents) < int(config.RequiredPlayers) {
+		return nil, fmt.Errorf("finish events not ready: got %d, need %d",
+			len(finishEvents), config.RequiredPlayers)
 	}
-	return
+
+	return finishEvents, nil
 }
 
 // InitializeNextRoundState は、次ラウンド開始のために
-// ラウンド内で使用する一時的な state（予定時刻や計測フラグなど）を初期化するメソッド。
+// ラウンド内で使用する一時的な state（予定時刻など）を初期化するメソッド。
 func (repository *RoundStateRepositoryRedis) InitializeNextRoundState(ctx context.Context, matchID string) error {
 	stateKey := fmt.Sprintf("match:%s:state", matchID)
 
 	return repository.redisClient.HSet(ctx, stateKey, map[string]interface{}{
 		"round_start_at_ms": 0,
 		"round_end_at_ms": 0,
-		"player1_answer_finished": false,
-		"player2_answer_finished": false,
 	}).Err()
 }
 
@@ -238,20 +242,65 @@ func (repository *RoundStateRepositoryRedis) LoadMatchState(ctx context.Context,
 
 	// int64に変換してセット
 	state := &model.MatchState{
-		DeckIndex:        		 					parseInt64Field(matchStateRow, "deck_index"),
-		Round:            		 					parseInt64Field(matchStateRow, "round"),
-		Player1AnswerFinished: 					parseBoolField(matchStateRow, "player1_answer_finished"),
-		Player2AnswerFinished: 					parseBoolField(matchStateRow, "player2_answer_finished"),
-		Player1Lifepoint: 		 					parseInt64Field(matchStateRow, "player1_lifepoint"),
-		Player2Lifepoint: 		 					parseInt64Field(matchStateRow, "player2_lifepoint"),
+		DeckIndex:      	parseInt64FromHash(matchStateRow, "deck_index"),
+		Round:          	parseInt64FromHash(matchStateRow, "round"),
+		RoundStartAtMS:  	parseInt64FromHash(matchStateRow, "round_start_at_ms"),
+		RoundEndAtMS:   	parseInt64FromHash(matchStateRow, "round_end_at_ms"),
+		Player1Lifepoint: parseInt64FromHash(matchStateRow, "player1_lifepoint"),
+		Player2Lifepoint: parseInt64FromHash(matchStateRow, "player2_lifepoint"),
 	}
 
 	return state, nil
 }
 
-// UpdateNextRound は、次ラウンドへ進むために deck_index と round を
+// UpdateTotalMissCount は、指定されたプレイヤー（player1 / player2）の
+// 累計ミス数カウントに missCount を加算するメソッド。
+func (repository *RoundStateRepositoryRedis) UpdateTotalMissCount(
+	ctx context.Context,
+	matchID,
+	playerField string,
+	missCount int64,
+) error {
+	stateKey := fmt.Sprintf("match:%s:state", matchID)
+	totalMissCountField := playerField + "_total_miss_count"
+
+	_, err := repository.redisClient.HIncrBy(
+		ctx,
+		stateKey,
+		totalMissCountField,
+		missCount,
+	).Result()
+
+	return err
+}
+
+// ReduceLifepoint は、指定されたプレイヤーのライフポイントを指定したダメージ分だけ減算するメソッド。
+func (repository *RoundStateRepositoryRedis) ReduceLifepoint(ctx context.Context, matchID string, playerField string, damage int64) (int64, error) {
+	stateKey := fmt.Sprintf("match:%s:state", matchID)
+	playerLifepointField := playerField + "_lifepoint"
+
+	lifepoint, err := repository.redisClient.HIncrBy(
+		ctx,
+		stateKey,
+		playerLifepointField,
+		-damage,
+	).Result()
+
+	if err != nil {
+		return 0, err
+	}
+
+	if lifepoint < 0 {
+		lifepoint = 0
+		_ = repository.redisClient.HSet(ctx, stateKey, playerLifepointField, 0).Err()
+	}
+
+	return lifepoint, nil
+}
+
+// UpdateNextRoundState は、次ラウンドへ進むために deck_index と round を
 // 1つプラスして更新するメソッド。
-func (repository *RoundStateRepositoryRedis) UpdateNextRound(ctx context.Context, matchID string) (int64, int64, error) {
+func (repository *RoundStateRepositoryRedis) UpdateNextRoundState(ctx context.Context, matchID string) (int64, int64, error) {
 	stateKey := fmt.Sprintf("match:%s:state", matchID)
 
 	nextDeckIndex, err := repository.redisClient.HIncrBy(ctx, stateKey, "deck_index", 1).Result()
@@ -303,7 +352,7 @@ func (repository *RoundStateRepositoryRedis) LoadMatchPlayers(ctx context.Contex
 func (repository *RoundStateRepositoryRedis) InitMeasurementFinishCount(ctx context.Context, matchID string) error {
 	measurementFinishedCountKey := fmt.Sprintf("match:%s:measurement_finished_count", matchID)
 
-	return repository.redisClient.Set(ctx, measurementFinishedCountKey, 0, 1*time.Hour).Err()
+	return repository.redisClient.Set(ctx, measurementFinishedCountKey, 0, config.MatchExpiryOnStart).Err()
 }
 
 // InitializeMeasurementFinishCount は、指定された matchID に紐づく
@@ -311,32 +360,65 @@ func (repository *RoundStateRepositoryRedis) InitMeasurementFinishCount(ctx cont
 func (repository *RoundStateRepositoryRedis) InitializeMeasurementFinishCount(ctx context.Context, matchID string) error {
 	measurementFinishedCountKey := fmt.Sprintf("match:%s:measurement_finished_count", matchID)
 
-	return repository.redisClient.Set(ctx, measurementFinishedCountKey, 0, 1*time.Hour).Err()
+	return repository.redisClient.Set(ctx, measurementFinishedCountKey, 0, config.MatchExpiryOnStart).Err()
 }
 
 // IncrementMeasurementFinishCount は、指定された matchID に紐づく
 // 「計測完了人数（measurement_finished_count）」カウンタを +1 するメソッド。
-func (repository *RoundStateRepositoryRedis) IncrementMeasurementFinishCount(ctx context.Context, matchID string) (int64, error) {
+func (repository *RoundStateRepositoryRedis) IncrementMeasurementFinishCount(ctx context.Context, matchID string) (types.PlayerCount, error) {
 	measurementFinishedCountKey := fmt.Sprintf("match:%s:measurement_finished_count", matchID)
 
-	measurementFinishedCount, err := repository.redisClient.Incr(ctx, measurementFinishedCountKey).Result()
+	measurementFinishedCountInt64, err := repository.redisClient.Incr(ctx, measurementFinishedCountKey).Result()
 	if err != nil {
 		return 0, err
 	}
 
-	return measurementFinishedCount, nil
+	return types.PlayerCount(measurementFinishedCountInt64), nil
+}
+
+// RegisterPlayerAnswerFinishFlag は、プレイヤーの finish トリガーを
+// 原子的に「初回のみ」受け付けるメソッド。
+func (repository *RoundStateRepositoryRedis) RegisterPlayerAnswerFinishFlag(ctx context.Context, matchID, userID string) (bool, error) {
+	flagKey := fmt.Sprintf("match:%s:answer_finish_flag:%s", matchID, userID)
+
+	isFirstFinished, err := repository.redisClient.SetNX(ctx, flagKey, true, config.MatchExpiryOnStart).Result()
+	if err != nil {
+		return false, err
+	}
+
+	return isFirstFinished, nil
+}
+
+// IsPlayerAnswerFinishFlagExists は、指定したプレイヤーの finish フラグキーが
+// Redis 上に存在するかどうかを返すメソッド。
+func (repository *RoundStateRepositoryRedis) IsPlayerAnswerFinishFlagExists(ctx context.Context, matchID, userID string) (bool, error) {
+	flagKey := fmt.Sprintf("match:%s:answer_finish_flag:%s", matchID, userID)
+
+	isPlayerFinishFlagExists, err := repository.redisClient.Exists(ctx, flagKey).Result()
+	if err != nil {
+		return false, err
+	}
+
+	return isPlayerFinishFlagExists==1, nil
+}
+
+// DeletePlayerAnswerFinishFlag は、プレイヤーの finish フラグキーを削除し、
+// 次のラウンドで再び RegisterPlayerFinishFlag の SetNX が成功するようにリセットするメソッド。
+func (repository *RoundStateRepositoryRedis) DeletePlayerAnswerFinishFlag(ctx context.Context, matchID, userID string) error {
+	flagKey := fmt.Sprintf("match:%s:answer_finish_flag:%s", matchID, userID)
+	return repository.redisClient.Del(ctx, flagKey).Err()
 }
 
 
 // ---- ヘルパー関数 ----
-// parseInt64Field は、Redis HGETALL の結果(map[string]string)から
+// parseInt64FromHash は、Redis HGETALL の結果(map[string]string)から
 // 指定したフィールド名の値を int64 にパースして返す関数。
-func parseInt64Field(row map[string]string, field string) int64 {
-	rowValue, exists := row[field]
+func parseInt64FromHash(raw map[string]string, field string) int64 {
+	rawValue, exists := raw[field]
 	if !exists {
 		return 0
   }
-	parsedValue, err := strconv.ParseInt(rowValue, 10, 64)
+	parsedValue, err := strconv.ParseInt(rawValue, 10, 64)
 	if err != nil {
 		return 0
 	}
@@ -344,16 +426,37 @@ func parseInt64Field(row map[string]string, field string) int64 {
 	return parsedValue
 }
 
-// parseBoolField は、Redis HGETALL の結果(map[string]string)から
-// 指定したフィールド名の値を bool にパースして返す関数。
-func parseBoolField(row map[string]string, field string) bool {
-	rowValue, exists := row[field]
+// parseStringFromStream は Redis Streams の Values(map[string]interface{}) から
+// 指定フィールドを string として取り出す関数。
+func parseStringFromStream(streamValues map[string]interface{}, fieldName string) string {
+	fieldRawValue, exists := streamValues[fieldName]
 	if !exists {
-		return false
+		return ""
+	}
+
+	fieldStringValue, isString := fieldRawValue.(string)
+	if !isString {
+		return ""
+	}
+
+	return fieldStringValue
+}
+
+// parseInt64FromStream は Redis Streams の Values(map[string]interface{}) から
+// 指定フィールドを int64 として取り出す関数。
+func parseInt64FromStream(streamValues map[string]interface{}, fieldName string) int64 {
+	rawValue, exists := streamValues[fieldName]
+	if !exists {
+		return 0
   }
-	parsedValue, err := strconv.ParseBool(rowValue)
+	parsedValueString, ok := rawValue.(string)
+	if !ok {
+		return 0
+	}
+
+	parsedValue, err := strconv.ParseInt(parsedValueString, 10, 64)
 	if err != nil {
-		return false
+		return 0
 	}
 
 	return parsedValue
