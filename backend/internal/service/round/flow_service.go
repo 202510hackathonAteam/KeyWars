@@ -3,6 +3,7 @@ package round
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"keywars/backend/internal/domain/repository"
 	"keywars/backend/internal/transport/websocket"
@@ -48,13 +49,17 @@ func NewRoundFlowService(
 // StartFirstRound は、試合の最初のラウンドを開始するメソッド。
 func (s *RoundFlowService) StartFirstRound(ctx context.Context, matchID, user1ID, user2ID string) error {
 	// 1問目取得
-	roundQuestion, err := s.nextRoundService.LoadNextPrompt(ctx, matchID, 0)
+	loadCtx, cancelLoad := context.WithTimeout(ctx, 500*time.Millisecond)
+	roundQuestion, err := s.nextRoundService.LoadNextPrompt(loadCtx, matchID, 0)
+	cancelLoad()
 	if err != nil {
 		return err
 	}
 
 	// 開始予定時刻＋終了予定時刻更新し、取得
-	roundStartAtMs, roundEndAtMs, err := s.nextRoundService.SaveRoundTiming(ctx, matchID, roundQuestion.LimitMs)
+	timingCtx, cancelTiming := context.WithTimeout(ctx, 500*time.Millisecond)
+	roundStartAtMs, roundEndAtMs, err := s.nextRoundService.SaveRoundTiming(timingCtx, matchID, roundQuestion.LimitMs)
+	cancelTiming()
 	if err != nil {
 		return err
 	}
@@ -90,12 +95,16 @@ func (s *RoundFlowService) StartFirstRound(ctx context.Context, matchID, user1ID
 // ラウンド終了後の全処理を一括で実行するフロー関数。
 func (s *RoundFlowService) ProcessRoundResult(ctx context.Context, matchID string) error {
 	// ラウンド結果に基づきダメージを適用
-	player1Lifepoint, player2Lifepoint, err := s.lifepointService.ApplyRoundDamage(ctx, matchID)
+	applyCtx, cancelApply := context.WithTimeout(ctx, 600*time.Millisecond)
+	player1Lifepoint, player2Lifepoint, err := s.lifepointService.ApplyRoundDamage(applyCtx, matchID)
+	cancelApply()
 	if err != nil {
 		return fmt.Errorf("failed to apply round damage: %w", err)
 	}
 
-	state, err := s.roundStateRepo.LoadMatchState(ctx, matchID)
+	loadStateCtx, cancelLoadState := context.WithTimeout(ctx, 300*time.Millisecond)
+	state, err := s.roundStateRepo.LoadMatchState(loadStateCtx, matchID)
+	cancelLoadState()
 	if err != nil {
 		return fmt.Errorf("failed to load state: %w", err)
 	}
@@ -106,12 +115,16 @@ func (s *RoundFlowService) ProcessRoundResult(ctx context.Context, matchID strin
 	// ===============================
 	if currentRound >= 20 || player1Lifepoint <= 0 || player2Lifepoint <= 0 {
 		// 勝敗判定
-		matchJudgeResult, err := s.matchJudgeService.JudgeMatchResult(ctx, matchID, player1Lifepoint, player2Lifepoint)
+		judgeCtx, cancelJudge := context.WithTimeout(ctx, 300*time.Millisecond)
+		matchJudgeResult, err := s.matchJudgeService.JudgeMatchResult(judgeCtx, matchID, player1Lifepoint, player2Lifepoint)
+		cancelJudge()
 		if err != nil {
 			return fmt.Errorf("failed to judge match result: %w", err)
 		}
 
-		players, err := s.roundStateRepo.LoadMatchPlayers(ctx, matchID)
+		loadPlayersCtx, cancelLoadPlayers := context.WithTimeout(ctx, 200*time.Millisecond)
+		players, err := s.roundStateRepo.LoadMatchPlayers(loadPlayersCtx, matchID)
+		cancelLoadPlayers()
 		if err != nil {
 			return fmt.Errorf("failed to load players: %w", err)
 		}
@@ -136,39 +149,60 @@ func (s *RoundFlowService) ProcessRoundResult(ctx context.Context, matchID strin
 	// ===============================
 	// ② 続行 → 次ラウンド初期化
 	// ===============================
-	if err := s.roundStateRepo.InitializeNextRoundState(ctx, matchID); err != nil{
+	initNextCtx, cancelNextState := context.WithTimeout(ctx, 300*time.Millisecond)
+	err = s.roundStateRepo.InitializeNextRoundState(initNextCtx, matchID)
+	cancelNextState()
+	if err != nil{
 		return fmt.Errorf("failed to prepare next round state: %w", err)
 	}
-	if err := s.roundStateRepo.InitializeMeasurementFinishCount(ctx, matchID); err != nil{
+
+	resetMeasurementCtx, cancelResetMeasurement := context.WithTimeout(ctx, 300*time.Millisecond)
+	err = s.roundStateRepo.InitializeMeasurementFinishCount(resetMeasurementCtx, matchID)
+	cancelResetMeasurement()
+	if err != nil{
 		return fmt.Errorf("failed to reset measurement finish count: %w", err)
 	}
-	players, err := s.roundStateRepo.LoadMatchPlayers(ctx, matchID)
+
+	playersCtx, cancelPlayers := context.WithTimeout(ctx, 200*time.Millisecond)
+	players, err := s.roundStateRepo.LoadMatchPlayers(playersCtx, matchID)
+	cancelPlayers()
 	if err != nil {
 		return fmt.Errorf("failed to load players: %w", err)
 	}
-	s.roundStateRepo.DeletePlayerAnswerFinishFlag(ctx, matchID, players.Player1ID)
+
+	clearPlayer1Ctx, cancelClearPlayer1 := context.WithTimeout(ctx, 200*time.Millisecond)
+	err = s.roundStateRepo.DeletePlayerAnswerFinishFlag(clearPlayer1Ctx, matchID, players.Player1ID)
+	cancelClearPlayer1()
 	if err != nil {
 		return fmt.Errorf("failed to clear p1 flag: %w", err)
 	}
-	s.roundStateRepo.DeletePlayerAnswerFinishFlag(ctx, matchID, players.Player2ID)
+	clearPlayer2Ctx, cancelClearPlayer2 := context.WithTimeout(ctx, 200*time.Millisecond)
+	err = s.roundStateRepo.DeletePlayerAnswerFinishFlag(clearPlayer2Ctx, matchID, players.Player2ID)
+	cancelClearPlayer2()
 	if err != nil {
 		return fmt.Errorf("failed to clear p2 flag: %w", err)
 	}
 
 	// デッキ番号・ラウンド番号の更新
-	nextDeckIndex, nextRound, err := s.roundStateRepo.UpdateNextRoundState(ctx, matchID)
+	updateNextRoundCtx, cancelUpdateNextRound := context.WithTimeout(ctx, 300*time.Millisecond)
+	nextDeckIndex, nextRound, err := s.roundStateRepo.UpdateNextRoundState(updateNextRoundCtx, matchID)
+	cancelUpdateNextRound()
 	if err != nil {
 		return fmt.Errorf("failed to update next round state: %w", err)
 	}
 
 	// 次ラウンドの問題・時間情報を取得
-	roundQuestion, err := s.nextRoundService.LoadNextPrompt(ctx, matchID, nextDeckIndex)
+	loadPromptCtx, cancelLoadPrompt := context.WithTimeout(ctx, 600*time.Millisecond)
+	roundQuestion, err := s.nextRoundService.LoadNextPrompt(loadPromptCtx, matchID, nextDeckIndex)
+	cancelLoadPrompt()
 	if err != nil {
 		return fmt.Errorf("failed to load next prompt: %w", err)
 	}
 
 	// 開始予定時刻＋終了予定時刻取得
-	roundStartAtMs, roundEndAtMs, err := s.nextRoundService.SaveRoundTiming(ctx, matchID, roundQuestion.LimitMs)
+	timingCtx, cancelTiming := context.WithTimeout(ctx, 600*time.Millisecond)
+	roundStartAtMs, roundEndAtMs, err := s.nextRoundService.SaveRoundTiming(timingCtx, matchID, roundQuestion.LimitMs)
+	cancelTiming()
 	if err != nil {
 		return fmt.Errorf("failed to save round timing: %w", err)
 	}
