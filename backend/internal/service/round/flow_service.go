@@ -23,16 +23,25 @@ type RoundFlowService struct {
 	nextRoundService     *NextRoundService
 	timeoutRoundService  *TimeoutRoundService
 	lifepointService		 *LifepointService
+	matchJudgeService		 *MatchJudgeService
 }
 
 // NewRoundFlowService は RoundFlowService のコンストラクタ。
-func NewRoundFlowService(roundStateRepo repository.RoundStateRepository, websocketHub *websocket.Hub, nextRoundService *NextRoundService, timeoutRoundService *TimeoutRoundService, lifepointService *LifepointService) *RoundFlowService {
+func NewRoundFlowService(
+	roundStateRepo repository.RoundStateRepository,
+	websocketHub *websocket.Hub,
+	nextRoundService *NextRoundService,
+	timeoutRoundService *TimeoutRoundService,
+	lifepointService *LifepointService,
+	matchJudgeService	*MatchJudgeService,
+) *RoundFlowService {
 	return &RoundFlowService{
 		roundStateRepo: 		 roundStateRepo,
 		websocketHub: 			 websocketHub,
 		nextRoundService: 	 nextRoundService,
 		timeoutRoundService: timeoutRoundService,
 		lifepointService:		 lifepointService,
+		matchJudgeService:   matchJudgeService,
 	}
 }
 
@@ -96,31 +105,26 @@ func (s *RoundFlowService) ProcessRoundResult(ctx context.Context, matchID strin
 	// ① 終了条件（勝敗判定へ）
 	// ===============================
 	if currentRound >= 20 || player1Lifepoint <= 0 || player2Lifepoint <= 0 {
-		// 勝敗判定機能を書く
+		// 勝敗判定
+		matchJudgeResult, err := s.matchJudgeService.JudgeMatchResult(ctx, matchID, player1Lifepoint, player2Lifepoint)
+		if err != nil {
+			return fmt.Errorf("failed to judge match result: %w", err)
+		}
 
 		players, err := s.roundStateRepo.LoadMatchPlayers(ctx, matchID)
 		if err != nil {
 			return fmt.Errorf("failed to load players: %w", err)
 		}
-		// payload := websocket.NewMatchEndPayload(
-		// 	matchID,
-		// 	players.Player1ID,
-		// 	players.Player2ID,
-		// 	winner,
-		// 	state.Player1TotalMissCount,
-		// 	state.Player2TotalMissCount,
-		// )
-		// 仮
 		payload := websocket.NewMatchEndPayload(
 			matchID,
-			"win",
-			"user123",
+			string(matchJudgeResult.ResultType),
+			matchJudgeResult.WinnerPlayerID,
 			players.Player1ID,
 			players.Player2ID,
 			state.Player1TotalMissCount,
 			state.Player2TotalMissCount,
-			15,
-			15,
+			matchJudgeResult.Player1TotalDamageDealt,
+			matchJudgeResult.Player2TotalDamageDealt,
 		)
 
 		// WebSocket ブロードキャスト
