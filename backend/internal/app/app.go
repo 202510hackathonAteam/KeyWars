@@ -125,6 +125,7 @@ func New(cfg *config.Config) (*Server, error) {
 	measurementService := round.NewMeasurementRoundService(redisRepos.Round)
 	forceFinishService := round.NewForceFinishService(
 		redisRepos.Round,
+		&baseLogger,
 		roundFlowService,
 		measurementService,
 	)
