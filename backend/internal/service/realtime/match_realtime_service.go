@@ -178,23 +178,23 @@ func (service *MatchRealtimeService) OnMessage(
 			return websocket.NewErrorPayload(), nil
 		}
 
-		// 計測機能実行
+		// 計測機能実行（各プレイヤーが1回だけ実行）
 		if err := service.measurementRoundService.SaveMeasurement(ctx, payload.MatchID, userID, payload.MissCount, constant.TriggerAnswerFinish); err != nil {
 			service.logger.Error().
         Err(err).
         Str("event", constant.TriggerAnswerFinish).
         Str("match_id", payload.MatchID).
-        Msg("failed to increment measurementFinishedCount")
+        Msg("failed to SaveMeasurement (answer finish)")
 			return websocket.NewErrorPayload(), nil
 		}
 
-		// measurementFinishedCountを+1
+		// measurementFinishedCountを+1（全員が1回だけ実行）
 		measurementFinishedCount, err := service.roundStateRepository.IncrementMeasurementFinishCount(ctx, payload.MatchID)
 		if err != nil {
 			return websocket.NewErrorPayload(), nil
 		}
 
-		// 両プレイヤーが揃うまで終了処理は実行しない
+		// 両プレイヤーが揃うまで終了処理は実行しない（まだ各プレイヤー1回実行の領域）
 		if measurementFinishedCount < config.RequiredPlayers {
 			return nil, nil
 		}
@@ -207,6 +207,10 @@ func (service *MatchRealtimeService) OnMessage(
         Msg("unexpected measurement count (too large)")
 			return websocket.NewErrorPayload(), nil
 		}
+
+		// =====================================
+		// ここから下は「最後の1人だけ」実行する処理
+		// =====================================
 
 		// プレイヤーが規定値の場合 → ラウンドフローを実行
 		if err := service.roundFlowService.ProcessRoundResult(ctx, payload.MatchID); err != nil {
@@ -250,23 +254,23 @@ func (service *MatchRealtimeService) OnMessage(
 			return websocket.NewErrorPayload(), nil
 		}
 
-		// 計測機能実行
+		// 計測機能実行（各プレイヤーが1回だけ実行）
 		if err := service.measurementRoundService.SaveMeasurement(ctx, payload.MatchID, userID, payload.MissCount, constant.TriggerAnswerTimeout); err != nil {
 			service.logger.Error().
         Err(err).
         Str("event", constant.TriggerAnswerTimeout).
         Str("match_id", payload.MatchID).
-        Msg("failed to increment measurementFinishedCount")
+        Msg("failed to SaveMeasurement (answer timeout)")
 			return websocket.NewErrorPayload(), nil
 		}
 
-		// measurementFinishedCountを+1
+		// measurementFinishedCountを+1（全員が1回だけ実行）
 		measurementFinishedCount, err := service.roundStateRepository.IncrementMeasurementFinishCount(ctx, payload.MatchID)
 		if err != nil {
 			return websocket.NewErrorPayload(), nil
 		}
 
-		// 両プレイヤーが揃うまで終了処理は実行しない
+		// 両プレイヤーが揃うまで終了処理は実行しない（まだ各プレイヤー1回実行の領域）
 		if measurementFinishedCount < config.RequiredPlayers {
 			return nil, nil
 		}
@@ -279,6 +283,10 @@ func (service *MatchRealtimeService) OnMessage(
         Msg("unexpected measurement count (too large)")
 			return websocket.NewErrorPayload(), nil
 		}
+
+		// =====================================
+		// ここから下は「最後の1人だけ」実行する処理
+		// =====================================
 
 		// プレイヤーが規定値の場合 → ラウンドフローを実行
 		if err := service.roundFlowService.ProcessRoundResult(ctx, payload.MatchID); err != nil {

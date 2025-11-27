@@ -83,7 +83,8 @@ func (s *LifepointService) ApplyRoundDamage(ctx context.Context, matchID string)
 		player2Damage += player2Event.MissCount * 2
 	}
 
-	var player1Lifepoint, player2Lifepoint int64
+	player1Lifepoint := state.Player1Lifepoint
+	player2Lifepoint := state.Player2Lifepoint
 
 	// ライフポイント減算を適用
 	if player1Damage > 0 {

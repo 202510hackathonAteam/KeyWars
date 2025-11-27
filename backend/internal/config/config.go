@@ -51,7 +51,7 @@ type CookieConfig struct {
 func LoadCookieConfig() CookieConfig {
 	return CookieConfig{
 		// 本番環境では必ずhttp.SameSiteStrictModeにすること
-		SameSite: http.SameSiteNoneMode,
+		SameSite: http.SameSiteLaxMode,
 		// 本番環境ではドメイン名を記載すること
 		Domain: os.Getenv("COOKIE_DOMAIN"),
 		// 本番環境では必ずtrueにすること
