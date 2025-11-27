@@ -184,7 +184,7 @@ func (service *MatchRealtimeService) OnMessage(
         Err(err).
         Str("event", constant.TriggerAnswerFinish).
         Str("match_id", payload.MatchID).
-        Msg("failed to increment measurementFinishedCount")
+        Msg("failed to SaveMeasurement (answer finish)")
 			return websocket.NewErrorPayload(), nil
 		}
 
@@ -260,7 +260,7 @@ func (service *MatchRealtimeService) OnMessage(
         Err(err).
         Str("event", constant.TriggerAnswerTimeout).
         Str("match_id", payload.MatchID).
-        Msg("failed to increment measurementFinishedCount")
+        Msg("failed to SaveMeasurement (answer timeout)")
 			return websocket.NewErrorPayload(), nil
 		}
 
