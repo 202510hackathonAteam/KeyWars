@@ -60,7 +60,7 @@ func (s *RoundFlowService) StartFirstRound(ctx context.Context, matchID, user1ID
 
 	// 開始予定時刻＋終了予定時刻更新し、取得
 	timingCtx, cancelTiming := context.WithTimeout(ctx, 500*time.Millisecond)
-	roundStartAtMs, roundEndAtMs, err := s.nextRoundService.SaveRoundTiming(timingCtx, matchID, roundQuestion.LimitMs)
+	roundStartAtMs, roundEndAtMs, err := s.nextRoundService.SaveFirstRoundTiming(timingCtx, matchID, roundQuestion.LimitMs)
 	cancelTiming()
 	if err != nil {
 		return err
