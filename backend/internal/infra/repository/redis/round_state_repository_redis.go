@@ -91,6 +91,20 @@ func (repository *RoundStateRepositoryRedis) Finish(contextObject context.Contex
 	return err
 }
 
+// CleanupMatch は、1つのマッチが完全に終了した後に呼び出される
+// 「再戦に影響する一時データのみ」を安全に削除するクリーンアップ処理するメソッド。
+func (repository *RoundStateRepositoryRedis) CleanupMatch(ctx context.Context, matchID, user1ID, user2ID string) error {
+	keys := []string{
+		fmt.Sprintf("match:%s", matchID),
+		fmt.Sprintf("match:%s:state", matchID),
+		fmt.Sprintf("match:%s:measurement_finished_count", matchID),
+		fmt.Sprintf("match:%s:answer_finish_flag:%s", matchID, user1ID),
+		fmt.Sprintf("match:%s:answer_finish_flag:%s", matchID, user2ID),
+	}
+
+	return repository.redisClient.Del(ctx, keys...).Err()
+}
+
 // SaveDeckOnce は、出題デッキ(LIST)を「未作成のときだけ」保存する（冪等）。
 // 競合時は WATCH により存在チェックと追加を疑似原子的に実施する。
 func (repository *RoundStateRepositoryRedis) SaveDeck(ctx context.Context, matchID string, deck []drepo.PromptWithDifficulty) error {
