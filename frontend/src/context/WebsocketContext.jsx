@@ -10,6 +10,7 @@ export function WebSocketProvider({ children }) {
   const reconnectTimer = useRef(null);
   const navigate = useNavigate();
   const [matchStartPayload, setMatchStartPayload] = useState(null);
+  const [matchEndPayload, setMatchEndPayload] = useState(null);
   const matchStartedRef = useRef(false);
 
   const getUserId = () => localStorage.getItem("user_name");
@@ -57,6 +58,9 @@ export function WebSocketProvider({ children }) {
       console.log("WS Message:", event.data);
       const data = JSON.parse(event.data);
       switch (data.type) {
+          case "welcome":
+            localStorage.setItem("user_id", data.uid);
+            break;
           case "match.start":
             console.log("🔥 match.start received:", data);
 
@@ -74,6 +78,7 @@ export function WebSocketProvider({ children }) {
 
           case "match.end":
             console.log("試合終了:", data);
+            setMatchEndPayload(data);  
             break;
 
           default:
@@ -119,6 +124,7 @@ export function WebSocketProvider({ children }) {
         disconnect,
         leaveQueue,
         matchStartPayload,
+        matchEndPayload,
       }}
     >
       {children}

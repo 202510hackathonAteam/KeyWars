@@ -206,11 +206,26 @@ export default function GamePage() {
   // ============================================
   // 🔚 バトル終了
   // ============================================
-  const finishBattle = (didWin) => {
-    navigate("/result", {
-      state: { result: didWin ? "victory" : "defeat" },
-    });
-  };
+  const { matchEndPayload } = useContext(WebSocketContext);
+
+  useEffect(() => {
+  if (!matchEndPayload) return;
+
+  console.log("🎌 match.end received in GamePage:", matchEndPayload);
+
+  const myId = localStorage.getItem("user_id"); // ← 自分のユーザーID
+  const didWin = matchEndPayload.winner === myId;
+
+  // 結果画面へ
+  navigate("/result", {
+    state: {
+      result: didWin ? "victory" : "defeat",
+      matchEnd: matchEndPayload, // ← 必要ならデータ丸ごと送れる
+    },
+  });
+
+}, [matchEndPayload]);
+
 
   return (
     <div className="
