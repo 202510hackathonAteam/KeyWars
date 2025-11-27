@@ -4,8 +4,8 @@ package model
 type MatchState struct {
 	DeckIndex int64
 	Round int64
-	RoundStartAtMS int64
-	RoundEndAtMS int64
+	RoundStartAtMs int64
+	RoundEndAtMs int64
 	Player1Lifepoint int64
 	Player2Lifepoint int64
 	Player1TotalMissCount int64
