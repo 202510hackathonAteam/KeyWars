@@ -75,7 +75,7 @@ export default function Login() {
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,0,0,0.2),transparent_70%),radial-gradient(circle_at_bottom,rgba(255,165,0,0.15),transparent_80%),radial-gradient(circle_at_top,rgba(0,0,255,0.15),transparent_70%)] animate-pulse z-0 pointer-events-none" ></div>
 
       {/* メインコンテンツ */}
-      <div className="flex flex-col items-center gap-[clamp(1.5rem,5vh,3rem)] z-50">
+      <div className="flex flex-col items-center gap-[clamp(1.8rem,6vh,4rem)] z-50">
         <div
           className="title"
         >
@@ -101,8 +101,8 @@ export default function Login() {
             border-2 border-orange-500 bg-black text-white
             rounded-md outline-none
             w-[clamp(200px,40vw,360px)]
-            h-[clamp(32px,5vh,48px)]
-            text-[clamp(0.6rem,0.9vw,0.8rem)]
+            h-[clamp(32px,6vh,48px)]
+            text-[clamp(1rem,1.2vw,1.2rem)]
             focus:border-yellow-400 focus:shadow-[0_0_10px_#ffaa00]
             transition-all
             "
@@ -120,8 +120,8 @@ export default function Login() {
             border-2 border-orange-500 bg-black text-white
             rounded-md outline-none
             w-[clamp(200px,40vw,360px)]
-            h-[clamp(32px,5vh,48px)]
-            text-[clamp(0.6rem,0.9vw,0.8rem)]
+            h-[clamp(32px,6vh,48px)]
+            text-[clamp(1rem,1.2vw,1.2rem)]
             focus:border-yellow-400 focus:shadow-[0_0_10px_#ffaa00]
             transition-all
             "
@@ -135,7 +135,7 @@ export default function Login() {
                 py-[clamp(0.2rem,0.6vh,0.7rem)]
                 border-2 border-yellow-400 rounded-md
                 bg-red-600 text-white
-                text-[clamp(0.6rem,0.9vw,0.8rem)]
+                text-[clamp(1rem,1.2vw,1.2rem)]
                 hover:bg-orange-500
                 hover:shadow-[0_0_25px_#ffaa00]
                 transition-transform hover:scale-105
@@ -152,7 +152,7 @@ export default function Login() {
                 py-[clamp(0.2rem,0.6vh,0.7rem)]
                 border-2 border-yellow-400 rounded-md
                 bg-blue-600 text-white
-                text-[clamp(0.6rem,0.9vw,0.8rem)]
+                text-[clamp(1rem,1.2vw,1.2rem)]
                 hover:bg-cyan-400
                 hover:shadow-[0_0_25px_#00ffff]
                 transition-transform hover:scale-105
