@@ -25,6 +25,7 @@ type RoundFlowService struct {
 	timeoutRoundService  *TimeoutRoundService
 	lifepointService		 *LifepointService
 	matchJudgeService		 *MatchJudgeService
+	timeoutCancelMap     map[string]context.CancelFunc
 }
 
 // NewRoundFlowService は RoundFlowService のコンストラクタ。
@@ -43,6 +44,7 @@ func NewRoundFlowService(
 		timeoutRoundService: timeoutRoundService,
 		lifepointService:		 lifepointService,
 		matchJudgeService:   matchJudgeService,
+		timeoutCancelMap: 	 make(map[string]context.CancelFunc),
 	}
 }
 
@@ -86,7 +88,9 @@ func (s *RoundFlowService) StartFirstRound(ctx context.Context, matchID, user1ID
 	// WebSocket ブロードキャスト
 	s.websocketHub.Broadcast(ctx, "match:"+matchID, payload)
 
-	go s.timeoutRoundService.ScheduleRoundTimeoutCheck(ctx, matchID, roundEndAtMs + config.GraceMs)
+	timeoutCtx, timeoutCancel := context.WithCancel(context.Background())
+	s.timeoutCancelMap[matchID] = timeoutCancel
+	go s.timeoutRoundService.ScheduleRoundTimeoutCheck(timeoutCtx, matchID, roundEndAtMs + config.GraceMs)
 	return nil
 }
 
@@ -94,6 +98,12 @@ func (s *RoundFlowService) StartFirstRound(ctx context.Context, matchID, user1ID
 // ダメージ計算 → 勝敗判定 → 次ラウンド準備 → WebSocket通知 を実行するメソッド。
 // ラウンド終了後の全処理を一括で実行するフロー関数。
 func (s *RoundFlowService) ProcessRoundResult(ctx context.Context, matchID string) error {
+	// 前ラウンドの timeout goroutine を停止
+	if cancel, ok := s.timeoutCancelMap[matchID]; ok {
+		cancel()
+		delete(s.timeoutCancelMap, matchID)
+	}
+
 	// ラウンド結果に基づきダメージを適用
 	applyCtx, cancelApply := context.WithTimeout(ctx, 600*time.Millisecond)
 	player1Lifepoint, player2Lifepoint, err := s.lifepointService.ApplyRoundDamage(applyCtx, matchID)
@@ -231,7 +241,10 @@ func (s *RoundFlowService) ProcessRoundResult(ctx context.Context, matchID strin
 	// WebSocket ブロードキャスト
 	s.websocketHub.Broadcast(ctx, "match:"+matchID, payload)
 
-	go s.timeoutRoundService.ScheduleRoundTimeoutCheck(ctx, matchID, roundEndAtMs + config.GraceMs)
+	// 次ラウンドの timeout をセット
+	timeoutCtx, timeoutCancel := context.WithCancel(context.Background())
+	s.timeoutCancelMap[matchID] = timeoutCancel
+	go s.timeoutRoundService.ScheduleRoundTimeoutCheck(timeoutCtx, matchID, roundEndAtMs + config.GraceMs)
 
 	return nil
 }
