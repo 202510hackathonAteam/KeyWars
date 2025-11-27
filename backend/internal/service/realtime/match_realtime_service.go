@@ -2,6 +2,7 @@ package realtime
 
 import (
 	"context"
+	"errors"
 	"time"
 	"encoding/json"
 	"github.com/rs/zerolog"
@@ -180,6 +181,10 @@ func (service *MatchRealtimeService) OnMessage(
 
 		// 計測機能実行（各プレイヤーが1回だけ実行）
 		if err := service.measurementRoundService.SaveMeasurement(ctx, payload.MatchID, userID, payload.MissCount, constant.TriggerAnswerFinish); err != nil {
+			// すでに実行済み（2回目の finish は正常扱いとして無視）
+			if errors.Is(err, constant.ErrAlreadyFinished) {
+        return nil, nil
+			}
 			service.logger.Error().
         Err(err).
         Str("event", constant.TriggerAnswerFinish).
@@ -256,6 +261,10 @@ func (service *MatchRealtimeService) OnMessage(
 
 		// 計測機能実行（各プレイヤーが1回だけ実行）
 		if err := service.measurementRoundService.SaveMeasurement(ctx, payload.MatchID, userID, payload.MissCount, constant.TriggerAnswerTimeout); err != nil {
+			// すでに実行済み（2回目の finish は正常扱いとして無視）
+			if errors.Is(err, constant.ErrAlreadyFinished) {
+        return nil, nil
+			}
 			service.logger.Error().
         Err(err).
         Str("event", constant.TriggerAnswerTimeout).

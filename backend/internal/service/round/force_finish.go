@@ -2,6 +2,7 @@ package round
 
 import (
 	"context"
+	"errors"
 
 	"github.com/rs/zerolog"
 
@@ -81,6 +82,10 @@ func (s *forceFinishService) ForceFinish(ctx context.Context, matchID string) (a
 			if err := s.measurementRoundService.SaveMeasurement(
 				ctx, matchID, p.userID, missCount, constant.TriggerServerForceFinish,
 			); err != nil {
+				// すでに実行済み（2回目の finish は正常扱いとして無視）
+				if errors.Is(err, constant.ErrAlreadyFinished) {
+					continue
+				}
 				s.logger.Error().
 					Err(err).
 					Str("event", constant.TriggerServerForceFinish).
@@ -88,7 +93,7 @@ func (s *forceFinishService) ForceFinish(ctx context.Context, matchID string) (a
 					Msg("failed to SaveMeasurement (force finish)")
 				return websocket.NewErrorPayload(), nil
 			}
-			// measurementFinishedCountを+1（全員が1回だけ実行）
+			// measurementFinishedCountを+1（SaveMeasurement が成功した時だけ）
 			currentFinishedCount, err := s.roundStateRepo.IncrementMeasurementFinishCount(ctx, matchID)
 			if err != nil {
 				return websocket.NewErrorPayload(), nil
@@ -97,23 +102,15 @@ func (s *forceFinishService) ForceFinish(ctx context.Context, matchID string) (a
 		}
 	}
 
-	// 両プレイヤーが揃うまで終了処理は実行しない（まだ各プレイヤー1回実行の領域）
-	if measurementFinishedCount < config.RequiredPlayers {
-		return nil, nil
-	}
-
-	// プレイヤー数が規定値を超えている場合 → 本来発生しない異常状態。
-	if measurementFinishedCount > config.RequiredPlayers {
-		s.logger.Error().
+	// 強制終了では、この時点で両プレイヤーの finish が揃っている必要がある。
+	// 2になっていないのは未処理の残りがあるという意味で異常。
+	if measurementFinishedCount != config.RequiredPlayers {
+    s.logger.Error().
 			Str("event", constant.TriggerServerForceFinish).
 			Str("match_id", matchID).
-			Msg("unexpected measurement count (too large)")
-		return websocket.NewErrorPayload(), nil
+			Msg("ForceFinish did not complete two players – logic error")
+    return websocket.NewErrorPayload(), nil
 	}
-
-	// =====================================
-	// ここから下は「最後の1人だけ」実行する処理
-	// =====================================
 
 	// プレイヤーが規定値の場合 → ラウンドフローを実行
 	if err := s.roundFlowService.ProcessRoundResult(ctx, matchID); err != nil {
