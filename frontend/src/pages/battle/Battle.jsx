@@ -37,6 +37,7 @@ export default function GamePage() {
   const [missCount, setMissCount] = useState(0);
   const [targetRomaji, setTargetRomaji] = useState("");
   const [promptText, setPromptText] = useState("");
+  const ignoreTypingRef = useRef(false);
 
   // 時間 & HP
   const [timeLeft, setTimeLeft] = useState(60);
@@ -65,6 +66,7 @@ export default function GamePage() {
   const [myCallsign, setMyCallsign] = useState("");
   const [enemyCallsign, setEnemyCallsign] = useState("");
 
+
   // ============================================
   // answer.finish / answer.timeout を1回だけ送る
   // ============================================
@@ -83,6 +85,9 @@ export default function GamePage() {
     finishSentRef.current = true;
 
     clearInterval(timerRef.current);
+
+    // ★★★ ここで「相手待ち」状態にする ★★★
+    setIsWaiting(true);
 
     const msg = {
       type,
@@ -156,13 +161,21 @@ export default function GamePage() {
     const p2Hp = matchStartPayload.state.player2_lifepoint;
 
      // --- ★ callsign / user_name の設定 ---
-    if (isPlayer1) {
-      setMyCallsign(matchStartPayload.player1_name);
-      setEnemyCallsign(matchStartPayload.player2_name);
-    } else {
-      setMyCallsign(matchStartPayload.player2_name);
-      setEnemyCallsign(matchStartPayload.player1_name);
-    }
+    // if (isPlayer1) {
+    //   setMyCallsign(matchStartPayload.player1_name);
+    //   setEnemyCallsign(matchStartPayload.player2_name);
+    // } else {
+    //   setMyCallsign(matchStartPayload.player2_name);
+    //   setEnemyCallsign(matchStartPayload.player1_name);
+    // }
+    // --- ★ callsign / user_name の設定（固定仕様）---
+    const storedUserName = localStorage.getItem("user_name") || "PLAYER";
+
+    // 自分は常に localStorage の user_name
+    setMyCallsign(storedUserName);
+
+    // 敵は常に固定 "RYU"
+    setEnemyCallsign("RYU");
 
     // // 🔥 古いタイマーを完全停止
     // clearInterval(timerRef.current);
@@ -222,8 +235,15 @@ export default function GamePage() {
   // ============================================
   // 📝 入力処理
   // ============================================
+  
   const handleTyping = (e) => {
     const val = e.target.value;
+    if (ignoreTypingRef.current) {
+      setInput(val); // 入力欄だけ更新
+      return;        // ← ロジック実行しない
+    }
+
+    // ★ 通常入力
     setInput(val);
 
     const { newProgress, isCorrect, isFinish, miss } =
@@ -281,10 +301,10 @@ export default function GamePage() {
       {/* 相手の入力待ち文 */}
       {isWaiting && (
         <div className="fixed inset-0 bg-black/70 flex flex-col items-center justify-center z-50">
-          <div className="text-white text-2xl mb-4 animate-pulse">
+          <div className="text-white text-[clamp(2rem,4vw,3.5rem)] mb-4 animate-pulse">
             ただいま相手の回答を待っています...
           </div>
-          <div className="text-white/70 text-sm">
+          <div className="text-white text-[clamp(1rem,3vw,3.5rem)] mb-4 animate-pulse">
             相手が回答を送ると結果が確定します
           </div>
         </div>
@@ -401,11 +421,20 @@ export default function GamePage() {
           value={input}
           onChange={handleTyping}
           onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            sendAnswerFinish();
-          }
-        }}
+            if (e.key === "Enter") {
+              e.preventDefault();
+              sendAnswerFinish();
+              return;
+            }
+
+            // ★ Backspace と Delete はゲームロジック無視
+            if (e.key === "Backspace" || e.key === "Delete") {
+              ignoreTypingRef.current = true;
+            } else {
+              ignoreTypingRef.current = false;
+            }
+          }}
+
           placeholder="Enterで攻撃　ここにタイプ"
           className="w-full p-[3vh] rounded-lg border-2 border-white/5 bg-transparent text-white font-['Press_Start_2P'] text-[] focus:outline-none focus:border-[#ffcc00] focus:shadow-[0_0_10px_#ffaa00]"
         />
