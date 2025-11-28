@@ -267,7 +267,7 @@ export default function GamePage() {
   // ============================================
   // 🔚 バトル終了
   // ============================================
-  const { matchEndPayload } = useContext(WebSocketContext);
+  const { matchEndPayload, resetMatchState } = useContext(WebSocketContext);
 
   useEffect(() => {
   if (!matchEndPayload) return;
@@ -277,16 +277,19 @@ export default function GamePage() {
   const myId = localStorage.getItem("user_id"); // ← 自分のユーザーID
   const didWin = matchEndPayload.winner === myId;
 
+  const payloadForResult = matchEndPayload;
+  resetMatchState();
+
   // 結果画面へ
   navigate("/result", {
     state: {
       result: didWin ? "victory" : "defeat",
-      matchEnd: matchEndPayload, // ← 必要ならデータ丸ごと送れる
+      matchEnd: payloadForResult, // ← 必要ならデータ丸ごと送れる
       round: matchStartPayload?.state?.round,  // ← 追加！！
     },
   });
 
-}, [matchEndPayload]);
+}, [matchEndPayload, navigate, resetMatchState]);
 
 
   return (

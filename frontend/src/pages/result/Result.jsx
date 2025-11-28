@@ -8,13 +8,14 @@ const Result = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // ★★★ WebSocket を切断/接続する関数を読み込む
-  const { disconnect, connect } = useContext(WebSocketContext);
+  // ★★★ WebSocket を切断/接続/リセットする関数を読み込む
+  const { disconnect, connect, resetMatchState } = useContext(WebSocketContext);
 
   // ★★★ ページに入った瞬間に WebSocket を切断
   useEffect(() => {
     disconnect();
-  }, [disconnect]);
+    resetMatchState();
+  }, [disconnect, resetMatchState]);
 
   // Battleから受け取る
   const result = location.state?.result || "victory"; // デフォルト値

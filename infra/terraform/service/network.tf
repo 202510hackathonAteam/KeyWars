@@ -1,11 +1,11 @@
 
 #----------------------------
-#VPC・サブネット
+# VPC・サブネット
 #----------------------------
 
 # VPC作成
 resource "google_compute_network" "vpc_network" {
-  name                    = "${var.project_id}-vpc"
+  name                    = "${var.project_name}-vpc"
   auto_create_subnetworks = false
   mtu                     = 1460
 }
@@ -40,16 +40,31 @@ resource "google_service_networking_connection" "default" {
     google_compute_global_address.cloudsql_ip_range.name,
     google_compute_global_address.memorystore_ip_range.name
   ]
-  depends_on = [google_project_service.servicenetworking_api]
+  depends_on = [
+    google_project_service.servicenetworking_api,
+    google_compute_network.vpc_network,
+    google_compute_global_address.cloudsql_ip_range,
+    google_compute_global_address.memorystore_ip_range,
+  ]
 }
 
-resource "google_compute_subnetwork" "group4" {
+# Direct VPC Egress用サブネット
+resource "google_compute_subnetwork" "vpc_connector" {
   name          = "vpc-connector"
-  ip_cidr_range = "10.0.16.0/20" # Direct VPC Egressようなので広め
+  ip_cidr_range = "10.0.16.0/20" # Direct VPC Egress用なので広め
   region        = var.region
   network       = google_compute_network.vpc_network.id
+  depends_on    = [google_compute_network.vpc_network]
 }
 
+# 踏み台GCE用サブネット
+resource "google_compute_subnetwork" "bastion" {
+  name          = "bastion"
+  ip_cidr_range = "10.0.2.0/28" # 踏み台用なので狭め
+  region        = "us-central1" # 無料枠適用のためアイオワリージョン
+  network       = google_compute_network.vpc_network.id
+  depends_on    = [google_compute_network.vpc_network]
+}
 
 #----------------------------
 # ロードバランサ
@@ -97,6 +112,7 @@ resource "google_compute_backend_service" "api_service" {
   backend {
     group = google_compute_region_network_endpoint_group.cloudrun_api_neg.id
   }
+  security_policy = google_compute_security_policy.default.self_link
 
   depends_on = [
     google_project_service.compute_api,
@@ -111,6 +127,7 @@ resource "google_compute_backend_service" "websocket_service" {
   backend {
     group = google_compute_region_network_endpoint_group.cloudrun_websocket_neg.id
   }
+  security_policy = google_compute_security_policy.default.self_link
 
   depends_on = [
     google_project_service.compute_api,
@@ -134,7 +151,7 @@ resource "google_compute_url_map" "default" {
     # 特定のパターンに合致する場合の転送先
     # WebSocket用 
     path_rule {
-      paths   = ["/api/v1/ws/*", "/ws/*"]
+      paths   = ["/api/v1/ws", "/ws"]
       service = google_compute_backend_service.websocket_service.id
     }
 
@@ -146,7 +163,7 @@ resource "google_compute_url_map" "default" {
 
     # js, css, jpegへのルーティングルール
     path_rule {
-      paths   = ["/assets/*"]
+      paths   = ["/assets/*", "/public/*"]
       service = google_compute_backend_bucket.static_bucket.id
     }
 
@@ -172,7 +189,7 @@ resource "google_compute_managed_ssl_certificate" "default" {
   }
 }
 
-# HTTPS転送ターゲットプロキシ
+# HTTPS転送ターゲットプロキシ(証明書とフロントエンドとの関連付け)
 resource "google_compute_target_https_proxy" "default" {
   name             = "https-proxy"
   url_map          = google_compute_url_map.default.id
@@ -213,6 +230,10 @@ resource "google_compute_global_forwarding_rule" "http_rule" {
   ip_address            = google_compute_global_address.lb_ip.address
   load_balancing_scheme = "EXTERNAL"
 }
+
+#----------------------------
+# CloudDNS
+#----------------------------
 
 # Aレコード作成
 resource "google_dns_record_set" "A_record" {

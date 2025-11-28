@@ -130,7 +130,7 @@ func loadPrompts(db *gorm.DB) error {
 			ID: 18,
 			DifficultyID: 2,
 			PromptTextJa: "運動会の練習",
-			TargetRomaji: "undoukanorensyuu",
+			TargetRomaji: "undoukainorensyuu",
 		},
 		{
 			ID: 19,
@@ -148,7 +148,7 @@ func loadPrompts(db *gorm.DB) error {
 			ID: 21,
 			DifficultyID: 2,
 			PromptTextJa: "駅前の喫茶店",
-			TargetRomaji: "ekimaenokissatennn",
+			TargetRomaji: "ekimaenokissatenn",
 		},
 		{
 			ID: 22,
@@ -196,7 +196,7 @@ func loadPrompts(db *gorm.DB) error {
 			ID: 29,
 			DifficultyID: 2,
 			PromptTextJa: "教科書の内容",
-			TargetRomaji: "kyoukasyoononaiyou",
+			TargetRomaji: "kyoukasyononaiyou",
 		},
 		{
 			ID: 30,
@@ -210,13 +210,13 @@ func loadPrompts(db *gorm.DB) error {
 			ID: 31,
 			DifficultyID: 3,
 			PromptTextJa: "情報処理の授業内容",
-			TargetRomaji: "johosyorinojugyounaiyou",
+			TargetRomaji: "jouhousyorinojugyounaiyou",
 		},
 		{
 			ID: 32,
 			DifficultyID: 3,
 			PromptTextJa: "夏休みの自由研究",
-			TargetRomaji: "natsuyasuminojiuukenkyuu",
+			TargetRomaji: "natuyasuminojiyuukenkyuu",
 		},
 		{
 			ID: 33,
@@ -234,19 +234,19 @@ func loadPrompts(db *gorm.DB) error {
 			ID: 35,
 			DifficultyID: 3,
 			PromptTextJa: "未来都市の開発計画",
-			TargetRomaji: "miraitosinokaihatsukeikaku",
+			TargetRomaji: "miraitosinokaihatukeikaku",
 		},
 		{
 			ID: 36,
 			DifficultyID: 3,
 			PromptTextJa: "人工知能の活用事例",
-			TargetRomaji: "jinkoutinounokatsuyoujirei",
+			TargetRomaji: "jinkoutinounokatuyoujirei",
 		},
 		{
 			ID: 37,
 			DifficultyID: 3,
 			PromptTextJa: "地球温暖化の影響",
-			TargetRomaji: "tikyuondankanoueikyou",
+			TargetRomaji: "tikyuuondankanoeikyou",
 		},
 		{
 			ID: 38,
@@ -258,7 +258,7 @@ func loadPrompts(db *gorm.DB) error {
 			ID: 39,
 			DifficultyID: 3,
 			PromptTextJa: "歴史教育の重要性",
-			TargetRomaji: "rekisikyounikonojuuyousei",
+			TargetRomaji: "rekisikyouikunojuuyousei",
 		},
 		{
 			ID: 40,
@@ -270,13 +270,13 @@ func loadPrompts(db *gorm.DB) error {
 			ID: 41,
 			DifficultyID: 3,
 			PromptTextJa: "再生可能エネルギー",
-			TargetRomaji: "saisekanouenerugii",
+			TargetRomaji: "saiseikanouenerugi-",
 		},
 		{
 			ID: 42,
 			DifficultyID: 3,
 			PromptTextJa: "世界遺産の保護活動",
-			TargetRomaji: "sekaiisannohogokatudou",
+			TargetRomaji: "sekaiisannnohogokatudou",
 		},
 		{
 			ID: 43,
@@ -294,7 +294,7 @@ func loadPrompts(db *gorm.DB) error {
 			ID: 45,
 			DifficultyID: 3,
 			PromptTextJa: "宇宙開発の最前線",
-			TargetRomaji: "utyukaihatsunosaisensenn",
+			TargetRomaji: "utyuukaihatunosaizensenn",
 		},
 	}
 
