@@ -69,6 +69,9 @@ export default function GamePage() {
   // websocket閉じる
   const { leaveQueue } = useContext(WebSocketContext);
 
+  // カウントダウン時のインプット不可
+  const isInputDisabled = countdown !== null;
+
 
   // ============================================
   // answer.finish / answer.timeout を1回だけ送る
@@ -291,6 +294,14 @@ export default function GamePage() {
 
 }, [matchEndPayload, navigate, resetMatchState]);
 
+  useEffect(() => {
+    if (countdown === null) {
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 50);
+    }
+  }, [countdown]);
+
 
   return (
     
@@ -350,7 +361,7 @@ export default function GamePage() {
                   ></div>
                 </div>
                 <div className="text-[10px] mt-1 opacity-90">
-                  <span>150</span> / 150
+                  <span>{playerHp}</span> / 150
                 </div>
               </div>
             </div>
@@ -379,7 +390,7 @@ export default function GamePage() {
                   ></div>
                 </div>
                 <div className="text-[10px] mt-1 opacity-90 text-center">
-                  <span>150</span> / 150
+                  <span>{enemyHp}</span> / 150
                 </div>
               </div>
             </div>
@@ -395,7 +406,7 @@ export default function GamePage() {
 
         {/* VSバッジ */}
         <div className="absolute left-1/2 top-5 -translate-x-1/2 text-center">
-          <div className="text-[1rem] opacity-90">ROUND 1</div>
+          <div className="text-[1rem] opacity-90">ROUND {matchStartPayload?.state?.round}</div>
           <div className="text-[clamp(1.2rem,3vw,7rem)] text-[#ff0d00] drop-shadow-[0_2px_8px_rgba(255,200,0,0.1)]">
             VS
           </div>
@@ -469,9 +480,15 @@ export default function GamePage() {
               ignoreTypingRef.current = false;
             }
           }}
-
+          disabled={isInputDisabled}
           placeholder="Enterで攻撃　ここにタイプ"
-          className="w-full p-[3vh] rounded-lg border-2 border-white/5 bg-transparent text-white font-['Press_Start_2P'] text-[] focus:outline-none focus:border-[#ffcc00] focus:shadow-[0_0_10px_#ffaa00]"
+          className="
+            w-full p-[3vh] rounded-lg border-2 border-white/5 bg-transparent text-white 
+            font-['Press_Start_2P'] text-[] 
+            focus:outline-none focus:border-[#ffcc00] 
+            focus:shadow-[0_0_10px_#ffaa00] 
+            disabled:opacity-30 
+            disabled:cursor-not-allowed"
         />
 
         <div className="grid gap-2 mt-2">

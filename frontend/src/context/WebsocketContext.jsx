@@ -59,7 +59,7 @@ export function WebSocketProvider({ children }) {
       const data = JSON.parse(event.data);
       switch (data.type) {
           case "welcome":
-            localStorage.setItem("user_id", data.uid);
+            localStorage.setItem("user_id", data.user_id);
             break;
           case "match.start":
             console.log("🔥 match.start received:", data);
@@ -72,6 +72,7 @@ export function WebSocketProvider({ children }) {
             // 試合発見 → battle 画面へ遷移
             if (!matchStartedRef.current) {
             matchStartedRef.current = true; // ← 一度だけ遷移
+            // localStorage.setItem("user_id", data.user_id);
             navigate("/battle");
             }
             break;
