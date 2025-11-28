@@ -120,10 +120,8 @@ func (s *MatchRealtimeService) OnConnect(
 
 	return websocket.NewMatchRestorePayload(
 		matchID,
-		websocket.MatchState{
+		websocket.MatchRestoreState{
 			Round:            restoredState.Round,
-			RoundStartAtMS:   restoredState.RoundStartAtMs,
-			RoundEndAtMS:     restoredState.RoundEndAtMs,
 			Player1Lifepoint: restoredState.Player1Lifepoint,
 			Player2Lifepoint: restoredState.Player2Lifepoint,
 		},

@@ -86,14 +86,20 @@ func NewMatchFoundPayload(matchID, opponentUserID string) MatchFoundPayload {
 	}
 }
 
+type MatchRestoreState struct {
+	Round          	 int64 `json:"round"`
+	Player1Lifepoint int64 `json:"player1_lifepoint"`
+	Player2Lifepoint int64 `json:"player2_lifepoint"`
+}
+
 // MatchRestorePayload: 途中復帰通知（現在の試合状態を同期するためのメッセージ）
 type MatchRestorePayload struct {
 	Type    string     `json:"type"`		// "match.restore"
 	MatchID string     `json:"matchId"`
-	State   MatchState `json:"state"`
+	State   MatchRestoreState `json:"state"`
 }
 
-func NewMatchRestorePayload(matchID string, state MatchState) MatchRestorePayload {
+func NewMatchRestorePayload(matchID string, state MatchRestoreState) MatchRestorePayload {
 	return MatchRestorePayload{
 		Type: TypeMatchRestore,
 		MatchID: matchID,
