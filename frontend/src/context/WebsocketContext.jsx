@@ -79,7 +79,6 @@ export function WebSocketProvider({ children }) {
           case "match.end":
             console.log("試合終了:", data);
             setMatchEndPayload(data);  
-            matchStartedRef.current = false;
             break;
 
           default:
@@ -106,6 +105,9 @@ export function WebSocketProvider({ children }) {
 
     // 自動再接続も止めたい場合、disconnect する
     disconnect();
+
+    // match 開始フラグをリセット
+    matchStartedRef.current = false;
   };
 
   const disconnect = () => {

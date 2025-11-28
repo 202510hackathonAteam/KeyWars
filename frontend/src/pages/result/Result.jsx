@@ -1,14 +1,26 @@
-import React, { useEffect } from "react";
+import React, { useContext, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import "./Result.css";
+import { WebSocketContext } from "../../context/WebsocketContext";
 
 const Result = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // ★★★ WebSocket を切断する関数を読み込む
+  const { disconnect } = useContext(WebSocketContext);
+
+  // ★★★ ページに入った瞬間に WebSocket を切断
+  useEffect(() => {
+    disconnect();
+  }, []);
+
   // Battleから受け取る
   const result = location.state?.result || "victory"; // デフォルト値
   const isVictory = result === "victory";
+  const totalRounds = location.state?.round || 20;
+  console.log("🟢 Result received round:", totalRounds);
+
 
   useEffect(() => {
     document.body.classList.add(result);
@@ -96,7 +108,7 @@ const Result = () => {
         space-y-4
       ">
       <div className="text-[1.5rem] text-[#ffcfcf] my-2 drop-shadow-[0_0_5px_#ff5900]">
-          間違えた回数（通算20戦中）：<span className="text-white ml-2">7</span>
+          間違えた回数（通算{totalRounds}戦中）：<span className="text-white ml-2">7</span>
       </div>
 
         {/* ボタン群 */}

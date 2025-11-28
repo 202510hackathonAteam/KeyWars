@@ -15,8 +15,8 @@ function renderHighlightedRomaji(target, progress) {
             key={index}
             className={
               isTyped
-                ? "text-[#3ce27a] font-bold drop-shadow-[0_0_5px_#3ce27a]"
-                : "text-white/40"
+                ? "text-[5vh] text-[#3ce27a] font-bold drop-shadow-[0_0_5px_#3ce27a]"
+                : "text-[5vh] text-white/40"
             }
           >
             {char}
@@ -65,6 +65,9 @@ export default function GamePage() {
   // callsign
   const [myCallsign, setMyCallsign] = useState("");
   const [enemyCallsign, setEnemyCallsign] = useState("");
+
+  // websocket閉じる
+  const { leaveQueue } = useContext(WebSocketContext);
 
 
   // ============================================
@@ -279,6 +282,7 @@ export default function GamePage() {
     state: {
       result: didWin ? "victory" : "defeat",
       matchEnd: matchEndPayload, // ← 必要ならデータ丸ごと送れる
+      round: matchStartPayload?.state?.round,  // ← 追加！！
     },
   });
 
@@ -323,7 +327,18 @@ export default function GamePage() {
               />
             </div>
             <div>
-              <div className="text-[clamp(1.2rem,2vw,2rem)]">CALLSIGN: {myCallsign}</div>
+              <div
+                className="
+                  text-[clamp(0.8rem,1vw,2rem)]
+                  min-w-[25vw]
+                  max-w-[25vw]
+                  whitespace-nowrap
+                  overflow-hidden
+                  text-ellipsis
+                "
+              >
+                CALLSIGN: {myCallsign}
+              </div>
               <div className="bg-white/5 p-2 rounded-md mt-2">
                 <div className="h-[16px] bg-neutral-800 rounded-md overflow-hidden">
                   <div
@@ -341,7 +356,18 @@ export default function GamePage() {
           {/* プレイヤー2 */}
           <div className="flex items-center gap-2 w-[48%] justify-end text-right">
             <div>
-              <div className="text-[clamp(1.2rem,2vw,2rem)]">CALLSIGN: {enemyCallsign}</div>
+              <div
+                className="
+                  text-[clamp(0.8rem,1vw,2rem)]
+                  min-w-[25vw]
+                  max-w-[25vw]
+                  whitespace-nowrap
+                  overflow-hidden
+                  text-ellipsis
+                "
+              >
+                CALLSIGN: {enemyCallsign}
+              </div>
               <div className="bg-white/5 p-2 rounded-md mt-2">
                 <div className="h-[16px] bg-neutral-800 rounded-md overflow-hidden">
                   <div
@@ -391,7 +417,6 @@ export default function GamePage() {
 
       {/* サイドパネル */}
       <div className="rounded-lg bg-gradient-to-b from-white/5 to-black/5 p-5 flex flex-col gap-3">
-        <div className="text-[12px] text-[#ff0d00] tracking-wider">KEY WARS</div>
 
         <div className="bg-gradient-to-b from-[#260707] to-[#0c0404] p-3 rounded-md border border-white/5 flex items-center justify-center min-h-[60px] text-[clamp(1.2rem,2vw,7rem)]">
           <div>
@@ -402,16 +427,23 @@ export default function GamePage() {
             </div>
           )}
 
+            {/* 現在の問題番号 */}
+            <div className="text-white text-lg font-bold tracking-wide mb-1 text-[3vh]" >
+              第 {matchStartPayload?.state?.round} 問目
+            </div>
+
               {/* 日本語のお題 */}
-            <div className="text-white text-lg font-bold tracking-wide">
+            <div className="text-white text-lg font-bold tracking-wide text-[3vh]">
               {promptText}
             </div>
 
 
-            <span>Type "</span>
-            {renderHighlightedRomaji(targetRomaji, progress)}
-            {/* <span className="font-bold text-[#3ce27a]">{promptText}</span> */}
-            <span>"</span>
+           {/* Type + Romaji（2行目） */}
+            <div className="flex items-center text-white text-base text-[5vh]">
+              <span>Type "</span>
+              {renderHighlightedRomaji(targetRomaji, progress)}
+              <span>"</span>
+            </div>
           </div>
         </div>
 
@@ -441,13 +473,28 @@ export default function GamePage() {
 
         <div className="grid gap-2 mt-2">
           <div className="bg-[#24140f] p-3 rounded-lg text-center">
-            <div className="text-[10px] opacity-80">TypeMiss（通算）</div>
-            <div className="text-[18px]">{missCount}</div>
+            <div className="text-[2vh] opacity-80">TypeMiss（通算）</div>
+            <div className="text-[2vh]">{missCount}</div>
           </div>
         </div>
 
         <div className="flex justify-center gap-3 mt-2">
-          <button className="px-3 py-2 rounded-lg border-2 border-white/5 text-white hover:bg-red-900/40">
+          <button
+              className="px-3 py-2 rounded-lg border-2 border-white/5 text-white hover:bg-red-900/40 text-[2vh] "
+              onClick={() => {
+                // 1. queue.left を送信して接続解除
+                leaveQueue();
+
+                // 2. 結果画面へ defeat として遷移
+                navigate("/result", {
+                  state: {
+                    result: "defeat",
+                    matchEnd: null,     // ← 試合データはない
+                    forceQuit: true,    // ← 任意（Result 側で判定可能）
+                  },
+                });
+              }}
+            >
             やめる
           </button>
         </div>
