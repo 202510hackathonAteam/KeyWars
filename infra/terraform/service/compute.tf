@@ -1,9 +1,9 @@
 
 #----------------------------
-# CloudRun
+# 環境変数
 #----------------------------
 
-# MySQL関連の環境変数を定義
+# MySQL関連の環境変数
 locals {
   mysql_env_vars = [
     {
@@ -11,31 +11,12 @@ locals {
       value = google_sql_database_instance.mysql.connection_name
     },
     {
-      name = "MYSQL_USER"
-      value_source = {
-        secret_key_ref = {
-          secret  = google_secret_manager_secret.dbuser.secret_id
-          version = google_secret_manager_secret_version.dbuser_version.version
-        }
-      }
+      name  = "MYSQL_USER"
+      value = var.mysql_user
     },
     {
-      name = "MYSQL_PASSWORD"
-      value_source = {
-        secret_key_ref = {
-          secret  = google_secret_manager_secret.dbpassword.secret_id
-          version = google_secret_manager_secret_version.dbpassword_version.version
-        }
-      }
-    },
-    {
-      name = "MYSQL_DATABASE"
-      value_source = {
-        secret_key_ref = {
-          secret  = google_secret_manager_secret.dbname.secret_id
-          version = google_secret_manager_secret_version.dbname_version.version
-        }
-      }
+      name  = "MYSQL_DATABASE"
+      value = var.mysql_database
     },
     {
       name  = "MYSQL_HOST"
@@ -43,83 +24,77 @@ locals {
     },
     {
       name  = "MYSQL_PORT"
-      value = "3306"
+      value = var.mysql_port
     },
+  ]
+}
+
+# Redis関連の環境変数
+locals {
+  redis_env_vars = [
     {
       name  = "REDIS_ADDR"
       value = "${google_redis_instance.redis.host}:6379"
     },
     {
-      name  = "REDIS_PASSWORD"
-      value = "redispass"
-    },
-    {
       name  = "REDIS_DB"
       value = "0"
     }
-
   ]
 }
 
+# SecretManagerから取得する環境変数
+locals {
+  secret_env_vars = [
+    {
+      name      = "MYSQL_PASSWORD"
+      secret_id = google_secret_manager_secret.mysql_user_password.secret_id
+      version   = "latest"
+    },
+    {
+      name      = "MYSQL_ROOT_PASSWORD"
+      secret_id = google_secret_manager_secret.mysql_root_password.secret_id
+      version   = "latest"
+    },
+    {
+      name      = "REDIS_PASSWORD"
+      secret_id = google_secret_manager_secret.redis_password.secret_id
+      version   = "latest"
+
+    },
+  ]
+}
+
+#----------------------------
+# CloudRunService
+#----------------------------
+
 # API用CloudRun
-resource "google_cloud_run_v2_service" "api" {
-  project  = var.project_id
-  name     = "cloudrun-api"
-  location = var.region
+module "cloud_run_api" {
+  source = "./modules/cloudrun_service"
 
-  deletion_protection = false # 削除保護(本番ではtrue推奨)
+  project_id   = var.project_id
+  region       = var.region
+  service_name = "cloudrun-api"
 
-  template {
-    containers {
-      image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.ar-repository_name}/api-image:latest"
+  image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.ar-repository_name}/api-image:latest"
 
-      # MySQL用環境変数を展開
-      dynamic "env" {
-        for_each = local.mysql_env_vars
-        content {
-          name = env.value.name
-          # 値がvalueの場合
-          value = try(env.value.value, null)
-          # 値がvalue_sourceの場合
-          dynamic "value_source" {
-            for_each = try([env.value.value_source], [])
-            content {
-              secret_key_ref {
-                secret  = value_source.value.secret_key_ref.secret
-                version = value_source.value.secret_key_ref.version
+  mysql_env_vars  = local.mysql_env_vars
+  redis_env_vars  = local.redis_env_vars
+  secret_env_vars = local.secret_env_vars
 
-              }
-            }
+  volume_mounts = [{
+    name       = "cloudsql"
+    mount_path = "/cloudsql"
+  }]
 
-          }
-        }
-      }
+  vpc_network_name    = google_compute_network.vpc_network.name
+  vpc_subnetwork_name = google_compute_subnetwork.vpc_connector.name
+  network_tags        = ["api"]
 
-      volume_mounts {
-        name       = "cloudsql"
-        mount_path = "/cloudsql"
-      }
-    }
-    vpc_access {
-      # Direct VPC Egress使用
-      network_interfaces {
-        network    = google_compute_network.vpc_network.name
-        subnetwork = google_compute_subnetwork.group4.name
-        tags       = ["api"]
-      }
-    }
+  cloudsql_volume_name     = "cloudsql"
+  cloudsql_connection_name = [google_sql_database_instance.mysql.connection_name]
 
-
-    volumes {
-      name = "cloudsql"
-      cloud_sql_instance {
-        instances = [google_sql_database_instance.mysql.connection_name]
-      }
-    }
-  }
-
-  ingress = "INGRESS_TRAFFIC_ALL" # IAMチェックを無効化
-  client  = "terraform"
   depends_on = [
     google_project_service.secretmanager_api,
     google_project_service.cloudrun_api,
@@ -128,63 +103,31 @@ resource "google_cloud_run_v2_service" "api" {
 }
 
 # WebSocket用CloudRun
-resource "google_cloud_run_v2_service" "websocket" {
-  project  = var.project_id
-  name     = "cloudrun-websocket"
-  location = var.region
+module "cloud_run_websocket" {
+  source = "./modules/cloudrun_service"
 
-  deletion_protection = false # 削除保護(本番ではtrue推奨)
+  project_id   = var.project_id
+  region       = var.region
+  service_name = "cloudrun-websocket"
 
-  template {
-    containers {
-      image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.ar-repository_name}/api-image:latest"
+  image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.ar-repository_name}/ws-image:latest"
 
-      # MySQL用環境変数を展開
-      dynamic "env" {
-        for_each = local.mysql_env_vars
-        content {
-          name = env.value.name
-          # 値がvalueの場合
-          value = try(env.value.value, null)
-          # 値がvalue_sourceの場合
-          dynamic "value_source" {
-            for_each = try([env.value.value_source], [])
-            content {
-              secret_key_ref {
-                secret  = value_source.value.secret_key_ref.secret
-                version = value_source.value.secret_key_ref.version
+  mysql_env_vars  = local.mysql_env_vars
+  redis_env_vars  = local.redis_env_vars
+  secret_env_vars = local.secret_env_vars
 
-              }
-            }
+  volume_mounts = [{
+    name       = "cloudsql"
+    mount_path = "/cloudsql"
+  }]
 
-          }
-        }
-      }
+  vpc_network_name    = google_compute_network.vpc_network.name
+  vpc_subnetwork_name = google_compute_subnetwork.vpc_connector.name
+  network_tags        = ["ws"]
 
-      volume_mounts {
-        name       = "cloudsql"
-        mount_path = "/cloudsql"
-      }
-    }
-    vpc_access {
-      # Direct VPC Egress使用
-      network_interfaces {
-        network    = google_compute_network.vpc_network.name
-        subnetwork = google_compute_subnetwork.group4.name
-        tags       = ["websocket"]
-      }
-    }
+  cloudsql_volume_name     = "cloudsql"
+  cloudsql_connection_name = [google_sql_database_instance.mysql.connection_name]
 
-
-    volumes {
-      name = "cloudsql"
-      cloud_sql_instance {
-        instances = [google_sql_database_instance.mysql.connection_name]
-      }
-    }
-  }
-  ingress = "INGRESS_TRAFFIC_ALL" # IAMチェックを無効化
-  client  = "terraform"
   depends_on = [
     google_project_service.secretmanager_api,
     google_project_service.cloudrun_api,
@@ -192,63 +135,36 @@ resource "google_cloud_run_v2_service" "websocket" {
   ]
 }
 
+#----------------------------
+# CloudRunJob
+#----------------------------
+
 # マイグレーション用CloudRunJob
-resource "google_cloud_run_v2_job" "migration" {
-  project  = var.project_id
-  name     = "cloudrun-migration"
-  location = var.region
+module "cloud_run_migration" {
+  source = "./modules/cloudrun_job"
 
-  deletion_protection = false
+  project_id   = var.project_id
+  region       = var.region
+  service_name = "cloudrun-migration"
 
-  template {
-    template {
-      containers {
-        image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.ar-repository_name}/migration-image:latest"
-        dynamic "env" {
-          for_each = local.mysql_env_vars
-          content {
-            name = env.value.name
-            # 値がvalueの場合
-            value = try(env.value.value, null)
-            # 値がvalue_sourceの場合
-            dynamic "value_source" {
-              for_each = try([env.value.value_source], [])
-              content {
-                secret_key_ref {
-                  secret  = value_source.value.secret_key_ref.secret
-                  version = value_source.value.secret_key_ref.version
-                }
-              }
-            }
-          }
-        }
-        volume_mounts {
-          name       = "cloudsql"
-          mount_path = "/cloudsql"
-        }
-      }
+  image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.ar-repository_name}/migration-image:latest"
 
-      vpc_access {
-        # Direct VPC Egress使用
-        network_interfaces {
-          network    = google_compute_network.vpc_network.name
-          subnetwork = google_compute_subnetwork.group4.name
-          tags       = ["migration"]
-        }
-      }
+  mysql_env_vars  = local.mysql_env_vars
+  redis_env_vars  = local.redis_env_vars
+  secret_env_vars = local.secret_env_vars
 
+  volume_mounts = [{
+    name       = "cloudsql"
+    mount_path = "/cloudsql"
+  }]
 
-      volumes {
-        name = "cloudsql"
-        cloud_sql_instance {
-          instances = [google_sql_database_instance.mysql.connection_name]
-        }
-      }
-    }
-  }
+  vpc_network_name    = google_compute_network.vpc_network.name
+  vpc_subnetwork_name = google_compute_subnetwork.vpc_connector.name
+  network_tags        = ["migration"]
 
-  # ingress = "INGRESS_TRAFFIC_ALL" # IAMチェックを無効化
-  client = "terraform"
+  cloudsql_volume_name     = "cloudsql"
+  cloudsql_connection_name = [google_sql_database_instance.mysql.connection_name]
+
   depends_on = [
     google_project_service.secretmanager_api,
     google_project_service.cloudrun_api,
@@ -257,62 +173,32 @@ resource "google_cloud_run_v2_job" "migration" {
 }
 
 # 初期データ挿入用CloudRunJob
-resource "google_cloud_run_v2_job" "seed" {
-  project  = var.project_id
-  name     = "cloudrun-seed"
-  location = var.region
+module "cloud_run_seed" {
+  source = "./modules/cloudrun_job"
 
-  deletion_protection = false
+  project_id   = var.project_id
+  region       = var.region
+  service_name = "cloudrun-seed"
 
-  template {
-    template {
-      containers {
-        image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.ar-repository_name}/seed-image:latest"
-        dynamic "env" {
-          for_each = local.mysql_env_vars
-          content {
-            name = env.value.name
-            # 値がvalueの場合
-            value = try(env.value.value, null)
-            # 値がvalue_sourceの場合
-            dynamic "value_source" {
-              for_each = try([env.value.value_source], [])
-              content {
-                secret_key_ref {
-                  secret  = value_source.value.secret_key_ref.secret
-                  version = value_source.value.secret_key_ref.version
+  image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.ar-repository_name}/seed-image:latest"
 
-                }
-              }
+  mysql_env_vars  = local.mysql_env_vars
+  redis_env_vars  = local.redis_env_vars
+  secret_env_vars = local.secret_env_vars
 
-            }
-          }
-        }
-        volume_mounts {
-          name       = "cloudsql"
-          mount_path = "/cloudsql"
-        }
-      }
-      vpc_access {
-        # Direct VPC Egress使用
-        network_interfaces {
-          network    = google_compute_network.vpc_network.name
-          subnetwork = google_compute_subnetwork.group4.name
-          tags       = ["seed"]
-        }
-      }
+  volume_mounts = [{
+    name       = "cloudsql"
+    mount_path = "/cloudsql"
+  }]
 
-      volumes {
-        name = "cloudsql"
-        cloud_sql_instance {
-          instances = [google_sql_database_instance.mysql.connection_name]
-        }
-      }
-    }
-  }
-  client = "terraform"
+  vpc_network_name    = google_compute_network.vpc_network.name
+  vpc_subnetwork_name = google_compute_subnetwork.vpc_connector.name
+  network_tags        = ["seed"]
+
+  cloudsql_volume_name     = "cloudsql"
+  cloudsql_connection_name = [google_sql_database_instance.mysql.connection_name]
+
   depends_on = [
-
     google_project_service.secretmanager_api,
     google_project_service.cloudrun_api,
     google_project_service.sqladmin_api
@@ -321,15 +207,41 @@ resource "google_cloud_run_v2_job" "seed" {
 
 # 認証なしでアクセスを許可する(公開する)
 resource "google_cloud_run_service_iam_member" "allow_unauthenticated_api" {
-  location = google_cloud_run_v2_service.api.location
-  service  = google_cloud_run_v2_service.api.name
-  role     = "roles/run.invoker" # 呼び出し許可
-  member   = "allUsers"
+  location   = module.cloud_run_api.region
+  service    = module.cloud_run_api.name
+  role       = "roles/run.invoker" # 呼び出し許可
+  member     = "allUsers"
+  depends_on = [module.cloud_run_api]
 }
 
 resource "google_cloud_run_service_iam_member" "allow_unauthenticated_websocket" {
-  location = google_cloud_run_v2_service.websocket.location
-  service  = google_cloud_run_v2_service.websocket.name
-  role     = "roles/run.invoker" # 呼び出し許可
-  member   = "allUsers"
+  location   = module.cloud_run_websocket.region
+  service    = module.cloud_run_websocket.name
+  role       = "roles/run.invoker" # 呼び出し許可
+  member     = "allUsers"
+  depends_on = [module.cloud_run_migration]
+}
+
+#----------------------------
+# Computer Engine
+#----------------------------
+
+# 踏み台GCE
+resource "google_compute_instance" "bastion" {
+  name         = "bastion-vm"
+  machine_type = "e2-micro"
+  zone         = "us-central1-a" # 無料枠利用のためアイオワ
+  tags         = ["bastion-tag"]
+
+  boot_disk {
+    initialize_params {
+      image = "projects/ubuntu-os-cloud/global/images/ubuntu-minimal-2510-questing-amd64-v20251113"
+      size  = 10
+    }
+  }
+
+  network_interface {
+    network    = google_compute_network.vpc_network.name
+    subnetwork = google_compute_subnetwork.bastion.name
+  }
 }

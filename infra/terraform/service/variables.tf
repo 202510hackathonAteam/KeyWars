@@ -44,9 +44,9 @@ variable "mysql_root_password" {
   sensitive   = true
 }
 
-variable "mysql_password" {
+variable "mysql_user_password" {
   type        = string
-  description = "Password for mysql instance"
+  description = "Password for mysql user"
   sensitive   = true
 }
 
@@ -55,9 +55,15 @@ variable "mysql_database" {
   description = "Database name for mysql instance"
 }
 
-variable "mysql_host" {
+variable "mysql_port" {
+  type        = number
+  description = "Port for mysql instance"
+}
+
+variable "redis_password" {
   type        = string
-  description = "Host for mysql instance"
+  description = "Password for redis instance"
+  sensitive   = true
 }
 
 variable "github_token_secret_name" {
