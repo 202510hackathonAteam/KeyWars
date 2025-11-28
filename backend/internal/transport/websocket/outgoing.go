@@ -5,7 +5,6 @@ const (
 	TypeQueueJoined = "queue.joined"
 	TypeQueueLeft   = "queue.left"
 
-	TypeWelcome = "welcome"
 	TypeMatchFound = "match.found"
 	TypeMatchRestore = "match.restore"
 	TypeMatchStart = "match.start"
@@ -58,19 +57,6 @@ func NewQueueLeftPayload() QueueLeftPayload {
 	}
 }
 
-// WelcomePayload: WebSocket 接続直後の初回メッセージ
-type WelcomePayload struct {
-	Type string `json:"type"`
-	UserID string `json:"user_id"`
-}
-
-func NewWelcomePayload(userID string) WelcomePayload {
-	return WelcomePayload{
-		Type: TypeWelcome,
-		UserID: userID,
-	}
-}
-
 // MatchFoundPayload: マッチ成立通知（個人ルーム user:<uid> 宛に送る）
 type MatchFoundPayload struct {
 	Type     string `json:"type"`    // "match.found"
@@ -86,14 +72,20 @@ func NewMatchFoundPayload(matchID, opponentUserID string) MatchFoundPayload {
 	}
 }
 
-// MatchRestorePayload: 途中復帰通知（現在の試合状態を同期するためのメッセージ）
-type MatchRestorePayload struct {
-	Type    string     `json:"type"`		// "match.restore"
-	MatchID string     `json:"matchId"`
-	State   MatchState `json:"state"`
+type MatchRestoreState struct {
+	Round          	 int64 `json:"round"`
+	Player1Lifepoint int64 `json:"player1_lifepoint"`
+	Player2Lifepoint int64 `json:"player2_lifepoint"`
 }
 
-func NewMatchRestorePayload(matchID string, state MatchState) MatchRestorePayload {
+// MatchRestorePayload: 途中復帰通知（現在の試合状態を同期するためのメッセージ）
+type MatchRestorePayload struct {
+	Type    string     				`json:"type"`		// "match.restore"
+	MatchID string     				`json:"matchId"`
+	State   MatchRestoreState `json:"state"`
+}
+
+func NewMatchRestorePayload(matchID string, state MatchRestoreState) MatchRestorePayload {
 	return MatchRestorePayload{
 		Type: TypeMatchRestore,
 		MatchID: matchID,
