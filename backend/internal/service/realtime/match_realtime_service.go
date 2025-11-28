@@ -2,16 +2,21 @@ package realtime
 
 import (
 	"context"
+<<<<<<< HEAD
+=======
 	"errors"
 	"time"
+>>>>>>> 12c75a051d4e976f8fac8a3803709b2b5b326040
 	"encoding/json"
+	"time"
+
 	"github.com/rs/zerolog"
 
-	"keywars/backend/internal/domain/repository"
-	"keywars/backend/internal/transport/websocket"
-	"keywars/backend/internal/service/round"
 	"keywars/backend/internal/config"
 	"keywars/backend/internal/domain/constant"
+	"keywars/backend/internal/domain/repository"
+	"keywars/backend/internal/service/round"
+	"keywars/backend/internal/transport/websocket"
 )
 
 //
@@ -26,13 +31,13 @@ import (
 //   - Redis リポジトリ（MatchQueueRepositoryRedis）を通じて待機キューを操作する
 //   - Hub（WebSocket Hub）を用いてイベントをブロードキャストする
 type MatchRealtimeService struct {
-	matchQueueRepository 		repository.MatchQueueRepository
-	roundStateRepository 		repository.RoundStateRepository
-	presenceRepository   		repository.PresenceRepository
-	promptRepository     		repository.PromptRepository
-	websocketHub         		*websocket.Hub
-	logger 							 		*zerolog.Logger
-	roundFlowService 		 		*round.RoundFlowService
+	matchQueueRepository    repository.MatchQueueRepository
+	roundStateRepository    repository.RoundStateRepository
+	presenceRepository      repository.PresenceRepository
+	promptRepository        repository.PromptRepository
+	websocketHub            *websocket.Hub
+	logger                  *zerolog.Logger
+	roundFlowService        *round.RoundFlowService
 	measurementRoundService *round.MeasurementRoundService
 }
 
@@ -49,13 +54,13 @@ func NewMatchRealtimeService(
 	measurementRoundService *round.MeasurementRoundService,
 ) *MatchRealtimeService {
 	return &MatchRealtimeService{
-		matchQueueRepository: 	 matchQueueRepository,
-		roundStateRepository: 	 roundState,
-		presenceRepository:   	 presence,
-		promptRepository:     	 prompt,
-		websocketHub:         	 websocketHub,
-		logger:									 logger,
-		roundFlowService:				 roundFlowService,
+		matchQueueRepository:    matchQueueRepository,
+		roundStateRepository:    roundState,
+		presenceRepository:      presence,
+		promptRepository:        prompt,
+		websocketHub:            websocketHub,
+		logger:                  logger,
+		roundFlowService:        roundFlowService,
 		measurementRoundService: measurementRoundService,
 	}
 }
@@ -161,7 +166,7 @@ func (service *MatchRealtimeService) OnMessage(
 		}, nil
 
 	// --- マッチ待機キャンセル ---
-	case "queue.cancel":
+	case "queue.left":
 		// best-effort：失敗しても致命的ではない
 		_ = service.matchQueueRepository.Cancel(ctx, userID)
 
@@ -175,7 +180,7 @@ func (service *MatchRealtimeService) OnMessage(
 		if err := json.Unmarshal(messagePayload, &payload); err != nil {
 			service.logger.Error().
 				Err(err).
-        Str("event", constant.TriggerAnswerFinish).
+				Str("event", constant.TriggerAnswerFinish).
 				Str("match_id", payload.MatchID).
 				Msg("failed to unmarshal payload")
 			return websocket.NewErrorPayload(), nil
@@ -190,12 +195,12 @@ func (service *MatchRealtimeService) OnMessage(
 				Str("match_id", payload.MatchID).
 				Msg("failed to load match players")
 			return websocket.NewErrorPayload(), nil
-    }
+		}
 		if userID != players.Player1ID && userID != players.Player2ID {
-      service.logger.Warn().
-        Str("event", constant.TriggerAnswerFinish).
-        Str("match_id", payload.MatchID).
-        Msg("unauthorized player")
+			service.logger.Warn().
+				Str("event", constant.TriggerAnswerFinish).
+				Str("match_id", payload.MatchID).
+				Msg("unauthorized player")
 			return websocket.NewErrorPayload(), nil
 		}
 
@@ -206,10 +211,10 @@ func (service *MatchRealtimeService) OnMessage(
         return nil, nil
 			}
 			service.logger.Error().
-        Err(err).
-        Str("event", constant.TriggerAnswerFinish).
-        Str("match_id", payload.MatchID).
-        Msg("failed to SaveMeasurement (answer finish)")
+				Err(err).
+				Str("event", constant.TriggerAnswerFinish).
+				Str("match_id", payload.MatchID).
+				Msg("failed to SaveMeasurement (answer finish)")
 			return websocket.NewErrorPayload(), nil
 		}
 
@@ -227,9 +232,9 @@ func (service *MatchRealtimeService) OnMessage(
 		// プレイヤー数が規定値を超えている場合 → 本来発生しない異常状態。
 		if measurementFinishedCount > config.RequiredPlayers {
 			service.logger.Error().
-        Str("event", constant.TriggerAnswerFinish).
-        Str("match_id", payload.MatchID).
-        Msg("unexpected measurement count (too large)")
+				Str("event", constant.TriggerAnswerFinish).
+				Str("match_id", payload.MatchID).
+				Msg("unexpected measurement count (too large)")
 			return websocket.NewErrorPayload(), nil
 		}
 
@@ -240,10 +245,10 @@ func (service *MatchRealtimeService) OnMessage(
 		// プレイヤーが規定値の場合 → ラウンドフローを実行
 		if err := service.roundFlowService.ProcessRoundResult(ctx, payload.MatchID); err != nil {
 			service.logger.Error().
-        Err(err).
-        Str("event", constant.TriggerAnswerFinish).
-        Str("match_id", payload.MatchID).
-        Msg("ProcessRoundResult failed")
+				Err(err).
+				Str("event", constant.TriggerAnswerFinish).
+				Str("match_id", payload.MatchID).
+				Msg("ProcessRoundResult failed")
 			return websocket.NewErrorPayload(), nil
 		}
 
@@ -255,7 +260,7 @@ func (service *MatchRealtimeService) OnMessage(
 		if err := json.Unmarshal(messagePayload, &payload); err != nil {
 			service.logger.Error().
 				Err(err).
-        Str("event", constant.TriggerAnswerTimeout).
+				Str("event", constant.TriggerAnswerTimeout).
 				Str("match_id", payload.MatchID).
 				Msg("failed to unmarshal payload")
 			return websocket.NewErrorPayload(), nil
@@ -270,12 +275,12 @@ func (service *MatchRealtimeService) OnMessage(
 				Str("match_id", payload.MatchID).
 				Msg("failed to load match players")
 			return websocket.NewErrorPayload(), nil
-    }
+		}
 		if userID != players.Player1ID && userID != players.Player2ID {
-      service.logger.Warn().
-        Str("event", constant.TriggerAnswerTimeout).
-        Str("match_id", payload.MatchID).
-        Msg("unauthorized player")
+			service.logger.Warn().
+				Str("event", constant.TriggerAnswerTimeout).
+				Str("match_id", payload.MatchID).
+				Msg("unauthorized player")
 			return websocket.NewErrorPayload(), nil
 		}
 
@@ -286,10 +291,10 @@ func (service *MatchRealtimeService) OnMessage(
         return nil, nil
 			}
 			service.logger.Error().
-        Err(err).
-        Str("event", constant.TriggerAnswerTimeout).
-        Str("match_id", payload.MatchID).
-        Msg("failed to SaveMeasurement (answer timeout)")
+				Err(err).
+				Str("event", constant.TriggerAnswerTimeout).
+				Str("match_id", payload.MatchID).
+				Msg("failed to SaveMeasurement (answer timeout)")
 			return websocket.NewErrorPayload(), nil
 		}
 
@@ -307,9 +312,9 @@ func (service *MatchRealtimeService) OnMessage(
 		// プレイヤー数が規定値を超えている場合 → 本来発生しない異常状態。
 		if measurementFinishedCount > config.RequiredPlayers {
 			service.logger.Error().
-        Str("event", constant.TriggerAnswerTimeout).
-        Str("match_id", payload.MatchID).
-        Msg("unexpected measurement count (too large)")
+				Str("event", constant.TriggerAnswerTimeout).
+				Str("match_id", payload.MatchID).
+				Msg("unexpected measurement count (too large)")
 			return websocket.NewErrorPayload(), nil
 		}
 
@@ -320,10 +325,10 @@ func (service *MatchRealtimeService) OnMessage(
 		// プレイヤーが規定値の場合 → ラウンドフローを実行
 		if err := service.roundFlowService.ProcessRoundResult(ctx, payload.MatchID); err != nil {
 			service.logger.Error().
-        Err(err).
-        Str("event", constant.TriggerAnswerTimeout).
-        Str("match_id", payload.MatchID).
-        Msg("ProcessRoundResult failed")
+				Err(err).
+				Str("event", constant.TriggerAnswerTimeout).
+				Str("match_id", payload.MatchID).
+				Msg("ProcessRoundResult failed")
 			return websocket.NewErrorPayload(), nil
 		}
 

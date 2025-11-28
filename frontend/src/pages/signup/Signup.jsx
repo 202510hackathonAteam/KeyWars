@@ -1,7 +1,7 @@
 // src/assets/components/Signup/Signup.jsx
 import React, { useState, useEffect } from "react";
 import "./Signup.css";
-import LoginbackButton from "./components/LoginbackButton.jsx";
+import LoginbackButton from "../../components/LoginbackButton.jsx";
 import { getCookie } from "../../utils/cookieUtils.jsx";
 
 
@@ -114,7 +114,7 @@ export default function Signup() {
             rounded-md outline-none
             w-[clamp(200px,40vw,360px)]
             h-[clamp(32px,5vh,48px)]
-            text-[clamp(0.6rem,0.9vw,0.8rem)]
+            text-[clamp(1rem,1.2vw,1.2rem)]
             focus:border-yellow-400 focus:shadow-[0_0_10px_#ffaa00]
             transition-all
             "
@@ -132,7 +132,7 @@ export default function Signup() {
             rounded-md outline-none
             w-[clamp(200px,40vw,360px)]
             h-[clamp(32px,5vh,48px)]
-            text-[clamp(0.6rem,0.9vw,0.8rem)]
+            text-[clamp(1rem,1.2vw,1.2rem)]
             focus:border-yellow-400 focus:shadow-[0_0_10px_#ffaa00]
             transition-all
             "
@@ -150,13 +150,13 @@ export default function Signup() {
             rounded-md outline-none
             w-[clamp(200px,40vw,360px)]
             h-[clamp(32px,5vh,48px)]
-            text-[clamp(0.6rem,0.9vw,0.8rem)]
+            text-[clamp(1rem,1.2vw,1.2rem)]
             focus:border-yellow-400 focus:shadow-[0_0_10px_#ffaa00]
             transition-all
             "
           />
           {error && (
-              <p className="text-red-500 text-[clamp(0.45rem,0.8vw,0.7rem)] text-center">
+              <p className="text-red-500 text-[clamp(0.9rem,1.2vw,1.8rem)] text-center">
                 {error}
               </p>
             )}
@@ -168,7 +168,7 @@ export default function Signup() {
                 py-[clamp(0.2rem,0.6vh,0.7rem)]
                 border-2 border-yellow-400 rounded-md
                 bg-blue-600 text-white
-                text-[clamp(0.6rem,0.9vw,0.8rem)]
+                text-[clamp(1rem,1.2vw,1.2rem)]
                 hover:bg-cyan-400
                 hover:shadow-[0_0_25px_#00ffff]
                 transition-transform hover:scale-105

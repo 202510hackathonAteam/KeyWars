@@ -1,14 +1,27 @@
-import React, { useEffect } from "react";
+import React, { useContext, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import "./Result.css";
+import { WebSocketContext } from "../../context/WebsocketContext";
+import LogoutButton from "../../components/LogoutButton";
 
 const Result = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // ★★★ WebSocket を切断/接続する関数を読み込む
+  const { disconnect, connect } = useContext(WebSocketContext);
+
+  // ★★★ ページに入った瞬間に WebSocket を切断
+  useEffect(() => {
+    disconnect();
+  }, [disconnect]);
+
   // Battleから受け取る
   const result = location.state?.result || "victory"; // デフォルト値
   const isVictory = result === "victory";
+  const totalRounds = location.state?.round || 20;
+  console.log("🟢 Result received round:", totalRounds);
+
 
   useEffect(() => {
     document.body.classList.add(result);
@@ -64,11 +77,22 @@ const Result = () => {
   };
 
 
-  const retry = () => navigate("/battle");
+  const retry = () => {
+    // 1. 新しい WebSocket を開いて queue.join を送る
+    connect();
+
+    // 2. ホームに戻る（そこで「接続中...」表示 → match.found で /battle に飛ぶ）
+    navigate("/");
+  };
+  
   const goHome = () => navigate("/");
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center text-center font-['Press_Start_2P'] text-white overflow-hidden">
+      <div className="absolute top-4 left-10 z-20">
+        <LogoutButton />
+      </div>
+
       {/* タイトル */}
       <h1 className="title">
         KEY WARS
@@ -96,7 +120,7 @@ const Result = () => {
         space-y-4
       ">
       <div className="text-[1.5rem] text-[#ffcfcf] my-2 drop-shadow-[0_0_5px_#ff5900]">
-          間違えた回数（通算10戦）：<span className="text-white ml-2">7</span>
+          間違えた回数（通算{totalRounds}戦中）：<span className="text-white ml-2">7</span>
       </div>
 
         {/* ボタン群 */}
