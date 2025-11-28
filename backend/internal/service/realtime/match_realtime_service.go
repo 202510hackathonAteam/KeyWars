@@ -183,7 +183,9 @@ func (s *MatchRealtimeService) OnMessage(
 		}
 
 		// プレイヤー認証
-		players, err := s.roundStateRepo.LoadMatchPlayers(ctx, payload.MatchID)
+		loadPlayersCtx, cancelLoadPlayers := context.WithTimeout(ctx, 200*time.Millisecond)
+		players, err := s.roundStateRepo.LoadMatchPlayers(loadPlayersCtx, payload.MatchID)
+		cancelLoadPlayers()
 		if err != nil {
 			s.logger.Error().
 				Err(err).
@@ -215,7 +217,9 @@ func (s *MatchRealtimeService) OnMessage(
 		}
 
 		// measurementFinishedCountを+1（全員が1回だけ実行）
-		measurementFinishedCount, err := s.roundStateRepo.IncrementMeasurementFinishCount(ctx, payload.MatchID)
+		incrementCountCtx, cancelIncrement := context.WithTimeout(ctx, 200*time.Millisecond)
+		measurementFinishedCount, err := s.roundStateRepo.IncrementMeasurementFinishCount(incrementCountCtx, payload.MatchID)
+		cancelIncrement()
 		if err != nil {
 			return websocket.NewErrorPayload(), nil
 		}
@@ -263,7 +267,9 @@ func (s *MatchRealtimeService) OnMessage(
 		}
 
 		// プレイヤー認証
-		players, err := s.roundStateRepo.LoadMatchPlayers(ctx, payload.MatchID)
+		loadPlayersCtx, cancelLoadPlayers := context.WithTimeout(ctx, 200*time.Millisecond)
+		players, err := s.roundStateRepo.LoadMatchPlayers(loadPlayersCtx, payload.MatchID)
+		cancelLoadPlayers()
 		if err != nil {
 			s.logger.Error().
 				Err(err).
@@ -295,7 +301,9 @@ func (s *MatchRealtimeService) OnMessage(
 		}
 
 		// measurementFinishedCountを+1（全員が1回だけ実行）
-		measurementFinishedCount, err := s.roundStateRepo.IncrementMeasurementFinishCount(ctx, payload.MatchID)
+		incrementCountCtx, cancelIncrement := context.WithTimeout(ctx, 200*time.Millisecond)
+		measurementFinishedCount, err := s.roundStateRepo.IncrementMeasurementFinishCount(incrementCountCtx, payload.MatchID)
+		cancelIncrement()
 		if err != nil {
 			return websocket.NewErrorPayload(), nil
 		}
