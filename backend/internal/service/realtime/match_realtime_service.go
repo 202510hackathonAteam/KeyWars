@@ -78,40 +78,60 @@ func (service *MatchRealtimeService) OnConnect(
 ) (any, error) {
 	nowMs := time.Now().UnixMilli()
 
-	// Presence の状態を取得
-	if service.presenceRepository != nil {
-		presenceMap, err := service.presenceRepository.Get(ctx, userID)
-		if err == nil && len(presenceMap) > 0 {
-			status := presenceMap["status"]
-			matchID := presenceMap["match_id"]
-
-			if (status == "ingame" || status == "reconnecting") && matchID != "" {
-				matchRoomName := "match:" + matchID
-				userRoomName := "user:" + userID
-
-				clientConnections := service.websocketHub.Members(userRoomName)
-				if len(clientConnections) > 0 {
-					_ = service.websocketHub.Move(ctx, clientConnections[0], matchRoomName)
-
-					restoredState, _ := service.roundStateRepository.LoadMatchState(ctx, matchID)
-
-					_ = service.presenceRepository.SetIngame(ctx, userID, matchID, nowMs)
-
-					return map[string]any{
-						"type":    "match.restore",
-						"matchId": matchID,
-						"state":   restoredState,
-					}, nil
-				}
-			}
-		}
-		_ = service.presenceRepository.SetOnline(ctx, userID, nowMs)
+	// Presence が無い＝このユーザーは試合参加中ではない。
+	// 復帰対象が無いため通常接続として welcome を返す。
+	if service.presenceRepository == nil {
+		return websocket.NewWelcomePayload(userID), nil
 	}
 
-	return map[string]any{
-		"type": "welcome",
-		"uid":  userID,
-	}, nil
+	presenceMap, err := service.presenceRepository.Get(ctx, userID)
+	if err != nil || len(presenceMap) == 0 {
+		_ = service.presenceRepository.SetOnline(ctx, userID, nowMs)
+		return websocket.NewWelcomePayload(userID), nil
+	}
+
+	status := presenceMap["status"]
+	matchID := presenceMap["match_id"]
+
+	// 途中復帰の前提条件をすべてチェック（否定条件は即 return）
+	if !(status == "ingame" || status == "reconnecting") {
+		_ = service.presenceRepository.SetOnline(ctx, userID, nowMs)
+		return websocket.NewWelcomePayload(userID), nil
+	}
+
+	if matchID == "" {
+		_ = service.presenceRepository.SetOnline(ctx, userID, nowMs)
+		return websocket.NewWelcomePayload(userID), nil
+	}
+
+	// state がない = 終了済み or 試合破棄 → 復帰できない
+	restoredState, err := service.roundStateRepository.LoadMatchState(ctx, matchID)
+	if err != nil || restoredState == nil {
+		_ = service.presenceRepository.SetOnline(ctx, userID, nowMs)
+		return websocket.NewWelcomePayload(userID), nil
+	}
+
+	// ここまで来た場合、途中復帰できる
+	matchRoom := "match:" + matchID
+	userRoom := "user:" + userID
+	conns := service.websocketHub.Members(userRoom)
+
+	if len(conns) > 0 {
+		_ = service.websocketHub.Move(ctx, conns[0], matchRoom)
+	}
+
+	_ = service.presenceRepository.SetIngame(ctx, userID, matchID, nowMs)
+
+	return websocket.NewMatchRestorePayload(
+		matchID,
+		websocket.MatchState{
+			Round:            restoredState.Round,
+			RoundStartAtMS:   restoredState.RoundStartAtMs,
+			RoundEndAtMS:     restoredState.RoundEndAtMs,
+			Player1Lifepoint: restoredState.Player1Lifepoint,
+			Player2Lifepoint: restoredState.Player2Lifepoint,
+		},
+	), nil
 }
 
 // OnMessage は、クライアントから受信した WebSocket メッセージを処理する。
