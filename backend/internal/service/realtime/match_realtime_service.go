@@ -5,13 +5,14 @@ import (
 	"errors"
 	"time"
 	"encoding/json"
+
 	"github.com/rs/zerolog"
 
-	"keywars/backend/internal/domain/repository"
-	"keywars/backend/internal/transport/websocket"
-	"keywars/backend/internal/service/round"
 	"keywars/backend/internal/config"
 	"keywars/backend/internal/domain/constant"
+	"keywars/backend/internal/domain/repository"
+	"keywars/backend/internal/service/round"
+	"keywars/backend/internal/transport/websocket"
 )
 
 //
@@ -158,7 +159,7 @@ func (s *MatchRealtimeService) OnMessage(
 		}, nil
 
 	// --- マッチ待機キャンセル ---
-	case "queue.cancel":
+	case "queue.left":
 		// best-effort：失敗しても致命的ではない
 		_ = s.matchQueueRepo.Cancel(ctx, userID)
 
@@ -172,7 +173,7 @@ func (s *MatchRealtimeService) OnMessage(
 		if err := json.Unmarshal(messagePayload, &payload); err != nil {
 			s.logger.Error().
 				Err(err).
-        Str("event", constant.TriggerAnswerFinish).
+				Str("event", constant.TriggerAnswerFinish).
 				Str("match_id", payload.MatchID).
 				Msg("failed to unmarshal payload")
 			return websocket.NewErrorPayload(), nil
@@ -187,7 +188,7 @@ func (s *MatchRealtimeService) OnMessage(
 				Str("match_id", payload.MatchID).
 				Msg("failed to load match players")
 			return websocket.NewErrorPayload(), nil
-    }
+		}
 		if userID != players.Player1ID && userID != players.Player2ID {
       s.logger.Warn().
         Str("event", constant.TriggerAnswerFinish).
@@ -252,7 +253,7 @@ func (s *MatchRealtimeService) OnMessage(
 		if err := json.Unmarshal(messagePayload, &payload); err != nil {
 			s.logger.Error().
 				Err(err).
-        Str("event", constant.TriggerAnswerTimeout).
+				Str("event", constant.TriggerAnswerTimeout).
 				Str("match_id", payload.MatchID).
 				Msg("failed to unmarshal payload")
 			return websocket.NewErrorPayload(), nil
@@ -267,7 +268,7 @@ func (s *MatchRealtimeService) OnMessage(
 				Str("match_id", payload.MatchID).
 				Msg("failed to load match players")
 			return websocket.NewErrorPayload(), nil
-    }
+		}
 		if userID != players.Player1ID && userID != players.Player2ID {
       s.logger.Warn().
         Str("event", constant.TriggerAnswerTimeout).

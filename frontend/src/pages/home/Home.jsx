@@ -1,11 +1,12 @@
 // src/pages/home/Home.jsx
-import React, { useEffect, useRef, useState, useContext } from "react";
+import React, { useEffect, useRef, useState, useContext, Component } from "react";
 import { WebSocketContext } from "../../context/WebsocketContext";
+import LogoutButton from "../../components/LogoutButton";
 // import "./Home.css";
 
 export default function Home() {
   // 現在接続中かどうかを保持するstate(connectによって再描画される。)
-  const { connect, connected } = useContext(WebSocketContext);
+  const { connect, connected, leaveQueue } = useContext(WebSocketContext);
 
   const storedUserName = localStorage.getItem("user_name") || "GUEST";
   // Websocketの接続を担う関数 
@@ -70,6 +71,9 @@ export default function Home() {
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gradient-radial from-neutral-900 to-black text-white font-['Press_Start_2P'] relative overflow-hidden">
+      <div className="absolute top-4 left-10 z-20">
+        <LogoutButton />
+      </div>
       {/* 背景グラデーション */}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,0,0,0.2),transparent_70%),radial-gradient(circle_at_bottom,rgba(255,165,0,0.15),transparent_80%),radial-gradient(circle_at_top,rgba(0,0,255,0.15),transparent_70%)] animate-pulse z-0 pointer-events-none" ></div>
               <div className="home-body z-10 text-center">
@@ -115,6 +119,25 @@ export default function Home() {
             >
               {connected ? "接続中..." : "対戦相手をさがす"}
             </button>
+            {connected && (
+              <button
+                onClick={leaveQueue}
+                className="
+                  px-6 py-3
+                  rounded-lg
+                  text-white
+                  text-[2vh]           /* ← 🔥 ボタン文字を大きく */
+                  uppercase
+                  shadow-[0_0_10px_#ff4444]
+                  transition-transform
+                  hover:bg-[#550000]
+                  hover:shadow-[0_0_20px_#ff0000]
+                  hover:scale-110
+                "
+              >
+                対戦をやめる
+              </button>
+            )}
 
             {/* <button
               className="px-6 py-3 bg-[#ff0000] border-2 border-[#ffcc00] rounded-lg text-white text-[12px] uppercase shadow-[0_0_15px_#ff0000] transition-transform hover:bg-[#ff8800] hover:shadow-[0_0_25px_#ffaa00] hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed"
