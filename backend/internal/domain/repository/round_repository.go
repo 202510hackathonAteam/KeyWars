@@ -23,9 +23,8 @@ type RoundStateRepository interface {
 	// 「再戦に影響する一時データのみ」を安全に削除するクリーンアップ処理する。
 	CleanupMatch(ctx context.Context, matchID, user1ID, user2ID string) error
 
-	// 出題デッキを初期化時に一度だけ保存する。
-	// match:{matchID}:deck に全単語を保存しておき、以降の出題でインデックス参照する。
-	SaveDeck(ctx context.Context, matchID string, deck []PromptWithDifficulty) error
+	// 試合で使用する出題デッキ（20問分）を Redis に保存する。
+	SaveDeck(ctx context.Context, matchID string, deck []model.DeckPrompt) error
 
 	// 指定したデッキインデックスのmatch:{matchID}:deck の JSON を構造体に変換する。
 	LoadDeckPrompt(ctx context.Context, matchID string, deckIndex int64) (*model.DeckPrompt, error)

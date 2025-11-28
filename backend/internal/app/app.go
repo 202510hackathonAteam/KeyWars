@@ -134,15 +134,19 @@ func New(cfg *config.Config) (*Server, error) {
 		redisRepos.Round,
 		forceFinishService,
 	)
+	deckGeneratorService := round.NewDeckGeneratorService(
+		redisRepos.Round,
+		sqlrepos.Prompt,
+	)
 
 	// Realtime Service を生成（Redis実装とHubを注入）
 	realtimeService := realtime.NewMatchRealtimeService(
 		redisRepos.Queue,
 		redisRepos.Round,
 		redisRepos.Presence,
-		sqlrepos.Prompt,
 		hub,
 		&baseLogger,
+		deckGeneratorService,
 		roundFlowService,
 		measurementService,
 	)

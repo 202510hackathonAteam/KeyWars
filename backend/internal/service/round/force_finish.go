@@ -3,6 +3,7 @@ package round
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/rs/zerolog"
 
@@ -46,15 +47,21 @@ func NewForceFinishService(
 // 最後の 1 回だけ実行される。
 func (s *forceFinishService) ForceFinish(ctx context.Context, matchID string) (any, error) {
 	// プレイヤー情報と finish 状態をロード
-	players, err := s.roundStateRepo.LoadMatchPlayers(ctx, matchID)
+	loadPlayersCtx, cancelLoadPlayers := context.WithTimeout(ctx, 200*time.Millisecond)
+	players, err := s.roundStateRepo.LoadMatchPlayers(loadPlayersCtx, matchID)
+	cancelLoadPlayers()
 	if err != nil {
 		return websocket.NewErrorPayload(), nil
 	}
-	isPlayer1AnswerFinish, err := s.roundStateRepo.IsPlayerAnswerFinishFlagExists(ctx, matchID, players.Player1ID)
+	checkFinishCtx1, cancelCheck1 := context.WithTimeout(ctx, 200*time.Millisecond)
+	isPlayer1AnswerFinish, err := s.roundStateRepo.IsPlayerAnswerFinishFlagExists(checkFinishCtx1, matchID, players.Player1ID)
+	cancelCheck1()
 	if err != nil {
 		return websocket.NewErrorPayload(), nil
 	}
-	isPlayer2AnswerFinish, err := s.roundStateRepo.IsPlayerAnswerFinishFlagExists(ctx, matchID, players.Player2ID)
+	checkFinishCtx2, cancelCheck2 := context.WithTimeout(ctx, 200*time.Millisecond)
+	isPlayer2AnswerFinish, err := s.roundStateRepo.IsPlayerAnswerFinishFlagExists(checkFinishCtx2, matchID, players.Player2ID)
+	cancelCheck2()
 	if err != nil {
 		return websocket.NewErrorPayload(), nil
 	}
@@ -94,7 +101,9 @@ func (s *forceFinishService) ForceFinish(ctx context.Context, matchID string) (a
 				return websocket.NewErrorPayload(), nil
 			}
 			// measurementFinishedCountを+1（SaveMeasurement が成功した時だけ）
-			currentFinishedCount, err := s.roundStateRepo.IncrementMeasurementFinishCount(ctx, matchID)
+			incrementCountCtx, cancelIncrement := context.WithTimeout(ctx, 200*time.Millisecond)
+			currentFinishedCount, err := s.roundStateRepo.IncrementMeasurementFinishCount(incrementCountCtx, matchID)
+			cancelIncrement()
 			if err != nil {
 				return websocket.NewErrorPayload(), nil
 			}

@@ -24,3 +24,20 @@ const (
 	MatchExpiryOnStart  time.Duration = 1 * time.Hour
 	MatchExpiryOnFinish time.Duration = 10 * time.Minute
 )
+
+// ===== デッキ設定 =====
+
+type DeckConfig struct {
+	TotalCount int
+	EasyCount   int
+	NormalCount int
+	HardCount   int
+}
+
+// Deck はゲームの問題出題設定
+var Deck = DeckConfig{
+	TotalCount: 20,
+	EasyCount:   6,
+	NormalCount: 6,
+	HardCount:   8,
+}
