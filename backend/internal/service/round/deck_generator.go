@@ -11,13 +11,13 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-type DeckGenerator struct {
+type DeckGeneratorService struct {
 	dbRepo repository.PromptRepository
 	redis  *redis.Client
 }
 
-func NewDeckGenerator(dbRepo repository.PromptRepository, redisClient *redis.Client) *DeckGenerator {
-	return &DeckGenerator{
+func NewDeckGeneratorService(dbRepo repository.PromptRepository, redisClient *redis.Client) *DeckGeneratorService {
+	return &DeckGeneratorService{
 		dbRepo: dbRepo,
 		redis:  redisClient,
 	}
@@ -31,14 +31,14 @@ type DeckItem struct {
 }
 
 // GenerateAndSaveDeck は、指定 matchID のデッキを作成して Redis に保存する。
-func (g *DeckGenerator) GenerateAndSaveDeck(ctx context.Context, matchID string) error {
-	prompts, err := g.dbRepo.GetDeckPrompts(ctx)
+func (s *DeckGeneratorService) GenerateAndSaveDeck(ctx context.Context, matchID string) error {
+	prompts, err := s.dbRepo.GetDeckPrompts(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get prompts: %w", err)
 	}
 
 	key := fmt.Sprintf("match:%s:deck", matchID)
-	pipeline := g.redis.TxPipeline()
+	pipeline := s.redis.TxPipeline()
 
 	for _, p := range prompts {
 		item := DeckItem{

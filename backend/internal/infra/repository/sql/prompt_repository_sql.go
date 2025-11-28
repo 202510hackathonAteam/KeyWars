@@ -19,10 +19,10 @@ func NewPromptRepositorySQL(db *gorm.DB) *PromptRepositorySQL {
 }
 
 // 指定 difficulty_code ごとに n 件取得する関数
-func (repository *PromptRepositorySQL) GetPromptsByDifficulty(ctx context.Context, difficultyCode string, limitCount int) ([]domainrepo.PromptWithDifficulty, error) {
+func (r *PromptRepositorySQL) GetPromptsByDifficulty(ctx context.Context, difficultyCode string, limitCount int) ([]domainrepo.PromptWithDifficulty, error) {
 	var promptList []domainrepo.PromptWithDifficulty
 
-	err := repository.db.WithContext(ctx).
+	err := r.db.WithContext(ctx).
 		Table("prompts AS p").
 		Select(`
 			p.id,
@@ -41,18 +41,18 @@ func (repository *PromptRepositorySQL) GetPromptsByDifficulty(ctx context.Contex
 }
 
 // easy/normal/hard を固定数ずつ取得して、難易度事にランダム順にして、難易度順に合体する関数
-func (repository *PromptRepositorySQL) GetDeckPrompts(ctx context.Context) ([]domainrepo.PromptWithDifficulty, error) {
+func (r *PromptRepositorySQL) GetDeckPrompts(ctx context.Context) ([]domainrepo.PromptWithDifficulty, error) {
 	allPrompts := make([]domainrepo.PromptWithDifficulty, 0, 20)
 
-	easyPrompts, err := repository.GetPromptsByDifficulty(ctx, "easy", 6)
+	easyPrompts, err := r.GetPromptsByDifficulty(ctx, "easy", 6)
 	if err != nil {
 		return nil, err
 	}
-	normalPrompts, err := repository.GetPromptsByDifficulty(ctx, "normal", 6)
+	normalPrompts, err := r.GetPromptsByDifficulty(ctx, "normal", 6)
 	if err != nil {
 		return nil, err
 	}
-	hardPrompts, err := repository.GetPromptsByDifficulty(ctx, "hard", 8)
+	hardPrompts, err := r.GetPromptsByDifficulty(ctx, "hard", 8)
 	if err != nil {
 		return nil, err
 	}

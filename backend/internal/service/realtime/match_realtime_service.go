@@ -26,10 +26,10 @@ import (
 //   - Redis リポジトリ（MatchQueueRepositoryRedis）を通じて待機キューを操作する
 //   - Hub（WebSocket Hub）を用いてイベントをブロードキャストする
 type MatchRealtimeService struct {
-	matchQueueRepository 		repository.MatchQueueRepository
-	roundStateRepository 		repository.RoundStateRepository
-	presenceRepository   		repository.PresenceRepository
-	promptRepository     		repository.PromptRepository
+	matchQueueRepo 					repository.MatchQueueRepository
+	roundStateRepo 					repository.RoundStateRepository
+	presenceRepo   					repository.PresenceRepository
+	promptRepo			     		repository.PromptRepository
 	websocketHub         		*websocket.Hub
 	logger 							 		*zerolog.Logger
 	roundFlowService 		 		*round.RoundFlowService
@@ -39,20 +39,20 @@ type MatchRealtimeService struct {
 // NewMatchRealtimeService は、依存する Redis リポジトリと WebSocket ハブを受け取り、
 // 新しい MatchRealtimeService インスタンスを生成して返すコンストラクタ。
 func NewMatchRealtimeService(
-	matchQueueRepository repository.MatchQueueRepository,
-	roundState repository.RoundStateRepository,
-	presence repository.PresenceRepository,
-	prompt repository.PromptRepository,
+	matchQueueRepo repository.MatchQueueRepository,
+	roundStateRepo repository.RoundStateRepository,
+	presenceRepo repository.PresenceRepository,
+	promptRepo repository.PromptRepository,
 	websocketHub *websocket.Hub,
 	logger *zerolog.Logger,
 	roundFlowService *round.RoundFlowService,
 	measurementRoundService *round.MeasurementRoundService,
 ) *MatchRealtimeService {
 	return &MatchRealtimeService{
-		matchQueueRepository: 	 matchQueueRepository,
-		roundStateRepository: 	 roundState,
-		presenceRepository:   	 presence,
-		promptRepository:     	 prompt,
+		matchQueueRepo: 	 			 matchQueueRepo,
+		roundStateRepo: 	 			 roundStateRepo,
+		presenceRepo:   	 			 presenceRepo,
+		promptRepo:     	 			 promptRepo,
 		websocketHub:         	 websocketHub,
 		logger:									 logger,
 		roundFlowService:				 roundFlowService,
@@ -66,7 +66,7 @@ func NewMatchRealtimeService(
 
 // OnConnect は、新しい WebSocket 接続が確立された際に呼び出される。
 // 接続直後のクライアントに対して歓迎メッセージを返す。
-func (service *MatchRealtimeService) OnConnect(
+func (s *MatchRealtimeService) OnConnect(
 	ctx context.Context,
 	userID string,
 	roomName string,
@@ -74,13 +74,13 @@ func (service *MatchRealtimeService) OnConnect(
 	nowMs := time.Now().UnixMilli()
 
 	// Presence を使わない（または nil）の場合 → 何も返さない（新規扱い）
-	if service.presenceRepository == nil {
+	if s.presenceRepo == nil {
 		return nil, nil
 	}
 
-	presenceMap, err := service.presenceRepository.Get(ctx, userID)
+	presenceMap, err := s.presenceRepo.Get(ctx, userID)
 	if err != nil || len(presenceMap) == 0 {
-		_ = service.presenceRepository.SetOnline(ctx, userID, nowMs)
+		_ = s.presenceRepo.SetOnline(ctx, userID, nowMs)
 		return nil, nil
 	}
 
@@ -89,32 +89,32 @@ func (service *MatchRealtimeService) OnConnect(
 
 	// 途中復帰の前提条件をすべてチェック（否定条件は即 return）
 	if !(status == "ingame" || status == "reconnecting") {
-		_ = service.presenceRepository.SetOnline(ctx, userID, nowMs)
+		_ = s.presenceRepo.SetOnline(ctx, userID, nowMs)
 		return nil, nil
 	}
 
 	if matchID == "" {
-		_ = service.presenceRepository.SetOnline(ctx, userID, nowMs)
+		_ = s.presenceRepo.SetOnline(ctx, userID, nowMs)
 		return nil, nil
 	}
 
 	// state がない = 終了済み or 試合破棄 → 復帰できない
-	restoredState, err := service.roundStateRepository.LoadMatchState(ctx, matchID)
+	restoredState, err := s.roundStateRepo.LoadMatchState(ctx, matchID)
 	if err != nil || restoredState == nil {
-		_ = service.presenceRepository.SetOnline(ctx, userID, nowMs)
+		_ = s.presenceRepo.SetOnline(ctx, userID, nowMs)
 		return nil, nil
 	}
 
 	// ここまで来た場合、途中復帰できる
 	matchRoom := "match:" + matchID
 	userRoom := "user:" + userID
-	conns := service.websocketHub.Members(userRoom)
+	conns := s.websocketHub.Members(userRoom)
 
 	if len(conns) > 0 {
-		_ = service.websocketHub.Move(ctx, conns[0], matchRoom)
+		_ = s.websocketHub.Move(ctx, conns[0], matchRoom)
 	}
 
-	_ = service.presenceRepository.SetIngame(ctx, userID, matchID, nowMs)
+	_ = s.presenceRepo.SetIngame(ctx, userID, matchID, nowMs)
 
 	return websocket.NewMatchRestorePayload(
 		matchID,
@@ -128,7 +128,7 @@ func (service *MatchRealtimeService) OnConnect(
 
 // OnMessage は、クライアントから受信した WebSocket メッセージを処理する。
 // メッセージの `type` に応じて待機キュー操作や通知を行う。
-func (service *MatchRealtimeService) OnMessage(
+func (s *MatchRealtimeService) OnMessage(
 	ctx context.Context,
 	userID string,
 	roomName string,
@@ -143,7 +143,7 @@ func (service *MatchRealtimeService) OnMessage(
 		currentTimeMs := time.Now().UnixMilli()
 
 		// Redis の待機キューに追加
-		err := service.matchQueueRepository.Enqueue(ctx, userID, currentTimeMs)
+		err := s.matchQueueRepo.Enqueue(ctx, userID, currentTimeMs)
 		if err != nil {
 			return map[string]any{
 				"type":  "queue.error",
@@ -160,7 +160,7 @@ func (service *MatchRealtimeService) OnMessage(
 	// --- マッチ待機キャンセル ---
 	case "queue.cancel":
 		// best-effort：失敗しても致命的ではない
-		_ = service.matchQueueRepository.Cancel(ctx, userID)
+		_ = s.matchQueueRepo.Cancel(ctx, userID)
 
 		return map[string]any{
 			"type": "queue.cancelled",
@@ -170,7 +170,7 @@ func (service *MatchRealtimeService) OnMessage(
 	case constant.TriggerAnswerFinish:
 		var payload websocket.PlayerAnswerFinishedPayload
 		if err := json.Unmarshal(messagePayload, &payload); err != nil {
-			service.logger.Error().
+			s.logger.Error().
 				Err(err).
         Str("event", constant.TriggerAnswerFinish).
 				Str("match_id", payload.MatchID).
@@ -179,9 +179,9 @@ func (service *MatchRealtimeService) OnMessage(
 		}
 
 		// プレイヤー認証
-		players, err := service.roundStateRepository.LoadMatchPlayers(ctx, payload.MatchID)
+		players, err := s.roundStateRepo.LoadMatchPlayers(ctx, payload.MatchID)
 		if err != nil {
-			service.logger.Error().
+			s.logger.Error().
 				Err(err).
 				Str("event", constant.TriggerAnswerFinish).
 				Str("match_id", payload.MatchID).
@@ -189,7 +189,7 @@ func (service *MatchRealtimeService) OnMessage(
 			return websocket.NewErrorPayload(), nil
     }
 		if userID != players.Player1ID && userID != players.Player2ID {
-      service.logger.Warn().
+      s.logger.Warn().
         Str("event", constant.TriggerAnswerFinish).
         Str("match_id", payload.MatchID).
         Msg("unauthorized player")
@@ -197,12 +197,12 @@ func (service *MatchRealtimeService) OnMessage(
 		}
 
 		// 計測機能実行（各プレイヤーが1回だけ実行）
-		if err := service.measurementRoundService.SaveMeasurement(ctx, payload.MatchID, userID, payload.MissCount, constant.TriggerAnswerFinish); err != nil {
+		if err := s.measurementRoundService.SaveMeasurement(ctx, payload.MatchID, userID, payload.MissCount, constant.TriggerAnswerFinish); err != nil {
 			// すでに実行済み（2回目の finish は正常扱いとして無視）
 			if errors.Is(err, constant.ErrAlreadyFinished) {
         return nil, nil
 			}
-			service.logger.Error().
+			s.logger.Error().
         Err(err).
         Str("event", constant.TriggerAnswerFinish).
         Str("match_id", payload.MatchID).
@@ -211,7 +211,7 @@ func (service *MatchRealtimeService) OnMessage(
 		}
 
 		// measurementFinishedCountを+1（全員が1回だけ実行）
-		measurementFinishedCount, err := service.roundStateRepository.IncrementMeasurementFinishCount(ctx, payload.MatchID)
+		measurementFinishedCount, err := s.roundStateRepo.IncrementMeasurementFinishCount(ctx, payload.MatchID)
 		if err != nil {
 			return websocket.NewErrorPayload(), nil
 		}
@@ -223,7 +223,7 @@ func (service *MatchRealtimeService) OnMessage(
 
 		// プレイヤー数が規定値を超えている場合 → 本来発生しない異常状態。
 		if measurementFinishedCount > config.RequiredPlayers {
-			service.logger.Error().
+			s.logger.Error().
         Str("event", constant.TriggerAnswerFinish).
         Str("match_id", payload.MatchID).
         Msg("unexpected measurement count (too large)")
@@ -235,8 +235,8 @@ func (service *MatchRealtimeService) OnMessage(
 		// =====================================
 
 		// プレイヤーが規定値の場合 → ラウンドフローを実行
-		if err := service.roundFlowService.ProcessRoundResult(ctx, payload.MatchID); err != nil {
-			service.logger.Error().
+		if err := s.roundFlowService.ProcessRoundResult(ctx, payload.MatchID); err != nil {
+			s.logger.Error().
         Err(err).
         Str("event", constant.TriggerAnswerFinish).
         Str("match_id", payload.MatchID).
@@ -250,7 +250,7 @@ func (service *MatchRealtimeService) OnMessage(
 	case constant.TriggerAnswerTimeout:
 		var payload websocket.PlayerAnswerFinishedPayload
 		if err := json.Unmarshal(messagePayload, &payload); err != nil {
-			service.logger.Error().
+			s.logger.Error().
 				Err(err).
         Str("event", constant.TriggerAnswerTimeout).
 				Str("match_id", payload.MatchID).
@@ -259,9 +259,9 @@ func (service *MatchRealtimeService) OnMessage(
 		}
 
 		// プレイヤー認証
-		players, err := service.roundStateRepository.LoadMatchPlayers(ctx, payload.MatchID)
+		players, err := s.roundStateRepo.LoadMatchPlayers(ctx, payload.MatchID)
 		if err != nil {
-			service.logger.Error().
+			s.logger.Error().
 				Err(err).
 				Str("event", constant.TriggerAnswerTimeout).
 				Str("match_id", payload.MatchID).
@@ -269,7 +269,7 @@ func (service *MatchRealtimeService) OnMessage(
 			return websocket.NewErrorPayload(), nil
     }
 		if userID != players.Player1ID && userID != players.Player2ID {
-      service.logger.Warn().
+      s.logger.Warn().
         Str("event", constant.TriggerAnswerTimeout).
         Str("match_id", payload.MatchID).
         Msg("unauthorized player")
@@ -277,12 +277,12 @@ func (service *MatchRealtimeService) OnMessage(
 		}
 
 		// 計測機能実行（各プレイヤーが1回だけ実行）
-		if err := service.measurementRoundService.SaveMeasurement(ctx, payload.MatchID, userID, payload.MissCount, constant.TriggerAnswerTimeout); err != nil {
+		if err := s.measurementRoundService.SaveMeasurement(ctx, payload.MatchID, userID, payload.MissCount, constant.TriggerAnswerTimeout); err != nil {
 			// すでに実行済み（2回目の finish は正常扱いとして無視）
 			if errors.Is(err, constant.ErrAlreadyFinished) {
         return nil, nil
 			}
-			service.logger.Error().
+			s.logger.Error().
         Err(err).
         Str("event", constant.TriggerAnswerTimeout).
         Str("match_id", payload.MatchID).
@@ -291,7 +291,7 @@ func (service *MatchRealtimeService) OnMessage(
 		}
 
 		// measurementFinishedCountを+1（全員が1回だけ実行）
-		measurementFinishedCount, err := service.roundStateRepository.IncrementMeasurementFinishCount(ctx, payload.MatchID)
+		measurementFinishedCount, err := s.roundStateRepo.IncrementMeasurementFinishCount(ctx, payload.MatchID)
 		if err != nil {
 			return websocket.NewErrorPayload(), nil
 		}
@@ -303,7 +303,7 @@ func (service *MatchRealtimeService) OnMessage(
 
 		// プレイヤー数が規定値を超えている場合 → 本来発生しない異常状態。
 		if measurementFinishedCount > config.RequiredPlayers {
-			service.logger.Error().
+			s.logger.Error().
         Str("event", constant.TriggerAnswerTimeout).
         Str("match_id", payload.MatchID).
         Msg("unexpected measurement count (too large)")
@@ -315,8 +315,8 @@ func (service *MatchRealtimeService) OnMessage(
 		// =====================================
 
 		// プレイヤーが規定値の場合 → ラウンドフローを実行
-		if err := service.roundFlowService.ProcessRoundResult(ctx, payload.MatchID); err != nil {
-			service.logger.Error().
+		if err := s.roundFlowService.ProcessRoundResult(ctx, payload.MatchID); err != nil {
+			s.logger.Error().
         Err(err).
         Str("event", constant.TriggerAnswerTimeout).
         Str("match_id", payload.MatchID).
@@ -335,11 +335,11 @@ func (service *MatchRealtimeService) OnMessage(
 
 // OnDisconnect は、クライアントの WebSocket 接続が切断された際に呼び出される。
 // 待機中であれば Redis キューから安全に削除する。
-func (service *MatchRealtimeService) OnDisconnect(
+func (s *MatchRealtimeService) OnDisconnect(
 	ctx context.Context,
 	userID string,
 	roomName string,
 ) {
 	// best-effort で待機解除（例: 切断時）
-	_ = service.matchQueueRepository.Cancel(context.Background(), userID)
+	_ = s.matchQueueRepo.Cancel(context.Background(), userID)
 }
