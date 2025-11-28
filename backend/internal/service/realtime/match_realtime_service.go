@@ -203,7 +203,10 @@ func (s *MatchRealtimeService) OnMessage(
 		}
 
 		// 計測機能実行（各プレイヤーが1回だけ実行）
-		if err := s.measurementRoundService.SaveMeasurement(ctx, payload.MatchID, userID, payload.MissCount, constant.TriggerAnswerFinish); err != nil {
+		measurementCtx, cancelMeasurement := context.WithTimeout(ctx, 600*time.Millisecond)
+		err = s.measurementRoundService.SaveMeasurement(measurementCtx, payload.MatchID, userID, payload.MissCount, constant.TriggerAnswerFinish)
+		cancelMeasurement()
+		if err != nil {
 			// すでに実行済み（2回目の finish は正常扱いとして無視）
 			if errors.Is(err, constant.ErrAlreadyFinished) {
         return nil, nil
@@ -287,7 +290,10 @@ func (s *MatchRealtimeService) OnMessage(
 		}
 
 		// 計測機能実行（各プレイヤーが1回だけ実行）
-		if err := s.measurementRoundService.SaveMeasurement(ctx, payload.MatchID, userID, payload.MissCount, constant.TriggerAnswerTimeout); err != nil {
+		measurementCtx, cancelMeasurement := context.WithTimeout(ctx, 600*time.Millisecond)
+		err = s.measurementRoundService.SaveMeasurement(measurementCtx, payload.MatchID, userID, payload.MissCount, constant.TriggerAnswerTimeout)
+		cancelMeasurement()
+		if err != nil {
 			// すでに実行済み（2回目の finish は正常扱いとして無視）
 			if errors.Is(err, constant.ErrAlreadyFinished) {
         return nil, nil
