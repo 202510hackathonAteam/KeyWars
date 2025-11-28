@@ -3,7 +3,7 @@ set -e
 
 # 設定
 REGISTRY="asia-northeast1-docker.pkg.dev/keywars-477702/cloudrun-repo"
-PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)" # ルートディレクトリのパスを取得
+PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)" # ルートディレクトリのパスを取得
 
 # 確認プロンプト
 confirm() {
