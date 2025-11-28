@@ -85,7 +85,6 @@ func (s *RoundFlowService) StartFirstRound(ctx context.Context, matchID, user1ID
 		},
 	)
 
-	// WebSocket ブロードキャスト
 	s.websocketHub.Broadcast(ctx, "match:"+matchID, payload)
 
 	timeoutCtx, timeoutCancel := context.WithCancel(context.Background())
@@ -150,8 +149,15 @@ func (s *RoundFlowService) ProcessRoundResult(ctx context.Context, matchID strin
 			matchJudgeResult.Player2TotalDamageDealt,
 		)
 
-		// WebSocket ブロードキャスト
+		// match.end をフロントへ送信
 		s.websocketHub.Broadcast(ctx, "match:"+matchID, payload)
+
+		cleanupCtx, cancelCleanup := context.WithTimeout(ctx, 200*time.Millisecond)
+		if err := s.roundStateRepo.CleanupMatch(cleanupCtx, matchID, players.Player1ID, players.Player2ID); err != nil {
+			cancelCleanup()
+			return fmt.Errorf("cleanup failed: %w", err)
+		}
+		cancelCleanup()
 
 		return nil
 	}
@@ -238,10 +244,8 @@ func (s *RoundFlowService) ProcessRoundResult(ctx context.Context, matchID strin
 		},
 	)
 
-	// WebSocket ブロードキャスト
 	s.websocketHub.Broadcast(ctx, "match:"+matchID, payload)
 
-	// 次ラウンドの timeout をセット
 	timeoutCtx, timeoutCancel := context.WithCancel(context.Background())
 	s.timeoutCancelMap[matchID] = timeoutCancel
 	go s.timeoutRoundService.ScheduleRoundTimeoutCheck(timeoutCtx, matchID, roundEndAtMs + config.GraceMs)
