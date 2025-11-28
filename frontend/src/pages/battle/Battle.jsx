@@ -354,7 +354,7 @@ export default function GamePage() {
           </div>
 
           {/* プレイヤー2 */}
-          <div className="flex items-center gap-2 w-[48%] justify-end text-right">
+          <div className="flex items-center gap-2 w-[48%] justify-end">
             <div>
               <div
                 className="
