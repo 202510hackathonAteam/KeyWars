@@ -11,11 +11,13 @@ export default function Signup() {
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [error, setError] = useState("");
   const [csrfToken, setCsrfToken] =useState("")
+  const API_URL = import.meta.env.VITE_API_URL
+
 
   useEffect(() => {
       const fetchCsrf = async () => {
         try {
-          await fetch("/healthz", {
+          await fetch(`${API_URL}/healthz`, {
             method: "GET",
             credentials: "include",  // ← Cookie を受け取るために必要
           });
@@ -46,7 +48,7 @@ export default function Signup() {
     }
 
     try {
-      const signupresponse = await fetch("/auth/signup",{
+      const signupresponse = await fetch(`${API_URL}/auth/signup`,{
         method: "POST",
         headers: { "Content-Type": "application/json",
           ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
