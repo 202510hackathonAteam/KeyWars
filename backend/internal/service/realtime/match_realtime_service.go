@@ -76,13 +76,13 @@ func (s *MatchRealtimeService) OnConnect(
 
 	// Presence が無い＝このユーザーは試合参加中ではない。
 	// 復帰対象が無いため通常接続として welcome を返す。
-	if service.presenceRepository == nil {
+	if s.presenceRepo == nil {
 		return websocket.NewWelcomePayload(userID), nil
 	}
 
 	presenceMap, err := s.presenceRepo.Get(ctx, userID)
 	if err != nil || len(presenceMap) == 0 {
-		_ = service.presenceRepository.SetOnline(ctx, userID, nowMs)
+		_ = s.presenceRepo.SetOnline(ctx, userID, nowMs)
 		return websocket.NewWelcomePayload(userID), nil
 	}
 
@@ -91,19 +91,19 @@ func (s *MatchRealtimeService) OnConnect(
 
 	// 途中復帰の前提条件をすべてチェック（否定条件は即 return）
 	if !(status == "ingame" || status == "reconnecting") {
-		_ = service.presenceRepository.SetOnline(ctx, userID, nowMs)
+		_ = s.presenceRepo.SetOnline(ctx, userID, nowMs)
 		return websocket.NewWelcomePayload(userID), nil
 	}
 
 	if matchID == "" {
-		_ = service.presenceRepository.SetOnline(ctx, userID, nowMs)
+		_ = s.presenceRepo.SetOnline(ctx, userID, nowMs)
 		return websocket.NewWelcomePayload(userID), nil
 	}
 
 	// state がない = 終了済み or 試合破棄 → 復帰できない
 	restoredState, err := s.roundStateRepo.LoadMatchState(ctx, matchID)
 	if err != nil || restoredState == nil {
-		_ = service.presenceRepository.SetOnline(ctx, userID, nowMs)
+		_ = s.presenceRepo.SetOnline(ctx, userID, nowMs)
 		return websocket.NewWelcomePayload(userID), nil
 	}
 
