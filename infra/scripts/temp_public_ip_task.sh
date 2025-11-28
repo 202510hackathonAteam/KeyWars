@@ -6,7 +6,7 @@ INSTANCE="bastion-vm"
 gcloud compute instances add-access-config $INSTANCE --zone $ZONE
 
 # SSH でパッケージインストール
-gcloud compute ssh $INSTANCE --zone $ZON --tunnel-through-iap --command "
+gcloud compute ssh $INSTANCE --zone $ZONE --tunnel-through-iap --command "
   sudo apt update && sudo apt install -y redis-tools
 "
 

@@ -6,91 +6,57 @@ REGISTRY="asia-northeast1-docker.pkg.dev/keywars-477702/cloudrun-repo"
 PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)" # ルートディレクトリのパスを取得
 
 # 確認プロンプト
-confirm() {
-    local message=$1 # 確認時のメッセージを引数に持つ
-    echo -n "${message} (y/n) [y]: "
-    read -r answer
-    # 空入力（Enter）またはyの場合は実行
-    if [ -z "$answer" ] || [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
-        return 0
-    fi
-    echo "Skipped"
-    return 1
+confirm_step() {
+  local step_name=$1 # 1つ目の引数
+  local default=${2:-yes}  # 2つ目の引数
+  
+  if [ "$default" = "yes" ]; then
+    read -p "Run ${step_name}? (Y/n): " response
+    response=${response:-yes}
+  else
+    read -p "Run ${step_name}? (y/N): " response
+    response=${response:-no}
+  fi
+  
+  [ "$response" = "yes" ] || [ "$response" = "y" ] # Yesかyならtrue
 }
 
 # フロントエンドビルド
-build_frontend() {
-    echo "[1/3] Building Frontend"
-    if confirm "Build frontend?"; then
-        cd "$PROJECT_ROOT"
-        docker compose run --rm frontend yarn vite build
-        echo "Frontend build completed"
-    fi
-    echo ""
-}
+echo "Frontend Build Phase"
+if confirm_step "Frontend Build"; then
+    cd "$PROJECT_ROOT"
+    docker compose run --rm frontend yarn vite build
+    echo "Frontend build completed"
+else
+    echo "Skipped"
+fi
+echo ""
+
 
 # バックエンドビルド
-build_backend() {
-    echo "[2/3] Building Backend Images"
-    if confirm "Build backend images?"; then
-        # APIイメージ
-        echo "Building api-image..."
-        docker build \
-            -f "$PROJECT_ROOT/docker/backend/Dockerfile.prod" \
-            -t "${REGISTRY}/api-image:latest" \
-            "$PROJECT_ROOT"
+echo "Backend Build Phase"
+if confirm_step "Backend Build"; then
+    # イメージ名とDockerfileのパスを配列で定義
+    local images=(
+        "api-image:$PROJECT_ROOT/docker/backend/Dockerfile.prod"
+        "ws-image:$PROJECT_ROOT/docker/backend/Dockerfile.prod"
+        "migration-image:$PROJECT_ROOT/docker/migrate/Dockerfile"
+        "seed-image:$PROJECT_ROOT/docker/seed/Dockerfile"
+    )
         
-        # WebSocketイメージ
-        echo "Building ws-image..."
-        docker build \
-            -f "$PROJECT_ROOT/docker/backend/Dockerfile.prod" \
-            -t "${REGISTRY}/ws-image:latest" \
-            "$PROJECT_ROOT"
+    for image in "${images[@]}"; do
+        local image_name="${image%%:*}" # keyを参照
+        local dockerfile="${image#*:}" # valueを参照
         
-        # Migrationイメージ
-        echo "Building migration-image..."
+        echo "Building ${image_name}..."
         docker build \
-            -f "$PROJECT_ROOT/docker/migrate/Dockerfile" \
-            -t "${REGISTRY}/migration-image:latest" \
+            -f "$dockerfile" \
+            -t "${REGISTRY}/${image_name}:latest" \
             "$PROJECT_ROOT"
-        
-        # Seedイメージ
-        echo "Building seed-image..."
-        docker build \
-            -f "$PROJECT_ROOT/docker/seed/Dockerfile" \
-            -t "${REGISTRY}/seed-image:latest" \
-            "$PROJECT_ROOT"
-        
-        echo "Backend images build completed"
-    fi
-    echo ""
-}
+    done
+else
+    echo "Skipped"
+fi
+echo ""
 
-# イメージプッシュ
-push_images() {
-    echo "[3/3] Pushing Images"
-    if confirm "Push images to registry?"; then
-        docker push "${REGISTRY}/api-image:latest"
-        docker push "${REGISTRY}/ws-image:latest"
-        docker push "${REGISTRY}/migration-image:latest"
-        docker push "${REGISTRY}/seed-image:latest"
-        echo "Images pushed successfully"
-    fi
-    echo ""
-}
-
-# メイン処理
-main() {
-    echo "Build Pipeline Started"
-    echo "Registry: ${REGISTRY}"
-    echo "Project Root: ${PROJECT_ROOT}"
-    echo ""
-    
-    build_frontend
-    build_backend
-    push_images
-    
-    echo "completed!"
-}
-
-main
+echo "Build completed!"
