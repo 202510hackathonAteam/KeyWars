@@ -86,9 +86,10 @@ func (s *forceFinishService) ForceFinish(ctx context.Context, matchID string) (a
 
 	for _, p := range playersToCheck {
 		if !p.finished {
-			if err := s.measurementRoundService.SaveMeasurement(
-				ctx, matchID, p.userID, missCount, constant.TriggerServerForceFinish,
-			); err != nil {
+			measurementCtx, cancelMeasurement := context.WithTimeout(ctx, 600*time.Millisecond)
+			err = s.measurementRoundService.SaveMeasurement(measurementCtx, matchID, p.userID, missCount, constant.TriggerServerForceFinish)
+			cancelMeasurement()
+			if err != nil {
 				// すでに実行済み（2回目の finish は正常扱いとして無視）
 				if errors.Is(err, constant.ErrAlreadyFinished) {
 					continue
