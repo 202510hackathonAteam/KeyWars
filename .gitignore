@@ -11,3 +11,5 @@ tmp/
 *.tfvars
 .terraform/
 .terraform.lock.hcl
+.firebase/
+infra/firebase/public/
