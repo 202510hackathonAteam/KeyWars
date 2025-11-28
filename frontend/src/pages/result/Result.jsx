@@ -2,18 +2,19 @@ import React, { useContext, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import "./Result.css";
 import { WebSocketContext } from "../../context/WebsocketContext";
+import LogoutButton from "../../components/LogoutButton";
 
 const Result = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // ★★★ WebSocket を切断する関数を読み込む
-  const { disconnect } = useContext(WebSocketContext);
+  // ★★★ WebSocket を切断/接続する関数を読み込む
+  const { disconnect, connect } = useContext(WebSocketContext);
 
   // ★★★ ページに入った瞬間に WebSocket を切断
   useEffect(() => {
     disconnect();
-  }, []);
+  }, [disconnect]);
 
   // Battleから受け取る
   const result = location.state?.result || "victory"; // デフォルト値
@@ -76,11 +77,22 @@ const Result = () => {
   };
 
 
-  const retry = () => navigate("/battle");
+  const retry = () => {
+    // 1. 新しい WebSocket を開いて queue.join を送る
+    connect();
+
+    // 2. ホームに戻る（そこで「接続中...」表示 → match.found で /battle に飛ぶ）
+    navigate("/");
+  };
+  
   const goHome = () => navigate("/");
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center text-center font-['Press_Start_2P'] text-white overflow-hidden">
+      <div className="absolute top-4 left-10 z-20">
+        <LogoutButton />
+      </div>
+
       {/* タイトル */}
       <h1 className="title">
         KEY WARS
