@@ -1,0 +1,86 @@
+@import "tailwindcss";
+
+#root {
+  width: 100vw;
+  margin: 0 auto;
+  padding: 0;
+  text-align: center;
+  font-size: 12px;
+}
+
+
+.title {
+  font-size: 4rem;
+  color: #ff3b3b;
+  text-shadow:
+    0 0 5px #ff0000,
+    0 0 10px #ff0000,
+    0 0 20px #ff6600,
+    0 0 40px #ff6600,
+    0 0 80px #ff6600;
+  margin-bottom: 2rem;
+  animation: flicker 3s steps(1, end) infinite;
+}
+
+@keyframes flicker {
+  0% {
+    opacity: 1;
+    text-shadow:
+      0 0 5px #ff0000,
+      0 0 10px #ff0000,
+      0 0 20px #ff6600,
+      0 0 40px #ff6600,
+      0 0 80px #ff6600;
+  }
+
+  5% {
+    opacity: 0.8;
+    text-shadow: none;
+  }
+
+  8% {
+    opacity: 1;
+  }
+
+  10% {
+    opacity: 0.4;
+    text-shadow: none;
+  }
+
+  12%, 20% {
+    opacity: 1;
+  }
+
+  25% {
+    opacity: 0.6;
+    text-shadow: none;
+  }
+
+  30%, 70% {
+    opacity: 1;
+  }
+
+  72% {
+    opacity: 0.5;
+    text-shadow: none;
+  }
+
+  77% {
+    opacity: 1;
+  }
+
+  80% {
+    opacity: 0.2;
+    text-shadow: none;
+  }
+
+  85%, 100% {
+    opacity: 1;
+    text-shadow:
+      0 0 5px #ff0000,
+      0 0 10px #ff0000,
+      0 0 20px #ff6600,
+      0 0 40px #ff6600,
+      0 0 80px #ff6600;
+  }
+}

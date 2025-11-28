@@ -1,0 +1,9 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  font-family: 'Press Start 2P', cursive;
+  background: radial-gradient(circle at center, #1a1a1a 40%, #000 100%);
+  color: #fff;
+}
