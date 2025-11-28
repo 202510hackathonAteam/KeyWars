@@ -119,6 +119,13 @@ export function WebSocketProvider({ children }) {
     matchStartedRef.current = false;
   };
 
+  const resetMatchState = () => {
+    console.log("🔁 resetMatchState called");
+    setMatchStartPayload(null);
+    setMatchEndPayload(null);
+    matchStartedRef.current = false;
+  };
+
   return (
     <WebSocketContext.Provider
       // value={{ ws: wsRef.current, connected, connect, disconnect, matchStartPayload, }}
@@ -130,6 +137,7 @@ export function WebSocketProvider({ children }) {
         leaveQueue,
         matchStartPayload,
         matchEndPayload,
+        resetMatchState,
       }}
     >
       {children}
