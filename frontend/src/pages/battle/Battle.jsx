@@ -42,6 +42,7 @@ export default function GamePage() {
   const [timeLeft, setTimeLeft] = useState(60);
   const [playerHp, setPlayerHp] = useState(150);
   const [enemyHp, setEnemyHp] = useState(150);
+  const MAX_HP = 150;
 
   // カウントダウン
   const [countdown, setCountdown] = useState(null);
@@ -56,6 +57,13 @@ export default function GamePage() {
 
   // === ラウンド単位の一意IDを保持（タイマー二重起動防止）===
   const roundIdRef = useRef(null);
+  
+  // サーバーが次の問題を送ってくる間に表示する。
+  const [isWaiting, setIsWaiting] = useState(false);
+
+  // callsign
+  const [myCallsign, setMyCallsign] = useState("");
+  const [enemyCallsign, setEnemyCallsign] = useState("");
 
   // ============================================
   // answer.finish / answer.timeout を1回だけ送る
@@ -127,6 +135,9 @@ export default function GamePage() {
   useEffect(() => {
     if (!matchStartPayload) return;
 
+    // ★ 相手待ちモード解除（次のラウンドが始まったので）
+    setIsWaiting(false);
+
     console.log("【🐱 新しいラウンド開始】", matchStartPayload.state.round);
 
     // 🔥 ラウンドID を設定（これで二重ラウンドを防ぐ）
@@ -135,9 +146,36 @@ export default function GamePage() {
     // 🔥 finish フラグをリセット
     finishSentRef.current = false;
 
+    const myId = localStorage.getItem("user_id");
+    console.log("🔥 finish${myId}")
+
+      // --- ★ プレイヤーが自分なのか判定 ---
+    const isPlayer1 = matchStartPayload.player1 === myId;
+
+    const p1Hp = matchStartPayload.state.player1_lifepoint;
+    const p2Hp = matchStartPayload.state.player2_lifepoint;
+
+     // --- ★ callsign / user_name の設定 ---
+    if (isPlayer1) {
+      setMyCallsign(matchStartPayload.player1_name);
+      setEnemyCallsign(matchStartPayload.player2_name);
+    } else {
+      setMyCallsign(matchStartPayload.player2_name);
+      setEnemyCallsign(matchStartPayload.player1_name);
+    }
+
     // // 🔥 古いタイマーを完全停止
     // clearInterval(timerRef.current);
     // clearInterval(countdownRef.current);
+
+      // --- ★ HP を反映 ---
+    if (isPlayer1) {
+      setPlayerHp(p1Hp);
+      setEnemyHp(p2Hp);
+    } else {
+      setPlayerHp(p2Hp);
+      setEnemyHp(p1Hp);
+    }
 
     // 状態リセット
     setInput("");
@@ -228,6 +266,7 @@ export default function GamePage() {
 
 
   return (
+    
     <div className="
     mt-[5vh]
     max-w-[90vw] mx-auto my-6 
@@ -239,6 +278,17 @@ export default function GamePage() {
     shadow-[0_8px_30px_rgba(252,2,2,0.6)]
     gap-y-6"   /* ← 内部要素間に余白を取る */
     >
+      {/* 相手の入力待ち文 */}
+      {isWaiting && (
+        <div className="fixed inset-0 bg-black/70 flex flex-col items-center justify-center z-50">
+          <div className="text-white text-2xl mb-4 animate-pulse">
+            ただいま相手の回答を待っています...
+          </div>
+          <div className="text-white/70 text-sm">
+            相手が回答を送ると結果が確定します
+          </div>
+        </div>
+      )}
       {/* 戦闘エリア */}
       <div className="relative flex flex-col justify-between rounded-lg bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.02),transparent_40%)] p-5 overflow-hidden">
         {/* プレイヤー行 */}
@@ -253,12 +303,12 @@ export default function GamePage() {
               />
             </div>
             <div>
-              <div className="text-[clamp(1.2rem,2vw,2rem)]">CALLSIGN: KYO</div>
+              <div className="text-[clamp(1.2rem,2vw,2rem)]">CALLSIGN: {myCallsign}</div>
               <div className="bg-white/5 p-2 rounded-md mt-2">
                 <div className="h-[16px] bg-neutral-800 rounded-md overflow-hidden">
                   <div
                     className="h-full w-full bg-gradient-to-r from-[#3ce27a] to-[#afffb0] transition-all duration-300"
-                    style={{ width: `${playerHp}%` }}
+                    style={{ width: `${(playerHp / MAX_HP) * 100}%` }}
                   ></div>
                 </div>
                 <div className="text-[10px] mt-1 opacity-90">
@@ -271,12 +321,12 @@ export default function GamePage() {
           {/* プレイヤー2 */}
           <div className="flex items-center gap-2 w-[48%] justify-end text-right">
             <div>
-              <div className="text-[clamp(1.2rem,2vw,2rem)]">CALLSIGN: RYU</div>
+              <div className="text-[clamp(1.2rem,2vw,2rem)]">CALLSIGN: {enemyCallsign}</div>
               <div className="bg-white/5 p-2 rounded-md mt-2">
                 <div className="h-[16px] bg-neutral-800 rounded-md overflow-hidden">
                   <div
                     className="h-full w-full bg-gradient-to-r from-[#3ce27a] to-[#afffb0]"
-                    style={{ width: `${enemyHp}%` }}
+                    style={{ width: `${(enemyHp / MAX_HP) * 100}%`  }}
                   ></div>
                 </div>
                 <div className="text-[10px] mt-1 opacity-90 text-center">
