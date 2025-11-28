@@ -2,13 +2,9 @@ package realtime
 
 import (
 	"context"
-<<<<<<< HEAD
-=======
 	"errors"
 	"time"
->>>>>>> 12c75a051d4e976f8fac8a3803709b2b5b326040
 	"encoding/json"
-	"time"
 
 	"github.com/rs/zerolog"
 
