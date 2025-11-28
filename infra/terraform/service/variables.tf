@@ -23,9 +23,14 @@ variable "dns_zone_name" {
   description = "Cloud DNS zone name"
 }
 
-variable "dns_record_name" {
+variable "domain" {
   type        = string
-  description = "Cloud DNS FQDN"
+  description = "The domain to point to Firebase Hosting"
+}
+
+variable "subdomain" {
+  type        = string
+  description = "The domain to point to ALB"
 }
 
 variable "frontend_static_path" {
@@ -64,6 +69,16 @@ variable "redis_password" {
   type        = string
   description = "Password for redis instance"
   sensitive   = true
+}
+
+variable "firebase_hosting_ip" {
+  type        = string
+  description = "The IP address provided by Firebase"
+}
+
+variable "firebase_txt_value" {
+  type        = string
+  description = "The TXT record value used by Firebase"
 }
 
 variable "github_token_secret_name" {
