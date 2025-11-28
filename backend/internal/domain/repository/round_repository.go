@@ -19,6 +19,10 @@ type RoundStateRepository interface {
 	// マッチを終了状態に更新する。
 	Finish(contextObject context.Context, matchID, winnerUserID string) error
 
+	// 1つのマッチが完全に終了した後に呼び出される
+	// 「再戦に影響する一時データのみ」を安全に削除するクリーンアップ処理する。
+	CleanupMatch(ctx context.Context, matchID, user1ID, user2ID string) error
+
 	// 出題デッキを初期化時に一度だけ保存する。
 	// match:{matchID}:deck に全単語を保存しておき、以降の出題でインデックス参照する。
 	SaveDeck(ctx context.Context, matchID string, deck []PromptWithDifficulty) error

@@ -42,7 +42,9 @@ func (service *MatchRealtimeService) tryMakeMatch(ctx context.Context) {
 	// DequeuePairAndInitMatch:
 	//   - 2名を ZPOPMIN で取り出す
 	//   - match:{matchID} / match:{matchID}:state を初期化
-	user1ID, user2ID, matchID, _, err := service.matchQueueRepository.DequeuePairAndInitMatch(ctx)
+	dequeueCtx, cancelDequeue := context.WithTimeout(ctx, 500*time.Millisecond)
+	user1ID, user2ID, matchID, _, err := service.matchQueueRepository.DequeuePairAndInitMatch(dequeueCtx)
+	cancelDequeue()
 	if err != nil || matchID == "" {
 		// 競合発生 or 2名未満の場合は何もしない
 		return
@@ -50,15 +52,21 @@ func (service *MatchRealtimeService) tryMakeMatch(ctx context.Context) {
 	// log.Printf("[matchmaker] matched: matchID=%s p1=%s p2=%s", matchID, user1ID, user2ID)
 
 	// 初期化
-	err = service.roundStateRepository.InitMeasurementFinishCount(ctx, matchID)
+	initMeasurementCtx, cancelInitMeasurement := context.WithTimeout(ctx, 300*time.Millisecond)
+	err = service.roundStateRepository.InitMeasurementFinishCount(initMeasurementCtx, matchID)
+	cancelInitMeasurement()
 	if err != nil {
 		return
 	}
 
 	// 問題抽出
-	deck, err := service.promptRepository.GetDeckPrompts(ctx)
+	deckLoadCtx, cancelDeckLoad := context.WithTimeout(ctx, 700*time.Millisecond)
+	deck, err := service.promptRepository.GetDeckPrompts(deckLoadCtx)
+	cancelDeckLoad()
 	if err == nil && len(deck) == 20 {
-		_ = service.roundStateRepository.SaveDeck(ctx, matchID, deck)
+		saveDeckCtx, cancelSaveDeck := context.WithTimeout(ctx, 700*time.Millisecond)
+		_ = service.roundStateRepository.SaveDeck(saveDeckCtx, matchID, deck)
+		cancelSaveDeck()
 	}
 
 	// --- 1) 両者の個人ルームへ「マッチ成立」通知 ---
