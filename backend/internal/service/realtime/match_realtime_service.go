@@ -74,15 +74,16 @@ func (s *MatchRealtimeService) OnConnect(
 ) (any, error) {
 	nowMs := time.Now().UnixMilli()
 
-	// Presence を使わない（または nil）の場合 → 何も返さない（新規扱い）
-	if s.presenceRepo == nil {
-		return nil, nil
+	// Presence が無い＝このユーザーは試合参加中ではない。
+	// 復帰対象が無いため通常接続として welcome を返す。
+	if service.presenceRepository == nil {
+		return websocket.NewWelcomePayload(userID), nil
 	}
 
 	presenceMap, err := s.presenceRepo.Get(ctx, userID)
 	if err != nil || len(presenceMap) == 0 {
-		_ = s.presenceRepo.SetOnline(ctx, userID, nowMs)
-		return nil, nil
+		_ = service.presenceRepository.SetOnline(ctx, userID, nowMs)
+		return websocket.NewWelcomePayload(userID), nil
 	}
 
 	status := presenceMap["status"]
@@ -90,20 +91,20 @@ func (s *MatchRealtimeService) OnConnect(
 
 	// 途中復帰の前提条件をすべてチェック（否定条件は即 return）
 	if !(status == "ingame" || status == "reconnecting") {
-		_ = s.presenceRepo.SetOnline(ctx, userID, nowMs)
-		return nil, nil
+		_ = service.presenceRepository.SetOnline(ctx, userID, nowMs)
+		return websocket.NewWelcomePayload(userID), nil
 	}
 
 	if matchID == "" {
-		_ = s.presenceRepo.SetOnline(ctx, userID, nowMs)
-		return nil, nil
+		_ = service.presenceRepository.SetOnline(ctx, userID, nowMs)
+		return websocket.NewWelcomePayload(userID), nil
 	}
 
 	// state がない = 終了済み or 試合破棄 → 復帰できない
 	restoredState, err := s.roundStateRepo.LoadMatchState(ctx, matchID)
 	if err != nil || restoredState == nil {
-		_ = s.presenceRepo.SetOnline(ctx, userID, nowMs)
-		return nil, nil
+		_ = service.presenceRepository.SetOnline(ctx, userID, nowMs)
+		return websocket.NewWelcomePayload(userID), nil
 	}
 
 	// ここまで来た場合、途中復帰できる
@@ -119,8 +120,10 @@ func (s *MatchRealtimeService) OnConnect(
 
 	return websocket.NewMatchRestorePayload(
 		matchID,
-		websocket.MatchRestoreState{
+		websocket.MatchState{
 			Round:            restoredState.Round,
+			RoundStartAtMS:   restoredState.RoundStartAtMs,
+			RoundEndAtMS:     restoredState.RoundEndAtMs,
 			Player1Lifepoint: restoredState.Player1Lifepoint,
 			Player2Lifepoint: restoredState.Player2Lifepoint,
 		},
