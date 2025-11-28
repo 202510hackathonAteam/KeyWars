@@ -29,9 +29,9 @@ type MatchRealtimeService struct {
 	matchQueueRepo 					repository.MatchQueueRepository
 	roundStateRepo 					repository.RoundStateRepository
 	presenceRepo   					repository.PresenceRepository
-	promptRepo			     		repository.PromptRepository
 	websocketHub         		*websocket.Hub
 	logger 							 		*zerolog.Logger
+	deckGeneratorService		*round.DeckGeneratorService
 	roundFlowService 		 		*round.RoundFlowService
 	measurementRoundService *round.MeasurementRoundService
 }
@@ -42,9 +42,9 @@ func NewMatchRealtimeService(
 	matchQueueRepo repository.MatchQueueRepository,
 	roundStateRepo repository.RoundStateRepository,
 	presenceRepo repository.PresenceRepository,
-	promptRepo repository.PromptRepository,
 	websocketHub *websocket.Hub,
 	logger *zerolog.Logger,
+	deckGeneratorService *round.DeckGeneratorService,
 	roundFlowService *round.RoundFlowService,
 	measurementRoundService *round.MeasurementRoundService,
 ) *MatchRealtimeService {
@@ -52,9 +52,9 @@ func NewMatchRealtimeService(
 		matchQueueRepo: 	 			 matchQueueRepo,
 		roundStateRepo: 	 			 roundStateRepo,
 		presenceRepo:   	 			 presenceRepo,
-		promptRepo:     	 			 promptRepo,
 		websocketHub:         	 websocketHub,
 		logger:									 logger,
+		deckGeneratorService:    deckGeneratorService,
 		roundFlowService:				 roundFlowService,
 		measurementRoundService: measurementRoundService,
 	}

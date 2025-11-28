@@ -43,8 +43,8 @@ func (s *MatchRealtimeService) tryMakeMatch(ctx context.Context) {
 	//   - 2名を ZPOPMIN で取り出す
 	//   - match:{matchID} / match:{matchID}:state を初期化
 	dequeueCtx, cancelDequeue := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancelDequeue()
 	user1ID, user2ID, matchID, _, err := s.matchQueueRepo.DequeuePairAndInitMatch(dequeueCtx)
-	cancelDequeue()
 	if err != nil || matchID == "" {
 		// 競合発生 or 2名未満の場合は何もしない
 		return
@@ -53,20 +53,22 @@ func (s *MatchRealtimeService) tryMakeMatch(ctx context.Context) {
 
 	// 初期化
 	initMeasurementCtx, cancelInitMeasurement := context.WithTimeout(ctx, 300*time.Millisecond)
+	defer cancelInitMeasurement()
 	err = s.roundStateRepo.InitMeasurementFinishCount(initMeasurementCtx, matchID)
-	cancelInitMeasurement()
 	if err != nil {
 		return
 	}
 
 	// 問題抽出
-	deckLoadCtx, cancelDeckLoad := context.WithTimeout(ctx, 700*time.Millisecond)
-	deck, err := s.promptRepo.GetDeckPrompts(deckLoadCtx)
-	cancelDeckLoad()
-	if err == nil && len(deck) == 20 {
-		saveDeckCtx, cancelSaveDeck := context.WithTimeout(ctx, 700*time.Millisecond)
-		_ = s.roundStateRepo.SaveDeck(saveDeckCtx, matchID, deck)
-		cancelSaveDeck()
+	deckSaveCtx, cancelDeckSave := context.WithTimeout(ctx, 700*time.Millisecond)
+	defer cancelDeckSave()
+	err = s.deckGeneratorService.GenerateAndSaveDeck(deckSaveCtx, matchID)
+	if err != nil {
+		s.logger.Error().
+			Err(err).
+			Str("match_id", matchID).
+			Msg("failed to generate prompts")
+		return
 	}
 
 	// --- 1) 両者の個人ルームへ「マッチ成立」通知 ---

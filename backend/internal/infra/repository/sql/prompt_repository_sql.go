@@ -5,7 +5,8 @@ import (
 	"math/rand"
 	"time"
 
-	domainrepo "keywars/backend/internal/domain/repository"
+	"keywars/backend/internal/config"
+	domainmodel "keywars/backend/internal/domain/model"
 
 	"gorm.io/gorm"
 )
@@ -19,17 +20,15 @@ func NewPromptRepositorySQL(db *gorm.DB) *PromptRepositorySQL {
 }
 
 // 指定 difficulty_code ごとに n 件取得する関数
-func (r *PromptRepositorySQL) GetPromptsByDifficulty(ctx context.Context, difficultyCode string, limitCount int) ([]domainrepo.PromptWithDifficulty, error) {
-	var promptList []domainrepo.PromptWithDifficulty
+func (r *PromptRepositorySQL) GetPromptsByDifficulty(ctx context.Context, difficultyCode string, limitCount int) ([]domainmodel.DeckPrompt, error) {
+	var promptList []domainmodel.DeckPrompt
 
 	err := r.db.WithContext(ctx).
 		Table("prompts AS p").
 		Select(`
-			p.id,
-			p.prompt_text_ja,
-			p.target_romaji,
-			d.id AS difficulty_level,
-			d.time_limit_ms
+			p.prompt_text_ja AS prompt_text_ja,
+			p.target_romaji AS target_romaji,
+			d.time_limit_ms AS limit_ms
 		`).
 		Joins("JOIN difficulties d ON p.difficulty_id = d.id").
 		Where("d.difficulty_code = ?", difficultyCode).
@@ -41,18 +40,18 @@ func (r *PromptRepositorySQL) GetPromptsByDifficulty(ctx context.Context, diffic
 }
 
 // easy/normal/hard を固定数ずつ取得して、難易度事にランダム順にして、難易度順に合体する関数
-func (r *PromptRepositorySQL) GetDeckPrompts(ctx context.Context) ([]domainrepo.PromptWithDifficulty, error) {
-	allPrompts := make([]domainrepo.PromptWithDifficulty, 0, 20)
+func (r *PromptRepositorySQL) GetDeckPrompts(ctx context.Context) ([]domainmodel.DeckPrompt, error) {
+	allPrompts := make([]domainmodel.DeckPrompt, 0, 20)
 
-	easyPrompts, err := r.GetPromptsByDifficulty(ctx, "easy", 6)
+	easyPrompts, err := r.GetPromptsByDifficulty(ctx, "easy", config.Deck.EasyCount)
 	if err != nil {
 		return nil, err
 	}
-	normalPrompts, err := r.GetPromptsByDifficulty(ctx, "normal", 6)
+	normalPrompts, err := r.GetPromptsByDifficulty(ctx, "normal", config.Deck.NormalCount)
 	if err != nil {
 		return nil, err
 	}
-	hardPrompts, err := r.GetPromptsByDifficulty(ctx, "hard", 8)
+	hardPrompts, err := r.GetPromptsByDifficulty(ctx, "hard", config.Deck.HardCount)
 	if err != nil {
 		return nil, err
 	}

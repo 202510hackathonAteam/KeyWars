@@ -8,8 +8,8 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	drepo "keywars/backend/internal/domain/repository"
-	"keywars/backend/internal/domain/model"
+	domainmodel "keywars/backend/internal/domain/model"
+	inframodel "keywars/backend/internal/infra/repository/redis/model"
 	"keywars/backend/internal/config"
 	"keywars/backend/internal/domain/types"
 )
@@ -105,39 +105,47 @@ func (r *RoundStateRepositoryRedis) CleanupMatch(ctx context.Context, matchID, u
 	return r.redisClient.Del(ctx, keys...).Err()
 }
 
-// SaveDeckOnce は、出題デッキ(LIST)を「未作成のときだけ」保存する（冪等）。
-// 競合時は WATCH により存在チェックと追加を疑似原子的に実施する。
-func (r *RoundStateRepositoryRedis) SaveDeck(ctx context.Context, matchID string, deck []drepo.PromptWithDifficulty) error {
-	keyDeck := fmt.Sprintf("match:%s:deck", matchID)
-	keyMeta := fmt.Sprintf("match:%s", matchID) // TTL を揃える対象
+// SaveDeck は、試合で使用する出題デッキ（20問分）を Redis に保存するメソッド。
+func (r *RoundStateRepositoryRedis) SaveDeck(ctx context.Context, matchID string, deck []domainmodel.DeckPrompt) error {
+	deckKey := fmt.Sprintf("match:%s:deck", matchID)
+	metaKey := fmt.Sprintf("match:%s", matchID) // TTL を揃える対象
 
-	// JSON 化して RPUSH
-	args := make([]interface{}, 0, len(deck))
-	for _, p := range deck {
-		// フロントが欲しい形に最低限整える（必要に応じて項目名調整）
-		payload := map[string]any{
-			"prompt_text_ja": p.PromptTextJa,
-			"target_romaji": p.TargetRomaji,
-			"limit_ms": p.TimeLimitMs,
+	pipeline := r.redisClient.TxPipeline()
+
+	for _, prompt := range deck {
+		// Redis に保存したい形（DTO）へ変換する
+		payload := inframodel.DeckPayload{
+			PromptTextJa: prompt.PromptTextJa,
+			TargetRomaji: prompt.TargetRomaji,
+			LimitMs:			prompt.LimitMs,
 		}
-		b, _ := json.Marshal(payload)
-		args = append(args, b)
+		jsonData, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		pipeline.RPush(ctx, deckKey, jsonData)
 	}
 
-	pipe := r.redisClient.TxPipeline()
-	if len(args) > 0 {
-		pipe.RPush(ctx, keyDeck, args...)
-	}
 	// 試合開始時に 1h で揃える（Meta が無いケースでも Deck 側へ設定しておく）
-	pipe.Expire(ctx, keyDeck, config.MatchExpiryOnStart)
-	pipe.Expire(ctx, keyMeta, config.MatchExpiryOnStart)
+	pipeline.Expire(ctx, deckKey, config.MatchExpiryOnStart)
+	pipeline.Expire(ctx, metaKey, config.MatchExpiryOnStart)
 
-	_, err := pipe.Exec(ctx)
+	_, err := pipeline.Exec(ctx)
+
+	// 保存後の件数チェック（20問保証）
+	length, err := r.redisClient.LLen(ctx, deckKey).Result()
+	if err != nil {
+		return fmt.Errorf("failed to check deck length: %w", err)
+	}
+	if length != int64(config.Deck.TotalCount) {
+		return fmt.Errorf("deck incomplete: expected %d, got %d", config.Deck.TotalCount, length)
+	}
+
 	return err
 }
 
 // LoadDeckPrompt は、指定したデッキインデックスのmatch:{matchID}:deck の JSON を構造体に変換するメソッド。
-func (r *RoundStateRepositoryRedis) LoadDeckPrompt(ctx context.Context, matchID string, deckIndex int64) (*model.DeckPrompt, error) {
+func (r *RoundStateRepositoryRedis) LoadDeckPrompt(ctx context.Context, matchID string, deckIndex int64) (*domainmodel.DeckPrompt, error) {
 	deckKey := fmt.Sprintf("match:%s:deck", matchID)
 	nextPromptJson, err := r.redisClient.LIndex(ctx, deckKey, deckIndex).Result()
 	if err != nil {
@@ -149,7 +157,7 @@ func (r *RoundStateRepositoryRedis) LoadDeckPrompt(ctx context.Context, matchID 
 		return nil, err
 	}
 
-	return &model.DeckPrompt{
+	return &domainmodel.DeckPrompt{
 		PromptTextJa: fmt.Sprintf("%v", nextPromptRaw["prompt_text_ja"]),
 		TargetRomaji: fmt.Sprintf("%v", nextPromptRaw["target_romaji"]),
 		LimitMs:      int64(nextPromptRaw["limit_ms"].(float64)),
@@ -183,14 +191,14 @@ func (r *RoundStateRepositoryRedis) StoreFinishEvent(
 
 // LoadFinishEventsByRound は、Redis Stream に記録された MatchFinishEvents から
 // 指定ラウンドのイベントだけを最大 RequiredPlayers 件（通常2件）読み込み、返すメソッド。
-func (r *RoundStateRepositoryRedis) LoadFinishEventsByRound(ctx context.Context, matchID string, round int64) ([]model.MatchFinishEvents, error) {
+func (r *RoundStateRepositoryRedis) LoadFinishEventsByRound(ctx context.Context, matchID string, round int64) ([]domainmodel.MatchFinishEvents, error) {
 	eventsKey := fmt.Sprintf("match:%s:events", matchID)
 	streamMessages, err := r.redisClient.XRange(ctx, eventsKey, "-", "+").Result()
 	if err != nil {
 		return nil, err
 	}
 
-	var finishEvents []model.MatchFinishEvents
+	var finishEvents []domainmodel.MatchFinishEvents
 
 	// 取得した全イベントを走査
 	for _, streamMessage := range streamMessages {
@@ -209,7 +217,7 @@ func (r *RoundStateRepositoryRedis) LoadFinishEventsByRound(ctx context.Context,
 		eventFinishAtMs := parseInt64FromStream(eventValues, "finish_at_ms")
 
 		// 結果に追加
-		finishEvents = append(finishEvents, model.MatchFinishEvents{
+		finishEvents = append(finishEvents, domainmodel.MatchFinishEvents{
 			PlayerID:   eventPlayerID,
 			Round:      eventRound,
 			MissCount:  eventMissCount,
@@ -242,7 +250,7 @@ func (r *RoundStateRepositoryRedis) InitializeNextRoundState(ctx context.Context
 }
 
 // LoadMatchState は、Redis の match:{matchID}:state に保存されている現在の試合状態を取得するメソッド。
-func (r *RoundStateRepositoryRedis) LoadMatchState(ctx context.Context, matchID string) (*model.MatchState, error) {
+func (r *RoundStateRepositoryRedis) LoadMatchState(ctx context.Context, matchID string) (*domainmodel.MatchState, error) {
 	stateKey := fmt.Sprintf("match:%s:state", matchID)
 
 	// Redis から hash を取得
@@ -255,7 +263,7 @@ func (r *RoundStateRepositoryRedis) LoadMatchState(ctx context.Context, matchID 
 	}
 
 	// int64に変換してセット
-	state := &model.MatchState{
+	state := &domainmodel.MatchState{
 		DeckIndex:      	parseInt64FromHash(matchStateRow, "deck_index"),
 		Round:          	parseInt64FromHash(matchStateRow, "round"),
 		RoundStartAtMs:  	parseInt64FromHash(matchStateRow, "round_start_at_ms"),
@@ -344,7 +352,7 @@ func (r *RoundStateRepositoryRedis) UpdateRoundTiming(ctx context.Context, match
 
 // LoadMatchPlayers は Redis に保存された
 // match:{matchID} のプレイヤー情報（player1 / player2）を取得するメソッド。
-func (r *RoundStateRepositoryRedis) LoadMatchPlayers(ctx context.Context, matchID string) (*model.MatchPlayers, error) {
+func (r *RoundStateRepositoryRedis) LoadMatchPlayers(ctx context.Context, matchID string) (*domainmodel.MatchPlayers, error) {
 	matchKey := fmt.Sprintf("match:%s", matchID)
 
 	data, err := r.redisClient.HGetAll(ctx, matchKey).Result()
@@ -356,7 +364,7 @@ func (r *RoundStateRepositoryRedis) LoadMatchPlayers(ctx context.Context, matchI
 		return nil, fmt.Errorf("match not found: %s", matchID)
 	}
 
-	players := &model.MatchPlayers{
+	players := &domainmodel.MatchPlayers{
 		Player1ID: data["player1"],
 		Player2ID: data["player2"],
 	}
