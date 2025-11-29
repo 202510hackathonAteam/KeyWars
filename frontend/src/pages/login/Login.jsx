@@ -110,6 +110,7 @@ export default function Login() {
 
           <input
             type="password"
+            autoComplete="current-password"
             placeholder="PASSWORD"
             maxLength={12}
             value={password}

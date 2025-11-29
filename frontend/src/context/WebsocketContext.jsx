@@ -13,6 +13,7 @@ export function WebSocketProvider({ children }) {
   const [matchEndPayload, setMatchEndPayload] = useState(null);
   const [matchRestorePayload, setMatchRestorePayload] = useState(null);
   const matchStartedRef = useRef(false);
+  const [isRestoring, setIsRestoring] = useState(false);
 
   const getUserId = () => localStorage.getItem("user_name");
 
@@ -91,6 +92,7 @@ export function WebSocketProvider({ children }) {
             console.log("再接続:", data);
             // 試合再発見 → battle 画面へ遷移
             setMatchRestorePayload(data);
+            setIsRestoring(true); 
             if (!matchStartedRef.current) {
             matchStartedRef.current = true; 
             navigate("/battle");
@@ -154,6 +156,8 @@ export function WebSocketProvider({ children }) {
         matchEndPayload,
         resetMatchState,
         matchRestorePayload,
+        isRestoring,      // ← これ追加！
+        setIsRestoring,
       }}
     >
       {children}
