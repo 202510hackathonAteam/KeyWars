@@ -49,7 +49,7 @@ export default function GamePage() {
   const [countdown, setCountdown] = useState(null);
 
   // WebSocket
-  const { wsRef, matchStartPayload, matchRestorePayload } = useContext(WebSocketContext);
+  const { wsRef, matchStartPayload, matchRestorePayload, isRestoring, setIsRestoring } = useContext(WebSocketContext);
 
   // タイマー管理
   const timerRef = useRef(null);
@@ -70,7 +70,7 @@ export default function GamePage() {
   const { leaveQueue } = useContext(WebSocketContext);
 
   // カウントダウン時のインプット不可
-  const isInputDisabled = countdown !== null;
+  const isInputDisabled = countdown !== null || isRestoring;
 
 
   // ============================================
@@ -145,6 +145,8 @@ export default function GamePage() {
   // ============================================
   useEffect(() => {
     if (!matchStartPayload) return;
+
+    setIsRestoring(false);
 
     // ★ 相手待ちモード解除（次のラウンドが始まったので）
     setIsWaiting(false);
@@ -362,6 +364,17 @@ export default function GamePage() {
     shadow-[0_8px_30px_rgba(252,2,2,0.6)]
     gap-y-6"   /* ← 内部要素間に余白を取る */
     >
+      {/* リストア時の入力禁止 */}
+      {isRestoring && (
+      <div className="fixed inset-0 bg-black/80 flex flex-col items-center justify-center text-white z-50">
+        <div className="text-[clamp(2rem,5vw,4rem)] font-bold animate-pulse">
+          データロード中...
+        </div>
+        <div className="mt-4 text-[clamp(1rem,2vw,2rem)] opacity-80">
+          試合状態を復元しています
+        </div>
+      </div>
+      )}
       {/* 相手の入力待ち文 */}
       {isWaiting && (
         <div className="fixed inset-0 bg-black/70 flex flex-col items-center justify-center z-50">
