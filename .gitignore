@@ -12,4 +12,4 @@ tmp/
 .terraform/
 .terraform.lock.hcl
 .firebase/
-infra/firebase/public/
+infra/firebase/public

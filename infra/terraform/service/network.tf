@@ -136,7 +136,7 @@ resource "google_compute_backend_service" "websocket_service" {
     "Access-Control-Allow-Origin: https://${var.domain}",
     "Access-Control-Allow-Credentials: true"
   ]
-  
+
   security_policy = google_compute_security_policy.default.self_link
 
   depends_on = [
