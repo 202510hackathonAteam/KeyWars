@@ -5,7 +5,7 @@
 
 # MySQL関連の環境変数
 locals {
-  mysql_env_vars = [
+  env_vars = [
     {
       name  = "INSTANCE_CONNECTION_NAME"
       value = google_sql_database_instance.mysql.connection_name
@@ -25,6 +25,14 @@ locals {
     {
       name  = "MYSQL_PORT"
       value = var.mysql_port
+    },
+    {
+      name  = "COOKIE_DOMAIN"
+      value = "keywars.jp"
+    },
+    {
+      name  = "COOKIE_SECURE"
+      value = true
     },
   ]
 }
@@ -79,7 +87,7 @@ module "cloud_run_api" {
 
   image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.ar-repository_name}/api-image:latest"
 
-  mysql_env_vars  = local.mysql_env_vars
+  env_vars        = local.env_vars
   redis_env_vars  = local.redis_env_vars
   secret_env_vars = local.secret_env_vars
 
@@ -112,7 +120,7 @@ module "cloud_run_websocket" {
 
   image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.ar-repository_name}/ws-image:latest"
 
-  mysql_env_vars  = local.mysql_env_vars
+  env_vars        = local.env_vars
   redis_env_vars  = local.redis_env_vars
   secret_env_vars = local.secret_env_vars
 
@@ -149,7 +157,7 @@ module "cloud_run_migration" {
 
   image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.ar-repository_name}/migration-image:latest"
 
-  mysql_env_vars  = local.mysql_env_vars
+  env_vars        = local.env_vars
   redis_env_vars  = local.redis_env_vars
   secret_env_vars = local.secret_env_vars
 
@@ -182,7 +190,7 @@ module "cloud_run_seed" {
 
   image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.ar-repository_name}/seed-image:latest"
 
-  mysql_env_vars  = local.mysql_env_vars
+  env_vars        = local.env_vars
   redis_env_vars  = local.redis_env_vars
   secret_env_vars = local.secret_env_vars
 

@@ -24,7 +24,7 @@ variable "deletion_protection" {
   default     = false
 }
 
-variable "mysql_env_vars" {
+variable "env_vars" {
   type = list(object({
     name  = string
     value = string
