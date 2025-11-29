@@ -49,7 +49,7 @@ export default function GamePage() {
   const [countdown, setCountdown] = useState(null);
 
   // WebSocket
-  const { wsRef, matchStartPayload } = useContext(WebSocketContext);
+  const { wsRef, matchStartPayload, matchRestorePayload, isRestoring, setIsRestoring } = useContext(WebSocketContext);
 
   // タイマー管理
   const timerRef = useRef(null);
@@ -68,6 +68,9 @@ export default function GamePage() {
 
   // websocket閉じる
   const { leaveQueue } = useContext(WebSocketContext);
+
+  // カウントダウン時のインプット不可
+  const isInputDisabled = countdown !== null || isRestoring;
 
 
   // ============================================
@@ -142,6 +145,8 @@ export default function GamePage() {
   // ============================================
   useEffect(() => {
     if (!matchStartPayload) return;
+
+    setIsRestoring(false);
 
     // ★ 相手待ちモード解除（次のラウンドが始まったので）
     setIsWaiting(false);
@@ -236,6 +241,44 @@ export default function GamePage() {
   }, [matchStartPayload]);
 
   // ============================================
+  // 📝 再接続処理
+  // ============================================
+
+  useEffect(() => {
+  if (!matchRestorePayload) return;
+
+  const restore = matchRestorePayload;
+  console.log("🔥 RESTORE DATA:", restore);
+
+  const myId = localStorage.getItem("user_id");
+  const isPlayer1 = matchStartPayload?.player1 === myId;
+
+  const p1Hp = restore.state.player1_lifepoint;
+  const p2Hp = restore.state.player2_lifepoint;
+
+  // HP 復元
+  if (isPlayer1) {
+    setPlayerHp(p1Hp);
+    setEnemyHp(p2Hp);
+  } else {
+    setPlayerHp(p2Hp);
+    setEnemyHp(p1Hp);
+  }
+
+  // ラウンド番号復元
+  roundIdRef.current = restore.state.round;
+
+  // 入力停止
+  ignoreTypingRef.current = true;
+
+  // Countdown / Timer 停止
+  clearInterval(timerRef.current);
+  clearInterval(countdownRef.current);
+
+  // 本当の次ラウンドは「次の match.start」で再開される
+}, [matchRestorePayload]);
+
+  // ============================================
   // 📝 入力処理
   // ============================================
   
@@ -275,6 +318,13 @@ export default function GamePage() {
   console.log("🎌 match.end received in GamePage:", matchEndPayload);
 
   const myId = localStorage.getItem("user_id"); // ← 自分のユーザーID
+
+    // ★ 自分の total miss count を判定
+  const isPlayer1 = matchEndPayload.player1 === myId;
+  const myTotalMiss = isPlayer1
+    ? matchEndPayload.player1_total_miss_count
+    : matchEndPayload.player2_total_miss_count;
+
   const didWin = matchEndPayload.winner === myId;
 
   const payloadForResult = matchEndPayload;
@@ -284,12 +334,21 @@ export default function GamePage() {
   navigate("/result", {
     state: {
       result: didWin ? "victory" : "defeat",
+      totalMiss: myTotalMiss,              
       matchEnd: payloadForResult, // ← 必要ならデータ丸ごと送れる
       round: matchStartPayload?.state?.round,  // ← 追加！！
     },
   });
 
 }, [matchEndPayload, navigate, resetMatchState]);
+
+  useEffect(() => {
+    if (countdown === null) {
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 50);
+    }
+  }, [countdown]);
 
 
   return (
@@ -305,6 +364,17 @@ export default function GamePage() {
     shadow-[0_8px_30px_rgba(252,2,2,0.6)]
     gap-y-6"   /* ← 内部要素間に余白を取る */
     >
+      {/* リストア時の入力禁止 */}
+      {isRestoring && (
+      <div className="fixed inset-0 bg-black/80 flex flex-col items-center justify-center text-white z-50">
+        <div className="text-[clamp(2rem,5vw,4rem)] font-bold animate-pulse">
+          データロード中...
+        </div>
+        <div className="mt-4 text-[clamp(1rem,2vw,2rem)] opacity-80">
+          試合状態を復元しています
+        </div>
+      </div>
+      )}
       {/* 相手の入力待ち文 */}
       {isWaiting && (
         <div className="fixed inset-0 bg-black/70 flex flex-col items-center justify-center z-50">
@@ -350,7 +420,7 @@ export default function GamePage() {
                   ></div>
                 </div>
                 <div className="text-[10px] mt-1 opacity-90">
-                  <span>150</span> / 150
+                  <span>{playerHp}</span> / 150
                 </div>
               </div>
             </div>
@@ -379,7 +449,7 @@ export default function GamePage() {
                   ></div>
                 </div>
                 <div className="text-[10px] mt-1 opacity-90 text-center">
-                  <span>150</span> / 150
+                  <span>{enemyHp}</span> / 150
                 </div>
               </div>
             </div>
@@ -395,7 +465,7 @@ export default function GamePage() {
 
         {/* VSバッジ */}
         <div className="absolute left-1/2 top-5 -translate-x-1/2 text-center">
-          <div className="text-[1rem] opacity-90">ROUND 1</div>
+          <div className="text-[1rem] opacity-90">ROUND {matchStartPayload?.state?.round}</div>
           <div className="text-[clamp(1.2rem,3vw,7rem)] text-[#ff0d00] drop-shadow-[0_2px_8px_rgba(255,200,0,0.1)]">
             VS
           </div>
@@ -469,9 +539,15 @@ export default function GamePage() {
               ignoreTypingRef.current = false;
             }
           }}
-
+          disabled={isInputDisabled}
           placeholder="Enterで攻撃　ここにタイプ"
-          className="w-full p-[3vh] rounded-lg border-2 border-white/5 bg-transparent text-white font-['Press_Start_2P'] text-[] focus:outline-none focus:border-[#ffcc00] focus:shadow-[0_0_10px_#ffaa00]"
+          className="
+            w-full p-[3vh] rounded-lg border-2 border-white/5 bg-transparent text-white 
+            font-['Press_Start_2P'] text-[] 
+            focus:outline-none focus:border-[#ffcc00] 
+            focus:shadow-[0_0_10px_#ffaa00] 
+            disabled:opacity-30 
+            disabled:cursor-not-allowed"
         />
 
         <div className="grid gap-2 mt-2">

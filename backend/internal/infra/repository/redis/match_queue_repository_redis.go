@@ -46,8 +46,8 @@ func NewMatchQueueRepositoryRedis(redisClient *redis.Client) *MatchQueueReposito
 // 既にメンバーが存在する場合は追加されない（NX）。
 //
 // Redis: ZADD NX mq:queue <score=enqueueAtMs> <member=userID>
-func (repository *MatchQueueRepositoryRedis) Enqueue(contextObject context.Context, userID string, enqueueAtMs int64) error {
-	return repository.redisClient.ZAddNX(contextObject, keyQueue, redis.Z{
+func (r *MatchQueueRepositoryRedis) Enqueue(contextObject context.Context, userID string, enqueueAtMs int64) error {
+	return r.redisClient.ZAddNX(contextObject, keyQueue, redis.Z{
 		Score:  float64(enqueueAtMs),
 		Member: userID,
 	}).Err()
@@ -57,16 +57,16 @@ func (repository *MatchQueueRepositoryRedis) Enqueue(contextObject context.Conte
 // ユーザーが待機中でない場合は no-op（エラーではない）。
 //
 // Redis: ZREM mq:queue <userID>
-func (repository *MatchQueueRepositoryRedis) Cancel(contextObject context.Context, userID string) error {
-	return repository.redisClient.ZRem(contextObject, keyQueue, userID).Err()
+func (r *MatchQueueRepositoryRedis) Cancel(contextObject context.Context, userID string) error {
+	return r.redisClient.ZRem(contextObject, keyQueue, userID).Err()
 }
 
 // Score は、指定ユーザーの「待機スコア（＝投入時刻 ms）」を取得する。
 // メンバーが存在しない場合は redis.Nil が返る点に注意（呼び出し側で扱う）。
 //
 // Redis: ZSCORE mq:queue <userID>
-func (repository *MatchQueueRepositoryRedis) Score(contextObject context.Context, userID string) (float64, error) {
-	return repository.redisClient.ZScore(contextObject, keyQueue, userID).Result()
+func (r *MatchQueueRepositoryRedis) Score(contextObject context.Context, userID string) (float64, error) {
+	return r.redisClient.ZScore(contextObject, keyQueue, userID).Result()
 }
 
 // DequeuePairAndInitMatch は、待機キューから 2 名を先着順に取り出し、
@@ -80,14 +80,14 @@ func (repository *MatchQueueRepositoryRedis) Score(contextObject context.Context
 //  3. 2名未満なら ZADD で戻して終了
 //  4. match:{matchID} / match:{matchID}:state を TxPipeline で初期化
 //  5. 初期化失敗時は 2 名を ZADD で再投入してロールバック
-func (repository *MatchQueueRepositoryRedis) DequeuePairAndInitMatch(contextObject context.Context) (user1ID, user2ID, matchID, lockToken string, err error) {
+func (r *MatchQueueRepositoryRedis) DequeuePairAndInitMatch(contextObject context.Context) (user1ID, user2ID, matchID, lockToken string, err error) {
 
 	// 1) ロック取得（トークン発行→NX セット）
 	lockToken, err = generateRandomToken()
 	if err != nil {
 		return
 	}
-	lockAcquired, err := repository.redisClient.SetNX(contextObject, keyLock, lockToken, lockTTL).Result()
+	lockAcquired, err := r.redisClient.SetNX(contextObject, keyLock, lockToken, lockTTL).Result()
 	if err != nil || !lockAcquired {
 		if err == nil {
 			err = errors.New("lock busy") // 競合により取得できなかった
@@ -95,11 +95,11 @@ func (repository *MatchQueueRepositoryRedis) DequeuePairAndInitMatch(contextObje
 		return
 	}
 	defer func() {
-		_ = repository.ReleaseLock(contextObject, lockToken)
+		_ = r.ReleaseLock(contextObject, lockToken)
 	}()
 
 	// 2) キューから 2 名取り出し（atomic pop）
-	zsetResults, err := repository.redisClient.ZPopMin(contextObject, keyQueue, 2).Result()
+	zsetResults, err := r.redisClient.ZPopMin(contextObject, keyQueue, 2).Result()
 	if err != nil {
 		return
 	}
@@ -107,7 +107,7 @@ func (repository *MatchQueueRepositoryRedis) DequeuePairAndInitMatch(contextObje
 	// 3) 2 名揃わない場合は戻して終了
 	if len(zsetResults) < 2 {
 		for _, zsetEntry := range zsetResults {
-			_ = repository.redisClient.ZAdd(contextObject, keyQueue, zsetEntry).Err()
+			_ = r.redisClient.ZAdd(contextObject, keyQueue, zsetEntry).Err()
 		}
 		return "", "", "", "", nil
 	}
@@ -118,13 +118,13 @@ func (repository *MatchQueueRepositoryRedis) DequeuePairAndInitMatch(contextObje
 	matchID, err = generateRandomToken()
 	if err != nil {
 		// 失敗時は取得済みの2名を再投入
-		_ = repository.redisClient.ZAdd(contextObject, keyQueue, zsetResults...).Err()
+		_ = r.redisClient.ZAdd(contextObject, keyQueue, zsetResults...).Err()
 		return
 	}
 
 	// 4) マッチのメタ／進行状態を初期化（TxPipeline＝同時確定）
 	currentTimeMs := time.Now().UnixMilli()
-	pipeline := repository.redisClient.TxPipeline()
+	pipeline := r.redisClient.TxPipeline()
 	matchKey := fmt.Sprintf("match:%s", matchID)
 	matchStateKey := fmt.Sprintf("match:%s:state", matchID)
 
@@ -154,7 +154,7 @@ func (repository *MatchQueueRepositoryRedis) DequeuePairAndInitMatch(contextObje
 
 	// 5) 実行。失敗時は 2 名をキューへ戻して整合性を保つ
 	if _, err = pipeline.Exec(contextObject); err != nil {
-		_ = repository.redisClient.ZAdd(contextObject, keyQueue, zsetResults...).Err()
+		_ = r.redisClient.ZAdd(contextObject, keyQueue, zsetResults...).Err()
 		return
 	}
 
@@ -166,8 +166,8 @@ func (repository *MatchQueueRepositoryRedis) DequeuePairAndInitMatch(contextObje
 // トークン不一致・キー欠損は no-op（安全側）。
 //
 // Redis: GET lock:mq → (一致時) Tx(DEL lock:mq)
-func (repository *MatchQueueRepositoryRedis) ReleaseLock(contextObject context.Context, lockToken string) error {
-	return repository.redisClient.Watch(contextObject, func(transaction *redis.Tx) error {
+func (r *MatchQueueRepositoryRedis) ReleaseLock(contextObject context.Context, lockToken string) error {
+	return r.redisClient.Watch(contextObject, func(transaction *redis.Tx) error {
 		storedToken, err := transaction.Get(contextObject, keyLock).Result()
 		if err == redis.Nil {
 			return nil // 既に削除済み

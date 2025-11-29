@@ -265,6 +265,7 @@ backend/
 │  │  ├─ redis/        # Redis接続の初期化や共通処理を担当
 │  │  └─ repository/   # domainで定義したRepositoryの実装層
 │  │     ├─ redis/     # Redisを用いたRepositoryの実装
+│  │     │  └─ model/  # Redisに保存するデータ形式（DTO）のモデル定義
 │  │     └─ sql/       # SQL(GORM)を用いたRepositoryの実装
 │  │        └─ model/  # DBテーブル構造に対応するGORMモデル定義
 │  ├─ transport/   # 通信層（HTTPやWebSocketでリクエストを受ける部分）

@@ -42,21 +42,21 @@ func presenceKey(userID string) string {
 }
 
 // setOnline は、ユーザーをオンライン状態にして、socket_countを+1する。
-func (repository *PresenceRepositoryRedis) SetOnline(
+func (r *PresenceRepositoryRedis) SetOnline(
 	ctx context.Context,
 	userID string,
 	nowUnixMilli int64,
 ) error {
 	key := presenceKey(userID)
 
-	pipe := repository.redisClient.TxPipeline()
+	pipe := r.redisClient.TxPipeline()
 	pipe.HSet(ctx, key,
 		"status", "online",
 		"match_id", "",
 		"updated_at", nowUnixMilli,
 	)
 	pipe.HSet(ctx, key, "socket_count", 1)
-	pipe.Expire(ctx, key, repository.ttl)
+	pipe.Expire(ctx, key, r.ttl)
 
 	_, err := pipe.Exec(ctx)
 	return err
@@ -65,16 +65,16 @@ func (repository *PresenceRepositoryRedis) SetOnline(
 // Heartbeat はクライアント側からの定期心拍で呼び出す。
 // - updated_at を now に更新
 // - TTL を 30s に延長（PEXPIRE）
-func (repository *PresenceRepositoryRedis) Heartbeat(
+func (r *PresenceRepositoryRedis) Heartbeat(
 	ctx context.Context,
 	userID string,
 	nowUnixMilli int64,
 ) error {
 	key := presenceKey(userID)
-	pipe := repository.redisClient.TxPipeline()
+	pipe := r.redisClient.TxPipeline()
 
 	pipe.HSet(ctx, key, "updated_at", nowUnixMilli)
-	pipe.PExpire(ctx, key, repository.ttl)
+	pipe.PExpire(ctx, key, r.ttl)
 
 	_, err := pipe.Exec(ctx)
 	return err
@@ -85,21 +85,21 @@ func (repository *PresenceRepositoryRedis) Heartbeat(
 // - match_id = {matchID}
 // - updated_at を now に
 // - TTL を 30s に延長（PEXPIRE）
-func (repository *PresenceRepositoryRedis) SetIngame(
+func (r *PresenceRepositoryRedis) SetIngame(
 	ctx context.Context,
 	userID string,
 	matchID string,
 	nowUnixMilli int64,
 ) error {
 	key := presenceKey(userID)
-	pipe := repository.redisClient.TxPipeline()
+	pipe := r.redisClient.TxPipeline()
 
 	pipe.HSet(ctx, key,
 		"status", "ingame",
 		"match_id", matchID,
 		"updated_at", nowUnixMilli,
 	)
-	pipe.PExpire(ctx, key, repository.ttl)
+	pipe.PExpire(ctx, key, r.ttl)
 
 	_, err := pipe.Exec(ctx)
 	return err
@@ -133,13 +133,13 @@ func (r *PresenceRepositoryRedis) SetReconnecting(
 //   - ここでは match_id は「残す」とし、presence は TTLで自然消滅させる。
 //   - TTL は常に 30s に延長（PEXPIRE）
 //     （ブラウザがすぐ再接続する前提でも presence を短時間保持したい）
-func (repository *PresenceRepositoryRedis) Disconnect(
+func (r *PresenceRepositoryRedis) Disconnect(
 	ctx context.Context,
 	userID string,
 	nowUnixMilli int64,
 ) error {
 	key := presenceKey(userID)
-	values, err := repository.redisClient.HMGet(ctx, key, "status", "match_id", "socket_count").Result()
+	values, err := r.redisClient.HMGet(ctx, key, "status", "match_id", "socket_count").Result()
 	if err != nil {
 		return err
 	}
@@ -149,24 +149,24 @@ func (repository *PresenceRepositoryRedis) Disconnect(
 		status, _ = values[0].(string)
 	}
 
-	newCount, _ := repository.redisClient.HIncrBy(ctx, key, "socket_count", -1).Result()
+	newCount, _ := r.redisClient.HIncrBy(ctx, key, "socket_count", -1).Result()
 
 	if newCount > 0 {
-		repository.redisClient.PExpire(ctx, key, repository.ttl)
+		r.redisClient.PExpire(ctx, key, r.ttl)
 		return nil
 	}
 
-	pipe := repository.redisClient.TxPipeline()
+	pipe := r.redisClient.TxPipeline()
 	switch status {
 	case "ingame":
-		pipe.PExpire(ctx, key, repository.ttl)
+		pipe.PExpire(ctx, key, r.ttl)
 	default:
 		pipe.HSet(ctx, key,
 			"status", "offline",
 			"match_id", "",
 			"update_at", nowUnixMilli,
 		)
-		pipe.PExpire(ctx, key, repository.ttl)
+		pipe.PExpire(ctx, key, r.ttl)
 	}
 
 	_, err = pipe.Exec(ctx)

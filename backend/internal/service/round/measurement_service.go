@@ -27,9 +27,7 @@ func NewMeasurementRoundService(roundStateRepo repository.RoundStateRepository) 
 // 累計ミス数を加算する処理を行うメソッド。
 func (s *MeasurementRoundService) SaveMeasurement(ctx context.Context, matchID, userID string, missCount int64, trigger string) error {	
 	// 冪等性チェック（finish 済みなら弾く）
-	finishFlagCtx, cancelFinishFlag := context.WithTimeout(ctx, 300*time.Millisecond)
-	isFirstFinished, err := s.roundStateRepo.RegisterPlayerAnswerFinishFlag(finishFlagCtx, matchID, userID)
-	cancelFinishFlag()
+	isFirstFinished, err := s.roundStateRepo.RegisterPlayerAnswerFinishFlag(ctx, matchID, userID)
 	if err != nil {
 		return err
 	}
@@ -38,9 +36,7 @@ func (s *MeasurementRoundService) SaveMeasurement(ctx context.Context, matchID, 
 	}
 
 	// 状態読み取り
-	loadStateCtx, cancelLoadState := context.WithTimeout(ctx, 300*time.Millisecond)
-	state, err := s.roundStateRepo.LoadMatchState(loadStateCtx, matchID)
-	cancelLoadState()
+	state, err := s.roundStateRepo.LoadMatchState(ctx, matchID)
 	if err != nil {
 		return err
 	}
@@ -64,17 +60,12 @@ func (s *MeasurementRoundService) SaveMeasurement(ctx context.Context, matchID, 
 	}
 
 	// finish イベントの保存（Stream に追加）
-	storeEventCtx, cancelStoreEvent := context.WithTimeout(ctx, 300*time.Millisecond)
-	err = s.roundStateRepo.StoreFinishEvent(storeEventCtx, matchID, userID, state.Round, missCount, finishAtMs)
-	cancelStoreEvent()
-	if err != nil {
+	if err = s.roundStateRepo.StoreFinishEvent(ctx, matchID, userID, state.Round, missCount, finishAtMs); err != nil {
 		return err
 	}
 
 	// プレイヤー判定
-	loadPlayersCtx, cancelLoadPlayers := context.WithTimeout(ctx, 300*time.Millisecond)
-	players, err := s.roundStateRepo.LoadMatchPlayers(loadPlayersCtx, matchID)
-	cancelLoadPlayers()
+	players, err := s.roundStateRepo.LoadMatchPlayers(ctx, matchID)
 	if err != nil {
 		return err
 	}
@@ -90,9 +81,7 @@ func (s *MeasurementRoundService) SaveMeasurement(ctx context.Context, matchID, 
 	}
 
 	// 累計ミス数の更新（atomic increment）
-	updateMissCtx, cancelUpdateMiss := context.WithTimeout(ctx, 200*time.Millisecond)
-	err = s.roundStateRepo.UpdateTotalMissCount(updateMissCtx, matchID, playerField, missCount)
-	cancelUpdateMiss()
+	err = s.roundStateRepo.UpdateTotalMissCount(ctx, matchID, playerField, missCount)
 	if err != nil {
 		return err
 	}
