@@ -37,16 +37,16 @@ echo ""
 echo "Backend Build Phase"
 if confirm_step "Backend Build"; then
     # イメージ名とDockerfileのパスを配列で定義
-    local images=(
+    IMAGES=(
         "api-image:$PROJECT_ROOT/docker/backend/Dockerfile.prod"
         "ws-image:$PROJECT_ROOT/docker/backend/Dockerfile.prod"
         "migration-image:$PROJECT_ROOT/docker/migrate/Dockerfile"
         "seed-image:$PROJECT_ROOT/docker/seed/Dockerfile"
     )
         
-    for image in "${images[@]}"; do
-        local image_name="${image%%:*}" # keyを参照
-        local dockerfile="${image#*:}" # valueを参照
+    for image in "${IMAGES[@]}"; do
+        image_name="${image%%:*}" # keyを参照
+        dockerfile="${image#*:}" # valueを参照
         
         echo "Building ${image_name}..."
         docker build \
