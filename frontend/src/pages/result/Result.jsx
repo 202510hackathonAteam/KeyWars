@@ -22,6 +22,8 @@ const Result = () => {
   const isVictory = result === "victory";
   const totalRounds = location.state?.round || 20;
   console.log("🟢 Result received round:", totalRounds);
+  const totalMiss = location.state?.totalMiss;
+  console.log("🎯 自分の total miss:", totalMiss);
 
 
   useEffect(() => {
@@ -121,7 +123,7 @@ const Result = () => {
         space-y-4
       ">
       <div className="text-[1.5rem] text-[#ffcfcf] my-2 drop-shadow-[0_0_5px_#ff5900]">
-          間違えた回数（通算{totalRounds}戦中）：<span className="text-white ml-2">7</span>
+          間違えた回数（通算{totalRounds}戦中）：<span className="text-white ml-2">{totalMiss}</span>
       </div>
 
         {/* ボタン群 */}

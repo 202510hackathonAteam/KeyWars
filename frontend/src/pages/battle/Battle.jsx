@@ -49,7 +49,7 @@ export default function GamePage() {
   const [countdown, setCountdown] = useState(null);
 
   // WebSocket
-  const { wsRef, matchStartPayload } = useContext(WebSocketContext);
+  const { wsRef, matchStartPayload, matchRestorePayload } = useContext(WebSocketContext);
 
   // タイマー管理
   const timerRef = useRef(null);
@@ -239,6 +239,44 @@ export default function GamePage() {
   }, [matchStartPayload]);
 
   // ============================================
+  // 📝 再接続処理
+  // ============================================
+
+  useEffect(() => {
+  if (!matchRestorePayload) return;
+
+  const restore = matchRestorePayload;
+  console.log("🔥 RESTORE DATA:", restore);
+
+  const myId = localStorage.getItem("user_id");
+  const isPlayer1 = matchStartPayload?.player1 === myId;
+
+  const p1Hp = restore.state.player1_lifepoint;
+  const p2Hp = restore.state.player2_lifepoint;
+
+  // HP 復元
+  if (isPlayer1) {
+    setPlayerHp(p1Hp);
+    setEnemyHp(p2Hp);
+  } else {
+    setPlayerHp(p2Hp);
+    setEnemyHp(p1Hp);
+  }
+
+  // ラウンド番号復元
+  roundIdRef.current = restore.state.round;
+
+  // 入力停止
+  ignoreTypingRef.current = true;
+
+  // Countdown / Timer 停止
+  clearInterval(timerRef.current);
+  clearInterval(countdownRef.current);
+
+  // 本当の次ラウンドは「次の match.start」で再開される
+}, [matchRestorePayload]);
+
+  // ============================================
   // 📝 入力処理
   // ============================================
   
@@ -278,6 +316,13 @@ export default function GamePage() {
   console.log("🎌 match.end received in GamePage:", matchEndPayload);
 
   const myId = localStorage.getItem("user_id"); // ← 自分のユーザーID
+
+    // ★ 自分の total miss count を判定
+  const isPlayer1 = matchEndPayload.player1 === myId;
+  const myTotalMiss = isPlayer1
+    ? matchEndPayload.player1_total_miss_count
+    : matchEndPayload.player2_total_miss_count;
+
   const didWin = matchEndPayload.winner === myId;
 
   const payloadForResult = matchEndPayload;
@@ -287,6 +332,7 @@ export default function GamePage() {
   navigate("/result", {
     state: {
       result: didWin ? "victory" : "defeat",
+      totalMiss: myTotalMiss,              
       matchEnd: payloadForResult, // ← 必要ならデータ丸ごと送れる
       round: matchStartPayload?.state?.round,  // ← 追加！！
     },
