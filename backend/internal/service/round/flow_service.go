@@ -152,12 +152,9 @@ func (s *RoundFlowService) ProcessRoundResult(ctx context.Context, matchID strin
 		// match.end をフロントへ送信
 		s.websocketHub.Broadcast(ctx, "match:"+matchID, payload)
 
-		cleanupCtx, cancelCleanup := context.WithTimeout(ctx, 200*time.Millisecond)
-		if err := s.roundStateRepo.CleanupMatch(cleanupCtx, matchID, players.Player1ID, players.Player2ID); err != nil {
-			cancelCleanup()
-			return fmt.Errorf("cleanup failed: %w", err)
+		if err := s.completeMatch(ctx, matchID, players.Player1ID, players.Player2ID); err != nil {
+			return fmt.Errorf("completeMatch failed")
 		}
-		cancelCleanup()
 
 		return nil
 	}
@@ -249,6 +246,26 @@ func (s *RoundFlowService) ProcessRoundResult(ctx context.Context, matchID strin
 	timeoutCtx, timeoutCancel := context.WithCancel(context.Background())
 	s.timeoutCancelMap[matchID] = timeoutCancel
 	go s.timeoutRoundService.ScheduleRoundTimeoutCheck(timeoutCtx, matchID, roundEndAtMs + config.GraceMs)
+
+	return nil
+}
+
+// completeMatch は、試合の終了後に実行される「後処理専用」の関数。
+func (s *RoundFlowService) completeMatch(ctx context.Context, matchID, player1ID, player2ID string) error {
+	cleanupCtx, cancelCleanup := context.WithTimeout(ctx, 200*time.Millisecond)
+	err := s.roundStateRepo.CleanupMatch(cleanupCtx, matchID, player1ID, player2ID)
+	cancelCleanup()
+	if err != nil {
+		return fmt.Errorf("cleanup failed: %w", err)
+	}
+
+	roomName := fmt.Sprintf("match:%s", matchID)
+
+	// Hub から全メンバーを除外
+	conns := s.websocketHub.Members(roomName)
+	for _, conn := range conns {
+		_ = s.websocketHub.Leave(ctx, conn)
+	}
 
 	return nil
 }
