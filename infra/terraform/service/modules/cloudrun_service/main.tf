@@ -11,7 +11,7 @@ resource "google_cloud_run_v2_service" "default" {
 
       # MySQL用環境変数を展開
       dynamic "env" {
-        for_each = var.mysql_env_vars
+        for_each = var.env_vars
         content {
           name  = env.value.name
           value = env.value.value

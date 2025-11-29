@@ -11,7 +11,9 @@ export function WebSocketProvider({ children }) {
   const navigate = useNavigate();
   const [matchStartPayload, setMatchStartPayload] = useState(null);
   const [matchEndPayload, setMatchEndPayload] = useState(null);
+  const [matchRestorePayload, setMatchRestorePayload] = useState(null);
   const matchStartedRef = useRef(false);
+  const [isRestoring, setIsRestoring] = useState(false);
 
   const getUserId = () => localStorage.getItem("user_name");
 
@@ -35,7 +37,10 @@ export function WebSocketProvider({ children }) {
 
     socket.onopen = () => {
       console.log("WS: connected");
-      socket.send(JSON.stringify({ type: "queue.join" }));
+
+      if (!matchStartedRef.current) {
+        socket.send(JSON.stringify({ type: "queue.join" }));
+  }
       setConnected(true);
       clearTimeout(reconnectTimer.current);
     };
@@ -59,7 +64,7 @@ export function WebSocketProvider({ children }) {
       const data = JSON.parse(event.data);
       switch (data.type) {
           case "welcome":
-            localStorage.setItem("user_id", data.uid);
+            localStorage.setItem("user_id", data.user_id);
             break;
           case "match.start":
             console.log("🔥 match.start received:", data);
@@ -71,15 +76,27 @@ export function WebSocketProvider({ children }) {
           case "match.found":
             // 試合発見 → battle 画面へ遷移
             if (!matchStartedRef.current) {
-            matchStartedRef.current = true; // ← 一度だけ遷移
-            navigate("/battle");
-            }
+              matchStartedRef.current = true; // ← 一度だけ遷移
+              // localStorage.setItem("user_id", data.user_id);
+              navigate("/battle");
+            }z
             break;
 
           case "match.end":
             console.log("試合終了:", data);
             setMatchEndPayload(data);  
             matchStartedRef.current = false;
+            break;
+
+          case "match.restore":
+            console.log("再接続:", data);
+            // 試合再発見 → battle 画面へ遷移
+            setMatchRestorePayload(data);
+            setIsRestoring(true); 
+            if (!matchStartedRef.current) {
+            matchStartedRef.current = true; 
+            navigate("/battle");
+            }
             break;
 
           default:
@@ -138,6 +155,9 @@ export function WebSocketProvider({ children }) {
         matchStartPayload,
         matchEndPayload,
         resetMatchState,
+        matchRestorePayload,
+        isRestoring,      // ← これ追加！
+        setIsRestoring,
       }}
     >
       {children}
