@@ -28,7 +28,7 @@ locals {
     },
     {
       name  = "COOKIE_DOMAIN"
-      value = "keywars.jp"
+      value = ".${var.domain}"
     },
     {
       name  = "COOKIE_SECURE"

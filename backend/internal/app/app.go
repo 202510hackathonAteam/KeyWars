@@ -90,7 +90,7 @@ func New(cfg *config.Config) (*Server, error) {
 		e.Use(echomiddleware.CORSWithConfig(echomiddleware.CORSConfig{
 			AllowOrigins:     []string{origin},
 			AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch, http.MethodOptions},
-			AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
+			AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization, "X-CSRF-Token"},
 			AllowCredentials: true,
 		}))
 	}

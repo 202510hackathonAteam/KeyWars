@@ -50,8 +50,8 @@ type CookieConfig struct {
 // LoadCookieConfig は、CookieConfig のデフォルト設定を読み込む初期化関数。
 func LoadCookieConfig() CookieConfig {
 	return CookieConfig{
-		// 本番環境では必ずhttp.SameSiteStrictModeにすること
-		SameSite: http.SameSiteLaxMode,
+		// クロスサイトになるのでNone
+		SameSite: http.SameSiteNoneMode,
 		// 本番環境ではドメイン名を記載すること
 		Domain: os.Getenv("COOKIE_DOMAIN"),
 		// 本番環境では必ずtrueにすること
