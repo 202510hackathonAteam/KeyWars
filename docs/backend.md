@@ -276,7 +276,6 @@ backend/
 │  │  │  └─ response/      # 共通レスポンス生成処理（HTTPレスポンスの形式統一）
 │  │  └─ websocket/    # WebSocket通信関連の処理をまとめる
 │  └─ util/         # 汎用的な共通処理をまとめる（アプリ全体から再利用される）
-│     ├─ password/       # パスワードハッシュ化・検証などの共通ロジックを提供
 │     ├─ validator/      # 入力値の検証（バリデーション）ロジックを提供
 │     └─ cookie/         # Cookie操作（設定・削除）を提供
 └─ migrations/     # DBマイグレーションSQL（テーブル作成や変更）
