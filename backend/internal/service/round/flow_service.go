@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"keywars/backend/internal/config"
 	"keywars/backend/internal/domain/repository"
 	"keywars/backend/internal/transport/websocket"
-	"keywars/backend/internal/config"
 )
 
 // SetTimeoutService は、RoundFlowService に対して
@@ -19,13 +19,14 @@ func (s *RoundFlowService) SetTimeoutService(timeoutRoundService *TimeoutRoundSe
 // RoundFlowService は、1 ラウンドの開始・進行・終了といった
 // 「ラウンド進行フロー全体」を管理するサービス
 type RoundFlowService struct {
-	roundStateRepo			 repository.RoundStateRepository
-	websocketHub         *websocket.Hub
-	nextRoundService     *NextRoundService
-	timeoutRoundService  *TimeoutRoundService
-	lifepointService		 *LifepointService
-	matchJudgeService		 *MatchJudgeService
-	timeoutCancelMap     map[string]context.CancelFunc
+	roundStateRepo      repository.RoundStateRepository
+	websocketHub        *websocket.Hub
+	nextRoundService    *NextRoundService
+	timeoutRoundService *TimeoutRoundService
+	lifepointService    *LifepointService
+	matchJudgeService   *MatchJudgeService
+	timeoutCancelMap    map[string]context.CancelFunc
+	presenceRepo        repository.PresenceRepository
 }
 
 // NewRoundFlowService は RoundFlowService のコンストラクタ。
@@ -35,16 +36,18 @@ func NewRoundFlowService(
 	nextRoundService *NextRoundService,
 	timeoutRoundService *TimeoutRoundService,
 	lifepointService *LifepointService,
-	matchJudgeService	*MatchJudgeService,
+	matchJudgeService *MatchJudgeService,
+	presenceRepo repository.PresenceRepository,
 ) *RoundFlowService {
 	return &RoundFlowService{
-		roundStateRepo: 		 roundStateRepo,
-		websocketHub: 			 websocketHub,
-		nextRoundService: 	 nextRoundService,
+		roundStateRepo:      roundStateRepo,
+		websocketHub:        websocketHub,
+		nextRoundService:    nextRoundService,
 		timeoutRoundService: timeoutRoundService,
-		lifepointService:		 lifepointService,
+		lifepointService:    lifepointService,
 		matchJudgeService:   matchJudgeService,
-		timeoutCancelMap: 	 make(map[string]context.CancelFunc),
+		timeoutCancelMap:    make(map[string]context.CancelFunc),
+		presenceRepo:        presenceRepo,
 	}
 }
 
@@ -72,9 +75,9 @@ func (s *RoundFlowService) StartFirstRound(ctx context.Context, matchID, user1ID
 		user1ID,
 		user2ID,
 		websocket.MatchState{
-			Round:           	config.InitialRound,
-			RoundStartAtMS: 	roundStartAtMs,
-			RoundEndAtMS:   	roundEndAtMs,
+			Round:            config.InitialRound,
+			RoundStartAtMS:   roundStartAtMs,
+			RoundEndAtMS:     roundEndAtMs,
 			Player1Lifepoint: config.InitialLifePoint,
 			Player2Lifepoint: config.InitialLifePoint,
 		},
@@ -89,7 +92,7 @@ func (s *RoundFlowService) StartFirstRound(ctx context.Context, matchID, user1ID
 
 	timeoutCtx, timeoutCancel := context.WithCancel(context.Background())
 	s.timeoutCancelMap[matchID] = timeoutCancel
-	go s.timeoutRoundService.ScheduleRoundTimeoutCheck(timeoutCtx, matchID, roundEndAtMs + config.GraceMs)
+	go s.timeoutRoundService.ScheduleRoundTimeoutCheck(timeoutCtx, matchID, roundEndAtMs+config.GraceMs)
 	return nil
 }
 
@@ -152,12 +155,9 @@ func (s *RoundFlowService) ProcessRoundResult(ctx context.Context, matchID strin
 		// match.end をフロントへ送信
 		s.websocketHub.Broadcast(ctx, "match:"+matchID, payload)
 
-		cleanupCtx, cancelCleanup := context.WithTimeout(ctx, 200*time.Millisecond)
-		if err := s.roundStateRepo.CleanupMatch(cleanupCtx, matchID, players.Player1ID, players.Player2ID); err != nil {
-			cancelCleanup()
-			return fmt.Errorf("cleanup failed: %w", err)
+		if err := s.completeMatch(ctx, matchID, players.Player1ID, players.Player2ID); err != nil {
+			return fmt.Errorf("completeMatch failed")
 		}
-		cancelCleanup()
 
 		return nil
 	}
@@ -168,14 +168,14 @@ func (s *RoundFlowService) ProcessRoundResult(ctx context.Context, matchID strin
 	initNextCtx, cancelNextState := context.WithTimeout(ctx, 300*time.Millisecond)
 	err = s.roundStateRepo.InitializeNextRoundState(initNextCtx, matchID)
 	cancelNextState()
-	if err != nil{
+	if err != nil {
 		return fmt.Errorf("failed to prepare next round state: %w", err)
 	}
 
 	resetMeasurementCtx, cancelResetMeasurement := context.WithTimeout(ctx, 300*time.Millisecond)
 	err = s.roundStateRepo.InitializeMeasurementFinishCount(resetMeasurementCtx, matchID)
 	cancelResetMeasurement()
-	if err != nil{
+	if err != nil {
 		return fmt.Errorf("failed to reset measurement finish count: %w", err)
 	}
 
@@ -231,9 +231,9 @@ func (s *RoundFlowService) ProcessRoundResult(ctx context.Context, matchID strin
 		players.Player1ID,
 		players.Player2ID,
 		websocket.MatchState{
-			Round:           	nextRound,
-			RoundStartAtMS: 	roundStartAtMs,
-			RoundEndAtMS:   	roundEndAtMs,
+			Round:            nextRound,
+			RoundStartAtMS:   roundStartAtMs,
+			RoundEndAtMS:     roundEndAtMs,
 			Player1Lifepoint: player1Lifepoint,
 			Player2Lifepoint: player2Lifepoint,
 		},
@@ -248,7 +248,34 @@ func (s *RoundFlowService) ProcessRoundResult(ctx context.Context, matchID strin
 
 	timeoutCtx, timeoutCancel := context.WithCancel(context.Background())
 	s.timeoutCancelMap[matchID] = timeoutCancel
-	go s.timeoutRoundService.ScheduleRoundTimeoutCheck(timeoutCtx, matchID, roundEndAtMs + config.GraceMs)
+	go s.timeoutRoundService.ScheduleRoundTimeoutCheck(timeoutCtx, matchID, roundEndAtMs+config.GraceMs)
+
+	return nil
+}
+
+// completeMatch は、試合の終了後に実行される「後処理専用」の関数。
+func (s *RoundFlowService) completeMatch(ctx context.Context, matchID, player1ID, player2ID string) error {
+	cleanupCtx, cancelCleanup := context.WithTimeout(ctx, 200*time.Millisecond)
+	err := s.roundStateRepo.CleanupMatch(cleanupCtx, matchID, player1ID, player2ID)
+	cancelCleanup()
+	if err != nil {
+		return fmt.Errorf("cleanup failed: %w", err)
+	}
+
+	roomName := fmt.Sprintf("match:%s", matchID)
+
+	// Hub から全メンバーを除外
+	conns := s.websocketHub.Members(roomName)
+	for _, conn := range conns {
+		_ = s.websocketHub.Leave(ctx, conn)
+	}
+
+	// ★ 重要：presence を "online" に戻して match_id を消す
+	if s.presenceRepo != nil {
+		now := time.Now().UnixMilli()
+		_ = s.presenceRepo.SetOnline(ctx, player1ID, now)
+		_ = s.presenceRepo.SetOnline(ctx, player2ID, now)
+	}
 
 	return nil
 }

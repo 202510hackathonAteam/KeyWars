@@ -120,6 +120,7 @@ func New(cfg *config.Config) (*Server, error) {
 		nil,
 		lifepointService,
 		matchJudgeService,
+		redisRepos.Presence,
 	)
 
 	measurementService := round.NewMeasurementRoundService(redisRepos.Round)
