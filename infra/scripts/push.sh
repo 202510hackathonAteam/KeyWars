@@ -24,7 +24,16 @@ confirm_step() {
 # フロントエンドビルドファイルとFireBase用ファイルを同期
 echo "Frontend Build file Phase"
 if confirm_step "Copy frontend build files to firebase public?"; then
-    rsync -av --delete "$PROJECT_ROOT/frontend/dist/." "$PROJECT_ROOT/infra/firebase/public/"
+    # クリーンアップ
+    rm -rf "$PROJECT_ROOT/infra/firebase/public"/*
+
+    # index.htmlとassetsをコピー
+    rsync -av "$PROJECT_ROOT/frontend/dist/index.html" "$PROJECT_ROOT/infra/firebase/public/"
+    rsync -av "$PROJECT_ROOT/frontend/dist/assets/" "$PROJECT_ROOT/infra/firebase/public/assets/"
+    
+    # imgをpublic/imgにコピー
+    mkdir -p "$PROJECT_ROOT/infra/firebase/public/public"
+    rsync -av "$PROJECT_ROOT/frontend/dist/img/" "$PROJECT_ROOT/infra/firebase/public/public/img/"
     echo "Firebase hosting files are now update"
 else
     echo "Skipped"

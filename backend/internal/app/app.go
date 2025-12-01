@@ -37,6 +37,7 @@ type Server struct {
 // New は、アプリケーションサーバーを初期化して Server を生成。
 // DB 接続、リポジトリ・サービス・ハンドラの依存注入、ルータ設定をまとめて実施。
 func New(cfg *config.Config) (*Server, error) {
+	cookieConfig := config.LoadCookieConfig()
 	// Echo 本体の初期化と共通ミドルウェア設定
 	e := echo.New()
 	e.HideBanner = true
@@ -46,6 +47,9 @@ func New(cfg *config.Config) (*Server, error) {
 	e.Use(echomiddleware.CSRFWithConfig(echomiddleware.CSRFConfig{
 		CookieName: "csrf_token",
 		CookiePath: "/",
+		CookieDomain:   cookieConfig.Domain,        
+		CookieSameSite: cookieConfig.SameSite,      
+		CookieSecure:   cookieConfig.Secure,        
 		CookieHTTPOnly: false,
 		TokenLookup: "header:X-CSRF-Token",
 	}))
@@ -90,7 +94,7 @@ func New(cfg *config.Config) (*Server, error) {
 		e.Use(echomiddleware.CORSWithConfig(echomiddleware.CORSConfig{
 			AllowOrigins:     []string{origin},
 			AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch, http.MethodOptions},
-			AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization, "X-CSRF-Token"},
+			AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
 			AllowCredentials: true,
 		}))
 	}

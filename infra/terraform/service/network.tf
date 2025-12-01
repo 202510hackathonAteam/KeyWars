@@ -114,9 +114,10 @@ resource "google_compute_backend_service" "api_service" {
   # カスタムレスポンスヘッダーの設定
   custom_response_headers = [
     "Access-Control-Allow-Origin: https://${var.domain}",
-    "Access-Control-Allow-Credentials: true"
+    "Access-Control-Allow-Credentials: true",
+    "Access-Control-Allow-Headers: X-CSRF-Token, Content-Type",
+    "Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS"
   ]
-
   security_policy = google_compute_security_policy.default.self_link
 
   depends_on = [
@@ -132,11 +133,12 @@ resource "google_compute_backend_service" "websocket_service" {
     group = google_compute_region_network_endpoint_group.cloudrun_websocket_neg.id
   }
   # カスタムレスポンスヘッダーの設定
-  custom_response_headers = [
+ custom_response_headers = [
     "Access-Control-Allow-Origin: https://${var.domain}",
-    "Access-Control-Allow-Credentials: true"
+    "Access-Control-Allow-Credentials: true",
+    "Access-Control-Allow-Headers: X-CSRF-Token, Content-Type",
+    "Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS"
   ]
-
   security_policy = google_compute_security_policy.default.self_link
 
   depends_on = [
