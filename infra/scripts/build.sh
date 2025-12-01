@@ -14,7 +14,7 @@ confirm_step() {
     read -p "Run ${step_name}? (Y/n): " response
     response=${response:-yes}
   else
-    read -p "Run ${step_name}? (y/N): " response
+    read -p "Run ${step_name}? (Y/N): " response
     response=${response:-no}
   fi
   
