@@ -51,12 +51,26 @@ type CookieConfig struct {
 func LoadCookieConfig() CookieConfig {
 	return CookieConfig{
 		// クロスサイトになるのでNone
-		SameSite: http.SameSiteNoneMode,
+		SameSite: parseSameSite(os.Getenv("COOKIE_SAMESITE")),
 		// 本番環境ではドメイン名を記載すること
 		Domain: os.Getenv("COOKIE_DOMAIN"),
 		// 本番環境では必ずtrueにすること
 		// Secure: false,
 		Secure: os.Getenv("COOKIE_SECURE") == "true",
+	}
+}
+
+func parseSameSite(value string) http.SameSite {
+	switch value {
+	case "Strict":
+		return http.SameSiteStrictMode
+	case "Lax":
+		return http.SameSiteLaxMode
+	case "None":
+		return http.SameSiteNoneMode
+	default:
+		// デフォルト値（環境変数が未設定の場合）
+		return http.SameSiteNoneMode
 	}
 }
 
