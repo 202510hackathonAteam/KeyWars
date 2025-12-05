@@ -1,4 +1,4 @@
-package redisrepo
+package redis
 
 import (
 	"context"
@@ -23,16 +23,17 @@ const (
 	presenceTTL = 30 * time.Second // 30秒（PEXPIREで延長）
 )
 
+var _ repository.PresenceRepository = (*PresenceRepositoryRedis)(nil)
+
 // PresenceRepositoryRedis は、ユーザーのプレゼンスを Redis に保持・更新する実装。
 type PresenceRepositoryRedis struct {
 	redisClient *redis.Client
-	ttl         time.Duration
 }
 
-func NewPresenceRepositoryRedis(redisClient *redis.Client, ttl time.Duration) *PresenceRepositoryRedis {
+// NewPresenceRepositoryRedis は、Redis を用いた PresenceRepository の生成。
+func NewPresenceRepositoryRedis(redisClient *redis.Client) repository.PresenceRepository {
 	return &PresenceRepositoryRedis{
 		redisClient: redisClient,
-		ttl:         ttl,
 	}
 }
 
@@ -56,7 +57,7 @@ func (r *PresenceRepositoryRedis) SetOnline(
 		"updated_at", nowUnixMilli,
 	)
 	pipe.HSet(ctx, key, "socket_count", 1)
-	pipe.Expire(ctx, key, r.ttl)
+	pipe.Expire(ctx, key, presenceTTL)
 
 	_, err := pipe.Exec(ctx)
 	return err
@@ -74,7 +75,7 @@ func (r *PresenceRepositoryRedis) Heartbeat(
 	pipe := r.redisClient.TxPipeline()
 
 	pipe.HSet(ctx, key, "updated_at", nowUnixMilli)
-	pipe.PExpire(ctx, key, r.ttl)
+	pipe.PExpire(ctx, key, presenceTTL)
 
 	_, err := pipe.Exec(ctx)
 	return err
@@ -99,7 +100,7 @@ func (r *PresenceRepositoryRedis) SetIngame(
 		"match_id", matchID,
 		"updated_at", nowUnixMilli,
 	)
-	pipe.PExpire(ctx, key, r.ttl)
+	pipe.PExpire(ctx, key, presenceTTL)
 
 	_, err := pipe.Exec(ctx)
 	return err
@@ -152,21 +153,21 @@ func (r *PresenceRepositoryRedis) Disconnect(
 	newCount, _ := r.redisClient.HIncrBy(ctx, key, "socket_count", -1).Result()
 
 	if newCount > 0 {
-		r.redisClient.PExpire(ctx, key, r.ttl)
+		r.redisClient.PExpire(ctx, key, presenceTTL)
 		return nil
 	}
 
 	pipe := r.redisClient.TxPipeline()
 	switch status {
 	case "ingame":
-		pipe.PExpire(ctx, key, r.ttl)
+		pipe.PExpire(ctx, key, presenceTTL)
 	default:
 		pipe.HSet(ctx, key,
 			"status", "offline",
 			"match_id", "",
 			"update_at", nowUnixMilli,
 		)
-		pipe.PExpire(ctx, key, r.ttl)
+		pipe.PExpire(ctx, key, presenceTTL)
 	}
 
 	_, err = pipe.Exec(ctx)
@@ -182,5 +183,3 @@ func (r *PresenceRepositoryRedis) Get(
 	key := presenceKey(userID)
 	return r.redisClient.HGetAll(ctx, key).Result()
 }
-
-var _ repository.PresenceRepository = (*PresenceRepositoryRedis)(nil)

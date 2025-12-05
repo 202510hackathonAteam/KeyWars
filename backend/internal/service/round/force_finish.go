@@ -14,15 +14,28 @@ import (
 	"keywars/backend/internal/domain/types"
 )
 
+var _ ForceFinishService = (*forceFinishService)(nil)
+
+// ForceFinishService は、強制ラウンド終了処理を提供するサービスインターフェース。
 type ForceFinishService interface {
 	ForceFinish(ctx context.Context, matchID string) (any, error)
+	SetRoundFlowService(flow *RoundFlowService)
 }
 
+// SetRoundFlowService は、forceFinishService に対して
+// RoundFlowService を後から注入するためのセッターメソッド。
+func (s *forceFinishService) SetRoundFlowService(roundFlowService *RoundFlowService) {
+	s.roundFlowService = roundFlowService
+}
+
+// forceFinishService は、強制ラウンド終了ロジックの実装構造体。
 type forceFinishService struct {
 	roundStateRepo			 		repository.RoundStateRepository
 	logger 							 		*zerolog.Logger
-	roundFlowService 		 		*RoundFlowService
 	measurementRoundService *MeasurementRoundService
+
+	// 後注入される依存
+	roundFlowService 		 		*RoundFlowService
 }
 
 // NewForceFinishService は、
@@ -30,13 +43,11 @@ type forceFinishService struct {
 func NewForceFinishService(
 	roundStateRepo repository.RoundStateRepository,
 	logger *zerolog.Logger,
-	roundFlowService *RoundFlowService,
 	measurementRoundService *MeasurementRoundService,
-) *forceFinishService {
+) ForceFinishService {
 	return &forceFinishService{
 		roundStateRepo:				 	 roundStateRepo,
 		logger:									 logger,
-		roundFlowService:				 roundFlowService,
 		measurementRoundService: measurementRoundService,
 	}
 }

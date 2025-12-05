@@ -7,8 +7,8 @@ import (
 )
 
 // Loadは、環境変数を読み込み、Config 構造体を生成。
-func Load() Config {
-	return Config{
+func Load() *Config {
+	return &Config{
 		DB: DBConfig{
 			User:     mustEnv("MYSQL_USER"),
 			Password: mustEnv("MYSQL_PASSWORD"),

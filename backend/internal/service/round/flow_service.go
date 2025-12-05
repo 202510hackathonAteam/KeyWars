@@ -10,12 +10,6 @@ import (
 	"keywars/backend/internal/transport/websocket"
 )
 
-// SetTimeoutService は、RoundFlowService に対して
-// TimeoutRoundService を後から注入するためのセッターメソッド。
-func (s *RoundFlowService) SetTimeoutService(timeoutRoundService *TimeoutRoundService) {
-	s.timeoutRoundService = timeoutRoundService
-}
-
 // RoundFlowService は、1 ラウンドの開始・進行・終了といった
 // 「ラウンド進行フロー全体」を管理するサービス
 type RoundFlowService struct {
