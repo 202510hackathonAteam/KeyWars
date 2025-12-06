@@ -41,6 +41,7 @@
 2. `internal/service/module.go` に追加。
     ```go
     var Module = fx.Module(
+      "service",
       fx.Provide(
         NewXxxService, // ← 追加
       ),
@@ -80,6 +81,7 @@
 `internal/infra/repository/sql/module.go` に追加。
     ```go
     var Module = fx.Module(
+      "sql",
       fx.Provide(
         NewXxxRepositorySQL, // ← 追加
       ),

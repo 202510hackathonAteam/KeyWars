@@ -2,7 +2,8 @@ package handler
 
 import "go.uber.org/fx"
 
-var Module = fx.Options(
+var Module = fx.Module(
+	"handler",
 	fx.Provide(
 		// handler
 		NewAuthHandler,

@@ -2,7 +2,8 @@ package round
 
 import "go.uber.org/fx"
 
-var Module = fx.Options(
+var Module = fx.Module(
+	"round",
 	fx.Provide(
 		NewDeckGeneratorService,
 		NewNextRoundService,
