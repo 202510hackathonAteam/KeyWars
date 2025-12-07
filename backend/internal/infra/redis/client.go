@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+
+	"keywars/backend/internal/config"
 )
 
 // NewRedis は、Redis クライアントを初期化し、接続確認を行う関数。
@@ -37,12 +39,12 @@ import (
 //	ReadTimeout  : 300ms 以内にレスポンスが返らなければエラー
 //	WriteTimeout : 300ms 以内に送信できない場合はエラー
 //	Ping確認用コンテキスト: 全体で 1 秒以内に応答がない場合キャンセル
-func NewRedis(address, password string, databaseNumber int) (*redis.Client, error) {
+func NewRedis(cfg *config.RedisConfig) (*redis.Client, error) {
 	// Redis クライアントを設定して生成
 	redisClient := redis.NewClient(&redis.Options{
-		Addr:         address,
-		Password:     password,
-		DB:           databaseNumber,
+		Addr:         cfg.Addr,
+		Password:     cfg.Password,
+		DB:           cfg.DB,
 		DialTimeout:  500 * time.Millisecond,
 		ReadTimeout:  300 * time.Millisecond,
 		WriteTimeout: 300 * time.Millisecond,

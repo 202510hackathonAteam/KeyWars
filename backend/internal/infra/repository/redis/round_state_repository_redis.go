@@ -1,4 +1,4 @@
-package redisrepo
+package redis
 
 import (
 	"context"
@@ -9,10 +9,13 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	domainmodel "keywars/backend/internal/domain/model"
+	"keywars/backend/internal/domain/repository"
 	inframodel "keywars/backend/internal/infra/repository/redis/model"
 	"keywars/backend/internal/config"
 	"keywars/backend/internal/domain/types"
 )
+
+var _ repository.RoundStateRepository = (*RoundStateRepositoryRedis)(nil)
 
 // RoundStateRepositoryRedis は、対戦進行中の「メタ情報・状態・イベント・デッキ」を
 // Redis 上の複数キーに分割して管理するリポジトリ実装。
@@ -33,9 +36,8 @@ type RoundStateRepositoryRedis struct {
 	redisClient *redis.Client
 }
 
-// NewRoundStateRepositoryRedis は、外部から提供された Redis クライアントで実装を初期化する。
-// DI しやすいコンストラクタ。
-func NewRoundStateRepositoryRedis(redisClient *redis.Client) *RoundStateRepositoryRedis {
+// NewRoundStateRepositoryRedis は、Redis を用いた RoundStateRepository の生成。
+func NewRoundStateRepositoryRedis(redisClient *redis.Client) repository.RoundStateRepository {
 	return &RoundStateRepositoryRedis{redisClient: redisClient}
 }
 

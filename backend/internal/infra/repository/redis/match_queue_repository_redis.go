@@ -1,4 +1,4 @@
-package redisrepo
+package redis
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"keywars/backend/internal/config"
+	"keywars/backend/internal/domain/repository"
 )
 
 const (
@@ -28,6 +29,8 @@ const (
 	lockTTL = 3 * time.Second
 )
 
+var _ repository.MatchQueueRepository = (*MatchQueueRepositoryRedis)(nil)
+
 // MatchQueueRepositoryRedis は、Redis を利用した待機キュー操作（ZSET）と
 // マッチ初期化（match:{matchID} / match:{matchID}:state の初期 HSET）を提供する実装。
 type MatchQueueRepositoryRedis struct {
@@ -36,9 +39,8 @@ type MatchQueueRepositoryRedis struct {
 	redisClient *redis.Client
 }
 
-// NewMatchQueueRepositoryRedis は、外部で生成された Redis クライアントを受け取り
-// リポジトリアダプタを返すコンストラクタ。
-func NewMatchQueueRepositoryRedis(redisClient *redis.Client) *MatchQueueRepositoryRedis {
+// NewMatchQueueRepositoryRedis は、Redis を用いた MatchQueueRepository の生成。
+func NewMatchQueueRepositoryRedis(redisClient *redis.Client) repository.MatchQueueRepository {
 	return &MatchQueueRepositoryRedis{redisClient: redisClient}
 }
 

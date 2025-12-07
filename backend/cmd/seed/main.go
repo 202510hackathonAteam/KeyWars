@@ -17,7 +17,7 @@ func main() {
 	cfg := config.Load()
 
 	// DB接続の初期化
-	gormDB, err := db.New(cfg.DB)
+	gormDB, err := db.New(&cfg.DB)
 	if err != nil {
 		log.Fatalf("failed to connect database: %v", err)
 	}

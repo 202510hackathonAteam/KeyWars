@@ -13,6 +13,7 @@ import (
 	inframodel "keywars/backend/internal/infra/repository/sql/model"
 )
 
+var _ repository.UserRepository = (*userRepo)(nil)
 
 // userRepo は、domain 層の UserRepository を GORM を用いて実装した構造体の定義。
 // データベース操作を担当し、domain 層からの要求を SQL に変換して処理。

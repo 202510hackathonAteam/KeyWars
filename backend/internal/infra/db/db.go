@@ -36,7 +36,7 @@ func defaultDBConnectionConfig() DBConnectionConfig {
 // New は、MySQL への接続を初期化し、*gorm.DB を生成。
 // オプションで接続プール設定を上書き可能。
 // 接続確認 (Ping) に失敗した場合はエラーを返却。
-func New(dbSettings config.DBConfig, poolSettings ...DBConnectionConfig) (*gorm.DB, error) {
+func New(dbSettings *config.DBConfig, poolSettings ...DBConnectionConfig) (*gorm.DB, error) {
 	// 接続プール設定の読み込み（引数指定がなければデフォルト値を使用）
 	connectionSettings := defaultDBConnectionConfig()
 	if len(poolSettings) > 0 {
