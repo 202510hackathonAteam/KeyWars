@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"errors"
 
-	pwdutil "keywars/backend/internal/util/password"
+	"github.com/alexedwards/argon2id"
 )
 
 // User はアプリケーション内のユーザー情報を表すドメインモデル
@@ -25,7 +25,7 @@ var ErrInvalidPassword = errors.New("invalid password")
 
 // SetPassword は、平文パスワードをハッシュ化してユーザー構造体に設定するメソッド。
 func (u *User) SetPassword(passwordPlain string) error {
-  passwordHash, err := pwdutil.Hash([]byte(passwordPlain))
+  passwordHash, err := argon2id.CreateHash(passwordPlain, argon2id.DefaultParams)
   if err != nil {
     return err
   }
@@ -35,7 +35,7 @@ func (u *User) SetPassword(passwordPlain string) error {
 
 // ValidatePassword は、入力された平文パスワードがユーザーのハッシュ済みパスワードと一致するかを検証するメソッド。
 func (u *User) ValidatePassword(passwordPlain string) error {
-  ok, err := pwdutil.Verify([]byte(passwordPlain), u.PasswordHash)
+  ok, err := argon2id.ComparePasswordAndHash(passwordPlain, u.PasswordHash)
   if err != nil {
 		return fmt.Errorf("failed to verify password: %w", err)
 	}

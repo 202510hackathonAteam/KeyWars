@@ -22,22 +22,22 @@ func seedUsers(db *gorm.DB) error {
 		{
 			ID: "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
 			UserName: "testuser1",
-			PasswordHash: "npR6sxACVE3YZSqMVCQlXQ.6Ik22LF3pb72tmCRQAjR7hi0eTTt2do9Waak0pBVWdE",
+			PasswordHash: "$argon2id$v=19$m=65536,t=1,p=12$kp5iwllSZiltdIFbAn8l3w$lP0oFmykA6WIyrzf5xsRaiGQP7b7iETrGRt/kRZMO90",
 		},
 		{
 			ID: "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e",
 			UserName: "testuser2",
-			PasswordHash: "/dtD53fg5uK4UeDWKk28JA.6wHReeX2gXRFI47srXspkkJV181th7/ERN4SrGjmf3s",
+			PasswordHash: "$argon2id$v=19$m=65536,t=1,p=12$n4CYCbQzzeMUlP1zFWWe+w$iwVdTLyDYwb4VXJGQxC0LNLbbNjR4wUqD6/46ZlhXzk",
 		},
 		{
 			ID: "3c4d5e6f-7a8b-4c9d-8e1f-2a3b4c5d6e7f",
 			UserName: "testuser3",
-			PasswordHash: "Oj1QOYP4CZ8ETtImxkmBJQ.h6YH/Hl10PIRs3GUr4BfjNSKHmATcaq4Z53z+sjQDP4",
+			PasswordHash: "$argon2id$v=19$m=65536,t=1,p=12$gn8vbsM657bgiEXwIRKpaQ$a5zLXEyDVgdBj3EJJoisjv6oOOCEn3I8xPIMg0/pZRQ",
 		},
 		{
 			ID: "4d5e6f7a-8b9c-4d0e-9f2a-3b4c5d6e7f8a",
 			UserName: "testuser4",
-			PasswordHash: "u3GhXPAdrzPQfraNzyF8ZA.5lLUQOkCuN2MHfWdf00qjjptikJjNZTsJMQOpLee1k8",
+			PasswordHash: "$argon2id$v=19$m=65536,t=1,p=12$HrvNaqxagJ23sM6ZnZe3Bg$J8jzw5yicIkjGHKPNl4m0oXlZn9kP8mDpwnsibuWTKM",
 		},
 	}
 
