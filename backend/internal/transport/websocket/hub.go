@@ -64,7 +64,7 @@ func NewHub() *Hub {
 // - すでに同じルームにいる場合は ErrAlreadyJoined を返して終了（冪等）
 // - 収容人数を超えると ErrRoomFull を返す
 // - 他ルームへの移動はサポート外（必要なら Move を使う）
-func (hub *Hub) Join(_ context.Context, roomName string, clientConn domain.ClientConn) error {
+func (hub *Hub) Join(roomName string, clientConn domain.ClientConn) error {
 	hub.mutex.Lock()         // 書き込みロック開始
 	defer hub.mutex.Unlock() // 関数終了時に必ず解除
 
@@ -99,7 +99,7 @@ func (hub *Hub) Join(_ context.Context, roomName string, clientConn domain.Clien
 // Leave は、clientConn を所属ルームから削除する。
 // - ルームが空になれば、rooms マップ自体からも削除。
 // - 接続 Close はロック外で安全に行う（デッドロック防止）。
-func (hub *Hub) Leave(_ context.Context, clientConn domain.ClientConn) error {
+func (hub *Hub) Leave(clientConn domain.ClientConn) error {
 	var needClose bool
 
 	hub.mutex.Lock()
@@ -180,7 +180,7 @@ func (hub *Hub) Broadcast(ctx context.Context, roomName string, message any) (fa
 		if err := c.SendJSON(ctx, message); err != nil {
 			failed++
 			// 失敗した接続を掃除（Closeは Leave 内で実施）
-			_ = hub.Leave(context.Background(), c)
+			_ = hub.Leave(c)
 		}
 	}
 	return failed, nil
@@ -210,7 +210,7 @@ func (hub *Hub) Members(roomName string) []domain.ClientConn {
 // - 収容上限を尊重（満杯なら ErrRoomFull）
 // - roomName(setRoom/clearRoom) を正しく更新
 // - old ルームが空になれば削除
-func (hub *Hub) Move(_ context.Context, clientConn domain.ClientConn, newRoom string) error {
+func (hub *Hub) Move(clientConn domain.ClientConn, newRoom string) error {
 	hub.mutex.Lock()
 	defer hub.mutex.Unlock()
 

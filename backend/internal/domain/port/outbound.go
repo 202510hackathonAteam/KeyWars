@@ -5,8 +5,8 @@ import (
 )
 
 type Broadcaster interface {
-	Join(ctx context.Context, room string, c ClientConn) error
-	Leave(ctx context.Context, c ClientConn) error
+	Join(room string, c ClientConn) error
+	Leave(c ClientConn) error
 	Broadcast(ctx context.Context, room string, v any) (failed int, err error)
 }
 

@@ -74,12 +74,6 @@ func (s *MatchRealtimeService) OnConnect(
 ) (any, error) {
 	nowMs := time.Now().UnixMilli()
 
-	// Presence が無い＝このユーザーは試合参加中ではない。
-	// 復帰対象が無いため通常接続として welcome を返す。
-	if s.presenceRepo == nil {
-		return websocket.NewWelcomePayload(userID), nil
-	}
-
 	presenceMap, err := s.presenceRepo.Get(ctx, userID)
 	if err != nil || len(presenceMap) == 0 {
 		_ = s.presenceRepo.SetOnline(ctx, userID, nowMs)
@@ -113,7 +107,7 @@ func (s *MatchRealtimeService) OnConnect(
 	conns := s.websocketHub.Members(userRoom)
 
 	if len(conns) > 0 {
-		_ = s.websocketHub.Move(ctx, conns[0], matchRoom)
+		_ = s.websocketHub.Move(conns[0], matchRoom)
 	}
 
 	_ = s.presenceRepo.SetIngame(ctx, userID, matchID, nowMs)
@@ -147,26 +141,22 @@ func (s *MatchRealtimeService) OnMessage(
 		// Redis の待機キューに追加
 		err := s.matchQueueRepo.Enqueue(ctx, userID, currentTimeMs)
 		if err != nil {
-			return map[string]any{
-				"type":  "queue.error",
-				"error": err.Error(),
-			}, nil
+			s.logger.Error().
+        Err(err).
+        Str("event", "queue.join").
+        Msg("failed to enqueue user into match queue")
+			return nil, err
 		}
 
 		// クライアントに成功レスポンスを返す
-		return map[string]any{
-			"type": "queue.joined",
-			"at":   currentTimeMs,
-		}, nil
+		return websocket.NewQueueJoinedPayload(currentTimeMs), nil
 
 	// --- マッチ待機キャンセル ---
 	case "queue.left":
 		// best-effort：失敗しても致命的ではない
 		_ = s.matchQueueRepo.Cancel(ctx, userID)
 
-		return map[string]any{
-			"type": "queue.cancelled",
-		}, nil
+		return websocket.NewQueueLeftPayload(), nil
 
 	// --- ラウンド完了 ---
 	case constant.TriggerAnswerFinish:
@@ -177,7 +167,7 @@ func (s *MatchRealtimeService) OnMessage(
 				Str("event", constant.TriggerAnswerFinish).
 				Str("match_id", payload.MatchID).
 				Msg("failed to unmarshal payload")
-			return websocket.NewErrorPayload(), nil
+			return nil, err
 		}
 
 		// プレイヤー認証
@@ -190,14 +180,14 @@ func (s *MatchRealtimeService) OnMessage(
 				Str("event", constant.TriggerAnswerFinish).
 				Str("match_id", payload.MatchID).
 				Msg("failed to load match players")
-			return websocket.NewErrorPayload(), nil
+			return nil, err
 		}
 		if userID != players.Player1ID && userID != players.Player2ID {
       s.logger.Warn().
         Str("event", constant.TriggerAnswerFinish).
         Str("match_id", payload.MatchID).
         Msg("unauthorized player")
-			return websocket.NewErrorPayload(), nil
+			return nil, err
 		}
 
 		// 計測機能実行（各プレイヤーが1回だけ実行）
@@ -214,7 +204,7 @@ func (s *MatchRealtimeService) OnMessage(
         Str("event", constant.TriggerAnswerFinish).
         Str("match_id", payload.MatchID).
         Msg("failed to SaveMeasurement (answer finish)")
-			return websocket.NewErrorPayload(), nil
+			return nil, err
 		}
 
 		// measurementFinishedCountを+1（全員が1回だけ実行）
@@ -222,7 +212,7 @@ func (s *MatchRealtimeService) OnMessage(
 		measurementFinishedCount, err := s.roundStateRepo.IncrementMeasurementFinishCount(incrementCountCtx, payload.MatchID)
 		cancelIncrement()
 		if err != nil {
-			return websocket.NewErrorPayload(), nil
+			return nil, err
 		}
 
 		// 両プレイヤーが揃うまで終了処理は実行しない（まだ各プレイヤー1回実行の領域）
@@ -236,7 +226,7 @@ func (s *MatchRealtimeService) OnMessage(
         Str("event", constant.TriggerAnswerFinish).
         Str("match_id", payload.MatchID).
         Msg("unexpected measurement count (too large)")
-			return websocket.NewErrorPayload(), nil
+			return nil, err
 		}
 
 		// =====================================
@@ -250,7 +240,7 @@ func (s *MatchRealtimeService) OnMessage(
         Str("event", constant.TriggerAnswerFinish).
         Str("match_id", payload.MatchID).
         Msg("ProcessRoundResult failed")
-			return websocket.NewErrorPayload(), nil
+			return nil, err
 		}
 
 		return nil, nil
@@ -264,7 +254,7 @@ func (s *MatchRealtimeService) OnMessage(
 				Str("event", constant.TriggerAnswerTimeout).
 				Str("match_id", payload.MatchID).
 				Msg("failed to unmarshal payload")
-			return websocket.NewErrorPayload(), nil
+			return nil, err
 		}
 
 		// プレイヤー認証
@@ -277,14 +267,14 @@ func (s *MatchRealtimeService) OnMessage(
 				Str("event", constant.TriggerAnswerTimeout).
 				Str("match_id", payload.MatchID).
 				Msg("failed to load match players")
-			return websocket.NewErrorPayload(), nil
+			return nil, err
 		}
 		if userID != players.Player1ID && userID != players.Player2ID {
       s.logger.Warn().
         Str("event", constant.TriggerAnswerTimeout).
         Str("match_id", payload.MatchID).
         Msg("unauthorized player")
-			return websocket.NewErrorPayload(), nil
+			return nil, err
 		}
 
 		// 計測機能実行（各プレイヤーが1回だけ実行）
@@ -301,7 +291,7 @@ func (s *MatchRealtimeService) OnMessage(
         Str("event", constant.TriggerAnswerTimeout).
         Str("match_id", payload.MatchID).
         Msg("failed to SaveMeasurement (answer timeout)")
-			return websocket.NewErrorPayload(), nil
+			return nil, err
 		}
 
 		// measurementFinishedCountを+1（全員が1回だけ実行）
@@ -309,7 +299,7 @@ func (s *MatchRealtimeService) OnMessage(
 		measurementFinishedCount, err := s.roundStateRepo.IncrementMeasurementFinishCount(incrementCountCtx, payload.MatchID)
 		cancelIncrement()
 		if err != nil {
-			return websocket.NewErrorPayload(), nil
+			return nil, err
 		}
 
 		// 両プレイヤーが揃うまで終了処理は実行しない（まだ各プレイヤー1回実行の領域）
@@ -323,7 +313,7 @@ func (s *MatchRealtimeService) OnMessage(
         Str("event", constant.TriggerAnswerTimeout).
         Str("match_id", payload.MatchID).
         Msg("unexpected measurement count (too large)")
-			return websocket.NewErrorPayload(), nil
+			return nil, err
 		}
 
 		// =====================================
@@ -337,7 +327,7 @@ func (s *MatchRealtimeService) OnMessage(
         Str("event", constant.TriggerAnswerTimeout).
         Str("match_id", payload.MatchID).
         Msg("ProcessRoundResult failed")
-			return websocket.NewErrorPayload(), nil
+			return nil, err
 		}
 
 		return nil, nil

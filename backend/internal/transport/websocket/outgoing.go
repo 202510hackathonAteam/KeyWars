@@ -3,7 +3,7 @@ package websocket
 // イベント種別（type）を定数化
 const (
 	TypeQueueJoined = "queue.joined"
-	TypeQueueLeft   = "queue.left"
+	TypeQueueLeft   = "queue.cancelled"
 
 	TypeWelcome = "welcome"
 	TypeMatchFound = "match.found"
@@ -48,7 +48,7 @@ func NewQueueJoinedPayload(atMS int64) QueueJoinedPayload {
 
 // QueueLeftPayload: キュー離脱（キャンセル）通知
 type QueueLeftPayload struct {
-	Type   string `json:"type"`   // "queue.left"
+	Type   string `json:"type"`   // "queue.cancelled"
 	// Reason string `json:"reason"` // "canceled" など（任意）
 }
 

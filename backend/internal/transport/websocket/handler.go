@@ -65,12 +65,6 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	connCtx, connCancel := context.WithCancel(context.Background())
 	defer connCancel()
 
-	// 🔍 ここ！Upgrade 前の通常 HTTP リクエストなので全部見える
-	log.Println("[WS] Cookie Header:", request.Header.Get("Cookie"))
-	log.Println("[WS] X-CSRF-Token Header:", request.Header.Get("X-CSRF-Token"))
-	log.Println("[WS] Origin:", request.Header.Get("Origin"))
-	log.Println("[WS] User-Agent:", request.Header.Get("User-Agent"))
-
 	// --- 1) 認証 ---
 	cookie, err := request.Cookie("access_token")
 	if err != nil || cookie.Value == "" {
@@ -99,19 +93,17 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	}
 
 	// --- 3) Hub.Join（マッチング待機は個人ルームへ） ---
-	if handler.Hub != nil {
-		if err := handler.Hub.Join(connCtx, roomName, clientConn); err != nil {
-			log.Println("[WS] Hub.Join error:", err)
-			if errors.Is(err, ErrRoomFull) {
-				_ = wsConn.WriteControl(
-					websocket.CloseMessage,
-					websocket.FormatCloseMessage(websocket.CloseTryAgainLater, "room full"),
-					time.Now().Add(writeWait),
-				)
-			}
-			_ = wsConn.Close()
-			return
+	if err := handler.Hub.Join(roomName, clientConn); err != nil {
+		log.Println("[WS] Hub.Join error:", err)
+		if errors.Is(err, ErrRoomFull) {
+			_ = wsConn.WriteControl(
+				websocket.CloseMessage,
+				websocket.FormatCloseMessage(websocket.CloseTryAgainLater, "room full"),
+				time.Now().Add(writeWait),
+			)
 		}
+		_ = wsConn.Close()
+		return
 	}
 
 	// --- 4) writer goroutine（Ping 送信込み）---
@@ -163,10 +155,21 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	}()
 
 	// --- 接続直後の初期メッセージ（writer 起動後に） ---
-	if handler.Service != nil {
-		if reply, err := handler.Service.OnConnect(connCtx, userID, clientConn.Room()); err == nil && reply != nil {
-			_ = clientConn.SendJSON(connCtx, reply)
-		}
+	reply, err := handler.Service.OnConnect(connCtx, userID, clientConn.Room())
+	if err != nil {
+    log.Println("[WS-OnConnectError]", err)
+    // エラー理由をクライアントへ送信（任意）
+    _ = wsConn.WriteControl(
+        websocket.CloseMessage,
+        websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "on connect failed"),
+        time.Now().Add(writeWait),
+    )
+    wsConn.Close()
+    return
+	}
+
+	if reply != nil {
+		_ = clientConn.SendJSON(connCtx, reply)
 	}
 
 	// --- 5) reader ループ（Pong/ReadDeadline 込み） ---
@@ -174,9 +177,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	_ = wsConn.SetReadDeadline(time.Now().Add(pongWait))
 	wsConn.SetPongHandler(func(_ string) error {
 		_ = wsConn.SetReadDeadline(time.Now().Add(pongWait))
-		if handler.Presence != nil {
-			_ = handler.Presence.Heartbeat(connCtx, userID, time.Now().UnixMilli())
-		}
+		_ = handler.Presence.Heartbeat(connCtx, userID, time.Now().UnixMilli())
 		return nil
 	})
 	wsConn.SetCloseHandler(func(_ int, _ string) error {
@@ -194,26 +195,25 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		if err := json.Unmarshal(rawData, &incoming); err != nil {
 			continue
 		}
-		if handler.Service != nil {
-			room := clientConn.Room()
-			if reply, err := handler.Service.OnMessage(connCtx, userID, room, incoming.Type, incoming.Body); err == nil && reply != nil {
-				_ = clientConn.SendJSON(connCtx, reply)
-			}
-		}
-		if handler.Service == nil {
-			_ = clientConn.SendJSON(connCtx, map[string]any{
-				"echo": string(rawData),
-			})
+		room := clientConn.Room()
+		reply, err := handler.Service.OnMessage(connCtx, userID, room, incoming.Type, incoming.Body)
+		if err != nil {
+			log.Println("[WS-OnMessageError]", err)
+
+			_ = clientConn.SendJSON(connCtx, NewErrorPayload())
+
 			continue
+		}
+
+		if reply != nil {
+			_ = clientConn.SendJSON(connCtx, reply)
 		}
 	}
 
 	// --- 6) 終了処理 ---
-	if handler.Hub != nil {
-		_ = handler.Hub.Leave(context.Background(), clientConn)
-	}
-	if handler.Presence != nil {
-		_ = handler.Presence.Disconnect(context.Background(), userID, time.Now().UnixMilli())
-	}
+	_ = handler.Hub.Leave(clientConn)
+
+	_ = handler.Presence.Disconnect(context.Background(), userID, time.Now().UnixMilli())
+
 	<-doneChan
 }

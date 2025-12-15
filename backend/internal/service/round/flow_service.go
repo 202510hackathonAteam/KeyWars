@@ -261,15 +261,13 @@ func (s *RoundFlowService) completeMatch(ctx context.Context, matchID, player1ID
 	// Hub から全メンバーを除外
 	conns := s.websocketHub.Members(roomName)
 	for _, conn := range conns {
-		_ = s.websocketHub.Leave(ctx, conn)
+		_ = s.websocketHub.Leave(conn)
 	}
 
 	// ★ 重要：presence を "online" に戻して match_id を消す
-	if s.presenceRepo != nil {
-		now := time.Now().UnixMilli()
-		_ = s.presenceRepo.SetOnline(ctx, player1ID, now)
-		_ = s.presenceRepo.SetOnline(ctx, player2ID, now)
-	}
+	now := time.Now().UnixMilli()
+	_ = s.presenceRepo.SetOnline(ctx, player1ID, now)
+	_ = s.presenceRepo.SetOnline(ctx, player2ID, now)
 
 	return nil
 }

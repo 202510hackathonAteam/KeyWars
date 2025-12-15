@@ -3,6 +3,8 @@ package realtime
 import (
 	"context"
 	"time"
+
+	"keywars/backend/internal/transport/websocket"
 )
 
 //
@@ -72,16 +74,14 @@ func (s *MatchRealtimeService) tryMakeMatch(ctx context.Context) {
 	}
 
 	// --- 1) 両者の個人ルームへ「マッチ成立」通知 ---
-	_, _ = s.websocketHub.Broadcast(ctx, "user:"+user1ID, map[string]any{
-		"type":     "match.found",
-		"matchId":  matchID,
-		"opponent": user2ID,
-	})
-	_, _ = s.websocketHub.Broadcast(ctx, "user:"+user2ID, map[string]any{
-		"type":     "match.found",
-		"matchId":  matchID,
-		"opponent": user1ID,
-	})
+	_, _ = s.websocketHub.Broadcast(ctx, "user:"+user1ID, websocket.NewMatchFoundPayload(
+		matchID,
+		user2ID,
+	))
+	_, _ = s.websocketHub.Broadcast(ctx, "user:"+user2ID, websocket.NewMatchFoundPayload(
+		matchID,
+		user1ID,
+	))
 
 	// --- 2) 両者をマッチルームへ移動 ---
 	// ルーム名は "match:<matchID>" とする
@@ -120,6 +120,6 @@ func (s *MatchRealtimeService) moveClientIfConnected(userID string, newRoomName 
 
 	// 想定上、同一ユーザーに対して複数の接続は存在しない。
 	// 仮に複数ある場合は、最初の1件のみを対象とする。
-	s.websocketHub.Move(context.Background(), clientConnections[0], newRoomName)
+	s.websocketHub.Move(clientConnections[0], newRoomName)
 	return nil
 }
