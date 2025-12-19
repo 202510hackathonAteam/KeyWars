@@ -29,7 +29,6 @@ import (
 type MatchRealtimeService struct {
 	matchQueueRepo 					repository.MatchQueueRepository
 	roundStateRepo 					repository.RoundStateRepository
-	presenceRepo   					repository.PresenceRepository
 	websocketHub         		*websocket.Hub
 	logger 							 		*zerolog.Logger
 	deckGeneratorService		*round.DeckGeneratorService
@@ -42,7 +41,6 @@ type MatchRealtimeService struct {
 func NewMatchRealtimeService(
 	matchQueueRepo repository.MatchQueueRepository,
 	roundStateRepo repository.RoundStateRepository,
-	presenceRepo repository.PresenceRepository,
 	websocketHub *websocket.Hub,
 	logger *zerolog.Logger,
 	deckGeneratorService *round.DeckGeneratorService,
@@ -52,7 +50,6 @@ func NewMatchRealtimeService(
 	return &MatchRealtimeService{
 		matchQueueRepo: 	 			 matchQueueRepo,
 		roundStateRepo: 	 			 roundStateRepo,
-		presenceRepo:   	 			 presenceRepo,
 		websocketHub:         	 websocketHub,
 		logger:									 logger,
 		deckGeneratorService:    deckGeneratorService,
@@ -81,28 +78,7 @@ func (s *MatchRealtimeService) OnConnect(
 	}
 
 	// --- 2) それ以外（通常接続） ---
-	if err := s.presenceRepo.Connect(ctx, userID, nowMs); err != nil {
-		return nil, err
-	}
-
 	return websocket.NewWelcomePayload(userID), nil
-}
-
-// OnHeartbeat は、WebSocket の Pong 受信などを契機に呼び出され、
-// 対象ユーザーの生存確認（Heartbeat）を Presence リポジトリに記録する。
-// 通信断や一時的な障害により失敗する可能性があるため、
-// 呼び出し元では best-effort として扱い、接続を即座に切断しない前提で使用される。
-func (s *MatchRealtimeService) OnHeartbeat(
-	ctx context.Context,
-	userID string,
-) error {
-	if err := s.presenceRepo.Heartbeat(ctx, userID, time.Now().UnixMilli()); err != nil {
-		s.logger.Warn().
-			Err(err).
-			Msg("presence heartbeat failed")
-		return err
-	}
-	return nil
 }
 
 // OnMessage は、クライアントから受信した WebSocket メッセージを処理する。
@@ -322,23 +298,16 @@ func (s *MatchRealtimeService) OnMessage(
 }
 
 // OnDisconnect は WebSocket 切断という事実を受け取り、
-// Presence 更新および待機キューからの除外を best-effort で行う。
+// 待機キューからの除外を best-effort で行う。
 // 失敗時もエラーは返さず、内部でログ出力のみ行う。
 func (s *MatchRealtimeService) OnDisconnect(
 	ctx context.Context,
 	userID string,
 ) {
-	if err := s.presenceRepo.Disconnect(ctx, userID, time.Now().UnixMilli()); err != nil {
-		s.logger.Warn().
-			Err(err).
-			Str("user_id", userID).
-			Msg("presence disconnect failed")
-	}
-
 	if err := s.matchQueueRepo.Cancel(ctx, userID); err != nil {
 		s.logger.Warn().
 			Err(err).
-			Str("user_id", userID).
+			Str("event", "OnDisconnect").
 			Msg("failed to cancel match queue on disconnect")
 	}
 }

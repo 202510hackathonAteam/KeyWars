@@ -20,7 +20,6 @@ type RoundFlowService struct {
 	lifepointService    *LifepointService
 	matchJudgeService   *MatchJudgeService
 	timeoutCancelMap    map[string]context.CancelFunc
-	presenceRepo        repository.PresenceRepository
 }
 
 // NewRoundFlowService は RoundFlowService のコンストラクタ。
@@ -31,7 +30,6 @@ func NewRoundFlowService(
 	timeoutRoundService *TimeoutRoundService,
 	lifepointService *LifepointService,
 	matchJudgeService *MatchJudgeService,
-	presenceRepo repository.PresenceRepository,
 ) *RoundFlowService {
 	return &RoundFlowService{
 		roundStateRepo:      roundStateRepo,
@@ -41,7 +39,6 @@ func NewRoundFlowService(
 		lifepointService:    lifepointService,
 		matchJudgeService:   matchJudgeService,
 		timeoutCancelMap:    make(map[string]context.CancelFunc),
-		presenceRepo:        presenceRepo,
 	}
 }
 

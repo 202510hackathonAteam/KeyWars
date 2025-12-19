@@ -10,7 +10,6 @@ import (
 
 	domain "keywars/backend/internal/domain/port"
 	"keywars/backend/internal/infra/auth"
-	"keywars/backend/internal/config"
 
 	"github.com/gorilla/websocket"
 )
@@ -18,6 +17,9 @@ import (
 const (
 	// readLimit は 1 メッセージあたりの最大受信サイズ（バイト）。
 	readLimit = 1 << 20
+
+  // pongWait は最後の Pong 受信から次の Pong までの猶予時間。
+  pongWait = 60 * time.Second
 
 	// writeWait は各フレーム送信の書き込みタイムアウト。
 	writeWait = 10 * time.Second
@@ -175,10 +177,9 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 
 	// --- 5) reader ループ（Pong/ReadDeadline 込み） ---
 	wsConn.SetReadLimit(readLimit)
-	_ = wsConn.SetReadDeadline(time.Now().Add(config.PongWait))
+	_ = wsConn.SetReadDeadline(time.Now().Add(pongWait))
 	wsConn.SetPongHandler(func(_ string) error {
-		_ = wsConn.SetReadDeadline(time.Now().Add(config.PongWait))
-		_ = handler.Service.OnHeartbeat(connCtx, userID)
+		_ = wsConn.SetReadDeadline(time.Now().Add(pongWait))
 		return nil
 	})
 	wsConn.SetCloseHandler(func(_ int, _ string) error {
