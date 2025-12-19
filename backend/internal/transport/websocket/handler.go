@@ -9,8 +9,8 @@ import (
 	"context"
 
 	domain "keywars/backend/internal/domain/port"
-	"keywars/backend/internal/domain/repository"
 	"keywars/backend/internal/infra/auth"
+	"keywars/backend/internal/config"
 
 	"github.com/gorilla/websocket"
 )
@@ -18,9 +18,6 @@ import (
 const (
 	// readLimit は 1 メッセージあたりの最大受信サイズ（バイト）。
 	readLimit = 1 << 20
-
-	// pongWait は最後の Pong 受信から次の Pong までの猶予時間。
-	pongWait = 60 * time.Second
 
 	// writeWait は各フレーム送信の書き込みタイムアウト。
 	writeWait = 10 * time.Second
@@ -39,7 +36,6 @@ const (
 type Handler struct {
 	Hub       *Hub
 	Service   domain.RealtimeService
-	Presence  repository.PresenceRepository
 	TokenAuth auth.JWTHandler
 }
 
@@ -61,7 +57,7 @@ type IncomingMessage struct {
 // ServeHTTP は WebSocket エンドポイントのエントリポイント。
 // 1) トークン検証 → 2) Upgrade → 3) Hub への Join → 4) writer 起動 → 5) reader ループ → 6) クリーンアップ
 func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-	// WebSocket生存期間用
+	// WebSocket接続生存期間用
 	connCtx, connCancel := context.WithCancel(context.Background())
 	defer connCancel()
 
@@ -155,14 +151,19 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	}()
 
 	// --- 接続直後の初期メッセージ（writer 起動後に） ---
-	reply, err := handler.Service.OnConnect(connCtx, userID, clientConn.Room())
+	onConnectCtx, onConnectcancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
+	defer onConnectcancel()
+	reply, err := handler.Service.OnConnect(onConnectCtx, userID, clientConn.Room())
+	if err == nil && onConnectCtx.Err() != nil {
+		err = onConnectCtx.Err()
+	}
 	if err != nil {
     log.Println("[WS-OnConnectError]", err)
     // エラー理由をクライアントへ送信（任意）
     _ = wsConn.WriteControl(
-        websocket.CloseMessage,
-        websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "on connect failed"),
-        time.Now().Add(writeWait),
+			websocket.CloseMessage,
+			websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "on connect failed"),
+			time.Now().Add(writeWait),
     )
     wsConn.Close()
     return
@@ -174,10 +175,10 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 
 	// --- 5) reader ループ（Pong/ReadDeadline 込み） ---
 	wsConn.SetReadLimit(readLimit)
-	_ = wsConn.SetReadDeadline(time.Now().Add(pongWait))
+	_ = wsConn.SetReadDeadline(time.Now().Add(config.PongWait))
 	wsConn.SetPongHandler(func(_ string) error {
-		_ = wsConn.SetReadDeadline(time.Now().Add(pongWait))
-		_ = handler.Presence.Heartbeat(connCtx, userID, time.Now().UnixMilli())
+		_ = wsConn.SetReadDeadline(time.Now().Add(config.PongWait))
+		_ = handler.Service.OnHeartbeat(connCtx, userID)
 		return nil
 	})
 	wsConn.SetCloseHandler(func(_ int, _ string) error {
@@ -195,8 +196,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		if err := json.Unmarshal(rawData, &incoming); err != nil {
 			continue
 		}
-		room := clientConn.Room()
-		reply, err := handler.Service.OnMessage(connCtx, userID, room, incoming.Type, incoming.Body)
+		reply, err := handler.Service.OnMessage(connCtx, userID, incoming.Type, incoming.Body)
 		if err != nil {
 			log.Println("[WS-OnMessageError]", err)
 
@@ -213,7 +213,9 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	// --- 6) 終了処理 ---
 	_ = handler.Hub.Leave(clientConn)
 
-	_ = handler.Presence.Disconnect(context.Background(), userID, time.Now().UnixMilli())
+	onDisconnectCtx, onDisconnectcancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
+	defer onDisconnectcancel()
+	handler.Service.OnDisconnect(onDisconnectCtx, userID)
 
 	<-doneChan
 }

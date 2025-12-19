@@ -23,6 +23,16 @@ type RoundStateRepository interface {
 	// 「再戦に影響する一時データのみ」を安全に削除するクリーンアップ処理する。
 	CleanupMatch(ctx context.Context, matchID, user1ID, user2ID string) error
 
+	// ユーザーが現在参加している試合の対応関係を永続化する。
+	// 試合開始時に呼び出され、userID → matchID の逆引きインデックスを作成する。
+	// presence とは独立した試合ドメインのデータであり、試合終了時には必ず削除される。
+	SetUserActiveMatch(ctx context.Context, userID,	matchID string) error
+
+	// ユーザーが現在参加している試合の matchID を取得する。
+	// user_active_match:{userID} に保存された逆引きインデックスを参照し、
+	// 試合に参加していない場合は Redis のエラーをそのまま返す。
+	LoadUserActiveMatchID(ctx context.Context, userID string) (string, error)
+
 	// 試合で使用する出題デッキ（20問分）を Redis に保存する。
 	SaveDeck(ctx context.Context, matchID string, deck []model.DeckPrompt) error
 

@@ -264,10 +264,5 @@ func (s *RoundFlowService) completeMatch(ctx context.Context, matchID, player1ID
 		_ = s.websocketHub.Leave(conn)
 	}
 
-	// ★ 重要：presence を "online" に戻して match_id を消す
-	now := time.Now().UnixMilli()
-	_ = s.presenceRepo.SetOnline(ctx, player1ID, now)
-	_ = s.presenceRepo.SetOnline(ctx, player2ID, now)
-
 	return nil
 }

@@ -73,27 +73,15 @@ func (s *MatchRealtimeService) tryMakeMatch(ctx context.Context) {
 		return
 	}
 
-	// --- 1) 両者の個人ルームへ「マッチ成立」通知 ---
-	_, _ = s.websocketHub.Broadcast(ctx, "user:"+user1ID, websocket.NewMatchFoundPayload(
-		matchID,
-		user2ID,
-	))
-	_, _ = s.websocketHub.Broadcast(ctx, "user:"+user2ID, websocket.NewMatchFoundPayload(
-		matchID,
-		user1ID,
-	))
+	// ユーザー → 試合の対応関係を確定
+	s.roundStateRepo.SetUserActiveMatch(ctx, user1ID, matchID)
+	s.roundStateRepo.SetUserActiveMatch(ctx, user2ID, matchID)
 
-	// --- 2) 両者をマッチルームへ移動 ---
-	// ルーム名は "match:<matchID>" とする
-	matchRoomName := "match:" + matchID
-	_ = s.moveClientIfConnected(user1ID, matchRoomName)
-	_ = s.moveClientIfConnected(user2ID, matchRoomName)
+	// マッチ成立通知（即時 push）
+  s.notifyMatchFoundIfConnected(user1ID, matchID, user2ID)
+  s.notifyMatchFoundIfConnected(user2ID, matchID, user1ID)
 
-	now := time.Now().UnixMilli()
-	_ = s.presenceRepo.SetIngame(ctx, user1ID, matchID, now)
-	_ = s.presenceRepo.SetIngame(ctx, user2ID, matchID, now)
-
-	// --- 3) 第1ラウンドを開始 ---
+	// 第1ラウンド開始（1回だけ）
 	if err := s.roundFlowService.StartFirstRound(ctx, matchID, user1ID, user2ID); err != nil {
     s.logger.Error().
 			Err(err).
@@ -122,4 +110,22 @@ func (s *MatchRealtimeService) moveClientIfConnected(userID string, newRoomName 
 	// 仮に複数ある場合は、最初の1件のみを対象とする。
 	s.websocketHub.Move(clientConnections[0], newRoomName)
 	return nil
+}
+
+// notifyMatchFoundIfConnected は、接続中ユーザーに対するマッチ成立の即時通知処理。
+// WebSocket 接続が存在する場合のみ通知とルーム移動を行い、
+// 未接続の場合は OnConnect による再送に委ねる実装。
+func (s *MatchRealtimeService) notifyMatchFoundIfConnected(
+  userID, matchID, opponentID string,
+) {
+  conns := s.websocketHub.Members("user:" + userID)
+  if len(conns) == 0 {
+    return // 未接続なら後回し
+  }
+
+  _ = s.websocketHub.Move(conns[0], "match:"+matchID)
+  _ = conns[0].SendJSON(
+    context.Background(),
+    websocket.NewMatchFoundPayload(matchID, opponentID),
+  )
 }

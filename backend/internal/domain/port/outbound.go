@@ -20,8 +20,10 @@ type ClientConn interface {
 type RealtimeService interface {
 	// 接続直後に実行（部屋参加や初期メッセージ返却など）
 	OnConnect(ctx context.Context, uid, room string) (any, error)
+	// 対象ユーザーの生存確認
+	OnHeartbeat(ctx context.Context, userID string) error
 	// クライアント→サーバのアプリケーションメッセージ処理
-	OnMessage(ctx context.Context, uid, room string, typ string, payload []byte) (maybeReply any, err error)
+	OnMessage(ctx context.Context, uid string, typ string, payload []byte) (maybeReply any, err error)
 	// 切断時の後片付け
-	OnDisconnect(ctx context.Context, uid, room string)
+	OnDisconnect(ctx context.Context, uid string)
 }

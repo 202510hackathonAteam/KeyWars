@@ -20,6 +20,7 @@ var _ repository.RoundStateRepository = (*RoundStateRepositoryRedis)(nil)
 // RoundStateRepositoryRedis は、対戦進行中の「メタ情報・状態・イベント・デッキ」を
 // Redis 上の複数キーに分割して管理するリポジトリ実装。
 // キー構成：
+// 	 - user_active_match:{userID} ... ユーザーIDに紐づいたマッチID（matchID）
 //   - match:{matchID}         ... メタ情報（status, created_at, player1, player2, winner_user_id）
 //   - match:{matchID}:state   ... 進行状態（deck_index, round, round_start_at_ms, round_end_at_ms,
 //                                     player1_lifepoint, player2_lifepoint,
@@ -97,6 +98,8 @@ func (r *RoundStateRepositoryRedis) Finish(contextObject context.Context, matchI
 // 「再戦に影響する一時データのみ」を安全に削除するクリーンアップ処理するメソッド。
 func (r *RoundStateRepositoryRedis) CleanupMatch(ctx context.Context, matchID, user1ID, user2ID string) error {
 	keys := []string{
+		fmt.Sprintf("user_active_match:%s", user1ID),
+		fmt.Sprintf("user_active_match:%s", user2ID),
 		fmt.Sprintf("match:%s", matchID),
 		fmt.Sprintf("match:%s:state", matchID),
 		fmt.Sprintf("match:%s:measurement_finished_count", matchID),
@@ -105,6 +108,29 @@ func (r *RoundStateRepositoryRedis) CleanupMatch(ctx context.Context, matchID, u
 	}
 
 	return r.redisClient.Del(ctx, keys...).Err()
+}
+
+// SetUserActiveMatch は、ユーザーが現在参加している試合の対応関係を永続化するメソッド。
+// 試合開始時に呼び出され、userID → matchID の逆引きインデックスを作成する。
+// presence とは独立した試合ドメインのデータであり、試合終了時には必ず削除される。
+func (r *RoundStateRepositoryRedis) SetUserActiveMatch(
+	ctx context.Context,
+	userID,
+	matchID string,
+) error {
+	userMatchKey := fmt.Sprintf("user_active_match:%s", userID)
+	return r.redisClient.Set(ctx, userMatchKey, matchID, config.MatchExpiryOnStart).Err()
+}
+
+// LoadUserActiveMatchID は、ユーザーが現在参加している試合の matchID を取得するメソッド。
+// user_active_match:{userID} に保存された逆引きインデックスを参照し、
+// 試合に参加していない場合は Redis のエラーをそのまま返す。
+func (r *RoundStateRepositoryRedis) LoadUserActiveMatchID(
+	ctx context.Context,
+	userID string,
+) (string, error) {
+	userMatchKey := fmt.Sprintf("user_active_match:%s", userID)
+	return r.redisClient.Get(ctx, userMatchKey).Result()
 }
 
 // SaveDeck は、試合で使用する出題デッキ（20問分）を Redis に保存するメソッド。

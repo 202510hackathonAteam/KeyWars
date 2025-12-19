@@ -66,7 +66,8 @@ func NewMatchRealtimeService(
 //
 
 // OnConnect は、新しい WebSocket 接続が確立された際に呼び出される。
-// 接続直後のクライアントに対して歓迎メッセージを返す。
+// 接続直後のクライアントを現在の試合状態に同期し、
+// 必要に応じて復帰通知・通常歓迎メッセージのいずれかを返す。
 func (s *MatchRealtimeService) OnConnect(
 	ctx context.Context,
 	userID string,
@@ -74,52 +75,34 @@ func (s *MatchRealtimeService) OnConnect(
 ) (any, error) {
 	nowMs := time.Now().UnixMilli()
 
-	presenceMap, err := s.presenceRepo.Get(ctx, userID)
-	if err != nil || len(presenceMap) == 0 {
-		_ = s.presenceRepo.SetOnline(ctx, userID, nowMs)
-		return websocket.NewWelcomePayload(userID), nil
+	// --- 1) 途中復帰できるか？ ---
+	if payload, ok := s.tryRestore(ctx, userID, nowMs); ok {
+		return payload, nil
 	}
 
-	status := presenceMap["status"]
-	matchID := presenceMap["match_id"]
-
-	// 途中復帰の前提条件をすべてチェック（否定条件は即 return）
-	if !(status == "ingame" || status == "reconnecting") {
-		_ = s.presenceRepo.SetOnline(ctx, userID, nowMs)
-		return websocket.NewWelcomePayload(userID), nil
+	// --- 2) それ以外（通常接続） ---
+	if err := s.presenceRepo.Connect(ctx, userID, nowMs); err != nil {
+		return nil, err
 	}
 
-	if matchID == "" {
-		_ = s.presenceRepo.SetOnline(ctx, userID, nowMs)
-		return websocket.NewWelcomePayload(userID), nil
+	return websocket.NewWelcomePayload(userID), nil
+}
+
+// OnHeartbeat は、WebSocket の Pong 受信などを契機に呼び出され、
+// 対象ユーザーの生存確認（Heartbeat）を Presence リポジトリに記録する。
+// 通信断や一時的な障害により失敗する可能性があるため、
+// 呼び出し元では best-effort として扱い、接続を即座に切断しない前提で使用される。
+func (s *MatchRealtimeService) OnHeartbeat(
+	ctx context.Context,
+	userID string,
+) error {
+	if err := s.presenceRepo.Heartbeat(ctx, userID, time.Now().UnixMilli()); err != nil {
+		s.logger.Warn().
+			Err(err).
+			Msg("presence heartbeat failed")
+		return err
 	}
-
-	// state がない = 終了済み or 試合破棄 → 復帰できない
-	restoredState, err := s.roundStateRepo.LoadMatchState(ctx, matchID)
-	if err != nil || restoredState == nil {
-		_ = s.presenceRepo.SetOnline(ctx, userID, nowMs)
-		return websocket.NewWelcomePayload(userID), nil
-	}
-
-	// ここまで来た場合、途中復帰できる
-	matchRoom := "match:" + matchID
-	userRoom := "user:" + userID
-	conns := s.websocketHub.Members(userRoom)
-
-	if len(conns) > 0 {
-		_ = s.websocketHub.Move(conns[0], matchRoom)
-	}
-
-	_ = s.presenceRepo.SetIngame(ctx, userID, matchID, nowMs)
-
-	return websocket.NewMatchRestorePayload(
-		matchID,
-		websocket.MatchRestoreState{
-			Round:            restoredState.Round,
-			Player1Lifepoint: restoredState.Player1Lifepoint,
-			Player2Lifepoint: restoredState.Player2Lifepoint,
-		},
-	), nil
+	return nil
 }
 
 // OnMessage は、クライアントから受信した WebSocket メッセージを処理する。
@@ -127,7 +110,6 @@ func (s *MatchRealtimeService) OnConnect(
 func (s *MatchRealtimeService) OnMessage(
 	ctx context.Context,
 	userID string,
-	roomName string,
 	messageType string,
 	messagePayload []byte,
 ) (any, error) {
@@ -339,13 +321,66 @@ func (s *MatchRealtimeService) OnMessage(
 	}
 }
 
-// OnDisconnect は、クライアントの WebSocket 接続が切断された際に呼び出される。
-// 待機中であれば Redis キューから安全に削除する。
+// OnDisconnect は WebSocket 切断という事実を受け取り、
+// Presence 更新および待機キューからの除外を best-effort で行う。
+// 失敗時もエラーは返さず、内部でログ出力のみ行う。
 func (s *MatchRealtimeService) OnDisconnect(
 	ctx context.Context,
 	userID string,
-	roomName string,
 ) {
-	// best-effort で待機解除（例: 切断時）
-	_ = s.matchQueueRepo.Cancel(context.Background(), userID)
+	if err := s.presenceRepo.Disconnect(ctx, userID, time.Now().UnixMilli()); err != nil {
+		s.logger.Warn().
+			Err(err).
+			Str("user_id", userID).
+			Msg("presence disconnect failed")
+	}
+
+	if err := s.matchQueueRepo.Cancel(ctx, userID); err != nil {
+		s.logger.Warn().
+			Err(err).
+			Str("user_id", userID).
+			Msg("failed to cancel match queue on disconnect")
+	}
 }
+
+// tryRestore は、WebSocket 接続時の途中復帰判定および復帰処理。
+// 対象ユーザーが進行中試合に参加している場合のみ、ルーム移動と
+// 復帰用ペイロード生成を行い、復帰不可の場合は処理を行わない。
+func (s *MatchRealtimeService) tryRestore(
+	ctx context.Context,
+	userID string,
+	nowMs int64,
+) (any, bool) {
+	// 1) ユーザーが参加中の試合を引く
+	matchID, err := s.roundStateRepo.LoadUserActiveMatchID(ctx, userID)
+	if err != nil {
+		return nil, false
+	}
+
+	// 2) 試合の state が生きているか確認
+	restoredState, err := s.roundStateRepo.LoadMatchState(ctx, matchID)
+	if err != nil || restoredState == nil {
+		return nil, false
+	}
+
+	// ここまで来た場合、途中復帰できる
+	// 3) 接続をマッチルームへ移動
+	userRoom := "user:" + userID
+	matchRoom := "match:" + matchID
+
+	conns := s.websocketHub.Members(userRoom)
+	if len(conns) > 0 {
+		_ = s.websocketHub.Move(conns[0], matchRoom)
+	}
+
+	// 4) 復帰用ペイロードを返す
+	return websocket.NewMatchRestorePayload(
+		matchID,
+		websocket.MatchRestoreState{
+			Round:            restoredState.Round,
+			Player1Lifepoint: restoredState.Player1Lifepoint,
+			Player2Lifepoint: restoredState.Player2Lifepoint,
+		},
+	), true
+}
+
