@@ -124,8 +124,5 @@ func (s *MatchRealtimeService) notifyMatchFoundIfConnected(
   }
 
   _ = s.websocketHub.Move(conns[0], "match:"+matchID)
-  _ = conns[0].SendJSON(
-    context.Background(),
-    websocket.NewMatchFoundPayload(matchID, opponentID),
-  )
+  _ = conns[0].SendJSON(websocket.NewMatchFoundPayload(matchID, opponentID))
 }

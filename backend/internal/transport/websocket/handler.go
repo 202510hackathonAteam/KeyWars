@@ -170,7 +170,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	}
 
 	if reply != nil {
-		_ = clientConn.SendJSON(connCtx, reply)
+		_ = clientConn.SendJSON(reply)
 	}
 
 	// --- 5) reader ループ（Pong/ReadDeadline 込み） ---
@@ -200,13 +200,13 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		if err != nil {
 			log.Println("[WS-OnMessageError]", err)
 
-			_ = clientConn.SendJSON(connCtx, NewErrorPayload())
+			_ = clientConn.SendJSON(NewErrorPayload())
 
 			continue
 		}
 
 		if reply != nil {
-			_ = clientConn.SendJSON(connCtx, reply)
+			_ = clientConn.SendJSON(reply)
 		}
 	}
 

@@ -177,7 +177,7 @@ func (hub *Hub) Broadcast(ctx context.Context, roomName string, message any) (fa
 		default:
 		}
 		// 送信
-		if err := c.SendJSON(ctx, message); err != nil {
+		if err := c.SendJSON(message); err != nil {
 			failed++
 			// 失敗した接続を掃除（Closeは Leave 内で実施）
 			_ = hub.Leave(c)

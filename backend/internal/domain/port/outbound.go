@@ -11,7 +11,7 @@ type Broadcaster interface {
 }
 
 type ClientConn interface {
-	SendJSON(ctx context.Context, v any) error
+	SendJSON(v any) error
 	Close() error
 	UID() string
 	Room() string

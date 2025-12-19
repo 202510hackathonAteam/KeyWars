@@ -1,7 +1,6 @@
 package websocket
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"sync"
@@ -69,7 +68,7 @@ func (client *Client) Room() string {
 // チャネルが満杯の場合はメッセージを破棄し、ErrSendBufferFull を返す。
 // クライアントがすでに閉じられている場合は ErrClientClosed を返す。
 // このメソッドは非ブロッキングであり、送信が完了するまで待機しない。
-func (client *Client) SendJSON(_ context.Context, messageData any) error {
+func (client *Client) SendJSON(messageData any) error {
 	jsonBytes, err := json.Marshal(messageData)
 	if err != nil {
 		return err
