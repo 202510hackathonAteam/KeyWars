@@ -63,58 +63,6 @@ func NewRoundStateRepositoryRedis(redisClient *redis.Client) repository.RoundSta
 	return &RoundStateRepositoryRedis{redisClient: redisClient}
 }
 
-// CreateMeta は、マッチのメタ情報を新規作成する。
-// 役割：参加者IDや作成時刻を保存し、初期状態を "waiting" に設定する。
-// ここでは state/events/deck には触れず、責務を分離している。
-func (r *RoundStateRepositoryRedis) CreateMeta(contextObject context.Context, matchID, user1ID, user2ID string, currentTimeMs int64) error {
-	metaKey := fmt.Sprintf("match:%s", matchID)
-	return r.redisClient.HSet(contextObject, metaKey,
-		"status", "waiting",
-		"created_at", currentTimeMs,
-		"player1", user1ID,
-		"player2", user2ID,
-	).Err()
-}
-
-// Start は、マッチを playing 状態へ遷移し、関連キーへ TTL を設定する。
-// 意図：進行中の試合データが放置されても自動的に回収されるよう GC を効かせる。
-// TTL は運用方針に応じて調整可。
-func (r *RoundStateRepositoryRedis) Start(contextObject context.Context, matchID string) error {
-	matchKey := fmt.Sprintf("match:%s", matchID)
-	pipeline := r.redisClient.TxPipeline()
-
-	// ステータスを playing に更新
-	pipeline.HSet(contextObject, matchKey, "status", "playing")
-
-	for _, suffix := range []string{"", ":state", ":events", ":deck"} {
-		pipeline.Expire(contextObject, matchKey+suffix, config.MatchExpiryOnStart)
-	}
-
-	_, err := pipeline.Exec(contextObject)
-	return err
-}
-
-// Finish は、マッチを finished 状態に更新し、勝者を記録したうえで短い TTL に切り替える。
-// 意図：終了後しばらくは参照できるが、不要に残り続けないようにする。
-func (r *RoundStateRepositoryRedis) Finish(contextObject context.Context, matchID, winnerUserID string) error {
-	matchKey := fmt.Sprintf("match:%s", matchID)
-	pipeline := r.redisClient.TxPipeline()
-
-	// ステータスと勝者IDを保存
-	pipeline.HSet(contextObject, matchKey,
-		"status", "finished",
-		"winner_user_id", winnerUserID,
-	)
-
-	// 終了後は 10 分で掃除（ミリ秒精度で設定）
-	for _, suffix := range []string{"", ":state", ":events", ":deck"} {
-		pipeline.PExpire(contextObject, matchKey+suffix, config.MatchExpiryOnFinish)
-	}
-
-	_, err := pipeline.Exec(contextObject)
-	return err
-}
-
 // CleanupMatch は、1つのマッチが完全に終了した後に呼び出される
 // 「再戦に影響する一時データのみ」を安全に削除するクリーンアップ処理するメソッド。
 func (r *RoundStateRepositoryRedis) CleanupMatch(ctx context.Context, matchID, user1ID, user2ID string) error {

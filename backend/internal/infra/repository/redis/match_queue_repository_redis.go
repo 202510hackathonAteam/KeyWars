@@ -63,14 +63,6 @@ func (r *MatchQueueRepositoryRedis) Cancel(contextObject context.Context, userID
 	return r.redisClient.ZRem(contextObject, keyQueue, userID).Err()
 }
 
-// Score は、指定ユーザーの「待機スコア（＝投入時刻 ms）」を取得する。
-// メンバーが存在しない場合は redis.Nil が返る点に注意（呼び出し側で扱う）。
-//
-// Redis: ZSCORE mq:queue <userID>
-func (r *MatchQueueRepositoryRedis) Score(contextObject context.Context, userID string) (float64, error) {
-	return r.redisClient.ZScore(contextObject, keyQueue, userID).Result()
-}
-
 // DequeuePairAndInitMatch は、待機キューから 2 名を先着順に取り出し、
 // 新しいマッチのメタ情報／進行状態を初期化する。
 // この処理はロック（keyLock）を使って「1プロセスのみ」実行される。
@@ -125,7 +117,6 @@ func (r *MatchQueueRepositoryRedis) DequeuePairAndInitMatch(contextObject contex
 	}
 
 	// 4) マッチのメタ／進行状態を初期化（TxPipeline＝同時確定）
-	currentTimeMs := time.Now().UnixMilli()
 	pipeline := r.redisClient.TxPipeline()
 	matchKey := fmt.Sprintf("match:%s", matchID)
 	matchStateKey := fmt.Sprintf("match:%s:state", matchID)
@@ -133,8 +124,6 @@ func (r *MatchQueueRepositoryRedis) DequeuePairAndInitMatch(contextObject contex
 	// match:{matchID} : メタ情報
 	pipeline.HSet(contextObject,
 		fmt.Sprintf("match:%s", matchID),
-		"status", "waiting",
-		"created_at", currentTimeMs,
 		"player1", user1ID,
 		"player2", user2ID,
 	)

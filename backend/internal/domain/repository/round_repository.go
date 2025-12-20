@@ -10,15 +10,6 @@ import (
 // RoundStateRepository は、対戦中の進行状態（ラウンド状態）を管理するリポジトリインターフェース。
 // Redis の `match:{matchID}:state` や `match:{matchID}:events` に対する操作を抽象化する。
 type RoundStateRepository interface {
-	// 新しいマッチ用のメタ情報を初期化する。
-	CreateMeta(contextObject context.Context, matchID, user1ID, user2ID string, currentTimeMs int64) error
-
-	// マッチの開始フラグを立てる。
-	Start(contextObject context.Context, matchID string) error
-
-	// マッチを終了状態に更新する。
-	Finish(contextObject context.Context, matchID, winnerUserID string) error
-
 	// 1つのマッチが完全に終了した後に呼び出される
 	// 「再戦に影響する一時データのみ」を安全に削除するクリーンアップ処理する。
 	CleanupMatch(ctx context.Context, matchID, user1ID, user2ID string) error
