@@ -13,7 +13,7 @@ type Server struct {
 	Echo             *echo.Echo
 	AuthMiddleware   echo.MiddlewareFunc
 	WebSocketHandler *ws.Handler
-	RealtimeCancel   context.CancelFunc
+	MatchMakerCancel context.CancelFunc
 }
 
 // NewServer は、渡されたコンポーネントを束ねて Server を構築するコンストラクタ。
@@ -26,6 +26,6 @@ func NewServer(
 		Echo:             e,
 		AuthMiddleware:   authMiddleware,
 		WebSocketHandler: webSocketHandler,
-		RealtimeCancel:   nil,
+		MatchMakerCancel: nil,
 	}, nil
 }
