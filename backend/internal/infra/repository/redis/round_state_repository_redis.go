@@ -42,7 +42,7 @@ func init() {
 // Redis 上の複数キーに分割して管理するリポジトリ実装。
 // キー構成：
 // 	 - user_active_match:{userID} ... ユーザーIDに紐づいたマッチID（matchID）
-//   - match:{matchID}         ... メタ情報（status, created_at, player1, player2, winner_user_id）
+//   - match:{matchID}         ... メタ情報（player1, player2）
 //   - match:{matchID}:state   ... 進行状態（deck_index, round, round_start_at_ms, round_end_at_ms,
 //                                     player1_lifepoint, player2_lifepoint,
 //                                     player1_total_miss_count, player2_total_miss_count）
