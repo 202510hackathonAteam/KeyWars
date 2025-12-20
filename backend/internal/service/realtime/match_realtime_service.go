@@ -19,8 +19,9 @@ import (
 // ==== Service 構造体 ====
 //
 
-// MatchRealtimeService は、WebSocket を介してマッチング待機・キャンセル・
-// マッチ成立などのリアルタイム処理を提供するアプリケーションサービス。
+// MatchRealtimeService は、WebSocket 接続中クライアントからの
+// リアルタイムイベントを処理するアプリケーションサービス。
+// バックグラウンドでのマッチング処理は担当しない。
 //
 // 責務：
 //   - クライアントから受信した WebSocket メッセージ（queue.join, queue.cancel など）を処理する
@@ -31,7 +32,6 @@ type MatchRealtimeService struct {
 	roundStateRepo 					repository.RoundStateRepository
 	websocketHub         		*websocket.Hub
 	logger 							 		*zerolog.Logger
-	deckGeneratorService		*round.DeckGeneratorService
 	roundFlowService 		 		*round.RoundFlowService
 	measurementRoundService *round.MeasurementRoundService
 }
@@ -43,16 +43,14 @@ func NewMatchRealtimeService(
 	roundStateRepo repository.RoundStateRepository,
 	websocketHub *websocket.Hub,
 	logger *zerolog.Logger,
-	deckGeneratorService *round.DeckGeneratorService,
 	roundFlowService *round.RoundFlowService,
 	measurementRoundService *round.MeasurementRoundService,
-) *MatchRealtimeService {
+) websocket.MatchRealtimeService {
 	return &MatchRealtimeService{
 		matchQueueRepo: 	 			 matchQueueRepo,
 		roundStateRepo: 	 			 roundStateRepo,
 		websocketHub:         	 websocketHub,
 		logger:									 logger,
-		deckGeneratorService:    deckGeneratorService,
 		roundFlowService:				 roundFlowService,
 		measurementRoundService: measurementRoundService,
 	}

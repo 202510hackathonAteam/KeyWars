@@ -1,4 +1,4 @@
-package port
+package websocket
 
 import (
 	"context"
@@ -17,7 +17,7 @@ type ClientConn interface {
 	Room() string
 }
 
-type RealtimeService interface {
+type MatchRealtimeService interface {
 	// 接続直後に実行（部屋参加や初期メッセージ返却など）
 	OnConnect(ctx context.Context, uid, room string) (any, error)
 	// クライアント→サーバのアプリケーションメッセージ処理

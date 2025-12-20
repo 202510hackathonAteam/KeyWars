@@ -6,5 +6,6 @@ var Module = fx.Module(
 	"realtime",
 	fx.Provide(
 		NewMatchRealtimeService,
+		NewMatchMakerService,
 	),
 )

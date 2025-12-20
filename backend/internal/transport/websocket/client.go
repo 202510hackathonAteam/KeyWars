@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"sync"
-
-	domain "keywars/backend/internal/domain/port"
 )
 
 //
@@ -46,8 +44,8 @@ type Client struct {
 	closeOnce sync.Once
 }
 
-// domain.ClientConn インターフェースを満たしていることをコンパイル時に保証。
-var _ domain.ClientConn = (*Client)(nil)
+// ClientConn インターフェースを満たしていることをコンパイル時に保証。
+var _ ClientConn = (*Client)(nil)
 
 //
 // ==== パブリックメソッド ====

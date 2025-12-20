@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"sync"
-
-	domain "keywars/backend/internal/domain/port"
 )
 
 //
@@ -38,12 +36,12 @@ type Hub struct {
 
 	// rooms は「ルーム名 → 接続集合」を保持するマップ。
 	// 各ルームの値は map[ClientConn]struct{} で集合的に管理（値は空構造体で省メモリ）。
-	rooms map[string]map[domain.ClientConn]struct{}
+	rooms map[string]map[ClientConn]struct{}
 }
 
-// domain.Broadcaster インターフェースを満たしていることを明示的に保証。
+// Broadcaster インターフェースを満たしていることを明示的に保証。
 // （これがあると、interface実装チェックがコンパイル時に行われる）
-var _ domain.Broadcaster = (*Hub)(nil)
+var _ Broadcaster = (*Hub)(nil)
 
 //
 // ==== コンストラクタ ====
@@ -52,7 +50,7 @@ var _ domain.Broadcaster = (*Hub)(nil)
 // NewHub は、空のルームマップを持つ新しい Hub インスタンスを生成。
 func NewHub() *Hub {
 	return &Hub{
-		rooms: make(map[string]map[domain.ClientConn]struct{}),
+		rooms: make(map[string]map[ClientConn]struct{}),
 	}
 }
 
@@ -64,7 +62,7 @@ func NewHub() *Hub {
 // - すでに同じルームにいる場合は ErrAlreadyJoined を返して終了（冪等）
 // - 収容人数を超えると ErrRoomFull を返す
 // - 他ルームへの移動はサポート外（必要なら Move を使う）
-func (hub *Hub) Join(roomName string, clientConn domain.ClientConn) error {
+func (hub *Hub) Join(roomName string, clientConn ClientConn) error {
 	hub.mutex.Lock()         // 書き込みロック開始
 	defer hub.mutex.Unlock() // 関数終了時に必ず解除
 
@@ -99,7 +97,7 @@ func (hub *Hub) Join(roomName string, clientConn domain.ClientConn) error {
 // Leave は、clientConn を所属ルームから削除する。
 // - ルームが空になれば、rooms マップ自体からも削除。
 // - 接続 Close はロック外で安全に行う（デッドロック防止）。
-func (hub *Hub) Leave(clientConn domain.ClientConn) error {
+func (hub *Hub) Leave(clientConn ClientConn) error {
 	var needClose bool
 
 	hub.mutex.Lock()
@@ -163,7 +161,7 @@ func (hub *Hub) Broadcast(ctx context.Context, roomName string, message any) (fa
 	}
 
 	// コピーしてロック時間を短縮
-	conns := make([]domain.ClientConn, 0, len(memberSet))
+	conns := make([]ClientConn, 0, len(memberSet))
 	for c := range memberSet {
 		conns = append(conns, c)
 	}
@@ -192,14 +190,14 @@ func (hub *Hub) Broadcast(ctx context.Context, roomName string, message any) (fa
 
 // Members は roomName の参加者スナップショットを返す（ロック短縮のためコピー）。
 // 「個人ルームから試合ルームへ一括移動」で利用する。
-func (hub *Hub) Members(roomName string) []domain.ClientConn {
+func (hub *Hub) Members(roomName string) []ClientConn {
 	hub.mutex.RLock()
 	defer hub.mutex.RUnlock()
 	set, ok := hub.rooms[roomName]
 	if !ok {
 		return nil
 	}
-	out := make([]domain.ClientConn, 0, len(set))
+	out := make([]ClientConn, 0, len(set))
 	for c := range set {
 		out = append(out, c)
 	}
@@ -210,7 +208,7 @@ func (hub *Hub) Members(roomName string) []domain.ClientConn {
 // - 収容上限を尊重（満杯なら ErrRoomFull）
 // - roomName(setRoom/clearRoom) を正しく更新
 // - old ルームが空になれば削除
-func (hub *Hub) Move(clientConn domain.ClientConn, newRoom string) error {
+func (hub *Hub) Move(clientConn ClientConn, newRoom string) error {
 	hub.mutex.Lock()
 	defer hub.mutex.Unlock()
 
@@ -222,7 +220,7 @@ func (hub *Hub) Move(clientConn domain.ClientConn, newRoom string) error {
 	// 新ルームの収容チェック
 	newSet, ok := hub.rooms[newRoom]
 	if !ok {
-		newSet = make(map[domain.ClientConn]struct{})
+		newSet = make(map[ClientConn]struct{})
 		hub.rooms[newRoom] = newSet
 	}
 	if len(newSet) >= RoomCapacity {
@@ -253,11 +251,11 @@ func (hub *Hub) Move(clientConn domain.ClientConn, newRoom string) error {
 
 // ensureRoom は、指定したルーム名に対応する memberSet を返す。
 // ルームが存在しない場合は新しく作成して返す。
-func (hub *Hub) ensureRoom(roomName string) map[domain.ClientConn]struct{} {
+func (hub *Hub) ensureRoom(roomName string) map[ClientConn]struct{} {
 	if s, ok := hub.rooms[roomName]; ok {
 		return s
 	}
-	s := make(map[domain.ClientConn]struct{})
+	s := make(map[ClientConn]struct{})
 	hub.rooms[roomName] = s
 	return s
 }

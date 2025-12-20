@@ -8,7 +8,6 @@ import (
 	"time"
 	"context"
 
-	domain "keywars/backend/internal/domain/port"
 	"keywars/backend/internal/infra/auth"
 
 	"github.com/gorilla/websocket"
@@ -36,9 +35,22 @@ const (
 // - Service: アプリ固有の接続/メッセージ/切断処理
 // - Verifier: 参加用トークンの検証
 type Handler struct {
-	Hub       *Hub
-	Service   domain.RealtimeService
-	TokenAuth auth.JWTHandler
+	hub       *Hub
+	service   MatchRealtimeService
+	tokenAuth *auth.JWTHandler
+}
+
+// NewWebSocketHandler は、WebSocket ハンドラーの生成。
+func NewWebSocketHandler(
+	hub *Hub,
+	service MatchRealtimeService,
+	tokenAuth *auth.JWTHandler,
+) *Handler {
+	return &Handler{
+		hub: hub,
+		service: service,
+		tokenAuth: tokenAuth,
+	}
 }
 
 // upgrader は HTTP から WebSocket へのアップグレード設定。
@@ -69,7 +81,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		http.Error(writer, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	userID, err := handler.TokenAuth.VerifyAccessToken(cookie.Value)
+	userID, err := handler.tokenAuth.VerifyAccessToken(cookie.Value)
 	if err != nil {
 		http.Error(writer, "unauthorized", http.StatusUnauthorized)
 		return
@@ -91,8 +103,8 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	}
 
 	// --- 3) Hub.Join（マッチング待機は個人ルームへ） ---
-	if err := handler.Hub.Join(roomName, clientConn); err != nil {
-		log.Println("[WS] Hub.Join error:", err)
+	if err := handler.hub.Join(roomName, clientConn); err != nil {
+		log.Println("[WS] hub.Join error:", err)
 		if errors.Is(err, ErrRoomFull) {
 			_ = wsConn.WriteControl(
 				websocket.CloseMessage,
@@ -155,7 +167,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	// --- 接続直後の初期メッセージ（writer 起動後に） ---
 	onConnectCtx, onConnectcancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
 	defer onConnectcancel()
-	reply, err := handler.Service.OnConnect(onConnectCtx, userID, clientConn.Room())
+	reply, err := handler.service.OnConnect(onConnectCtx, userID, clientConn.Room())
 	if err == nil && onConnectCtx.Err() != nil {
 		err = onConnectCtx.Err()
 	}
@@ -197,7 +209,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		if err := json.Unmarshal(rawData, &incoming); err != nil {
 			continue
 		}
-		reply, err := handler.Service.OnMessage(connCtx, userID, incoming.Type, incoming.Body)
+		reply, err := handler.service.OnMessage(connCtx, userID, incoming.Type, incoming.Body)
 		if err != nil {
 			log.Println("[WS-OnMessageError]", err)
 
@@ -212,11 +224,11 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	}
 
 	// --- 6) 終了処理 ---
-	_ = handler.Hub.Leave(clientConn)
+	_ = handler.hub.Leave(clientConn)
 
 	onDisconnectCtx, onDisconnectcancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
 	defer onDisconnectcancel()
-	handler.Service.OnDisconnect(onDisconnectCtx, userID)
+	handler.service.OnDisconnect(onDisconnectCtx, userID)
 
 	<-doneChan
 }

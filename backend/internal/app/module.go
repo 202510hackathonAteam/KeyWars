@@ -11,9 +11,6 @@ var Module = fx.Module(
 		// echo
 		NewEcho,
 
-		// websocket
-		NewWebSocketHandler,
-
 		NewServer,
 	),
 	fx.Invoke(

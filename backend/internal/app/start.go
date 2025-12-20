@@ -14,7 +14,7 @@ import (
 func StartServer(
 	lifecycle fx.Lifecycle,
 	server *Server,
-	realtimeService *realtime.MatchRealtimeService,
+	realtimeService *realtime.MatchMakerService,
 ) {
 	e := server.Echo
 	
