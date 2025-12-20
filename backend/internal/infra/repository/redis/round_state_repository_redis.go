@@ -8,6 +8,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
+	_ "embed"
 	domainmodel "keywars/backend/internal/domain/model"
 	"keywars/backend/internal/domain/repository"
 	inframodel "keywars/backend/internal/infra/repository/redis/model"
@@ -16,6 +17,26 @@ import (
 )
 
 var _ repository.RoundStateRepository = (*RoundStateRepositoryRedis)(nil)
+
+//go:embed scripts/set_key_with_ttl.lua
+var setKeyWithTTLScriptSource string
+
+var setKeyWithTTLScript = redis.NewScript(setKeyWithTTLScriptSource)
+
+var criticalScripts = map[string]string{
+	"set_key_with_ttl.lua": setKeyWithTTLScriptSource,
+}
+
+// init は、重要な Lua スクリプトが正しく embed されていることを起動時に検証する関数。
+// embed に失敗した場合でも Go のコンパイルや Redis Script の実行自体は成功してしまい、
+// 実行時に静かに不整合が発生するため、ここで fail-fast させる。
+func init() {
+	for name, src := range criticalScripts {
+		if len(src) == 0 {
+			panic("embed failed: " + name)
+		}
+	}
+}
 
 // RoundStateRepositoryRedis は、対戦進行中の「メタ情報・状態・イベント・デッキ」を
 // Redis 上の複数キーに分割して管理するリポジトリ実装。
@@ -110,16 +131,22 @@ func (r *RoundStateRepositoryRedis) CleanupMatch(ctx context.Context, matchID, u
 	return r.redisClient.Del(ctx, keys...).Err()
 }
 
-// SetUserActiveMatch は、ユーザーが現在参加している試合の対応関係を永続化するメソッド。
-// 試合開始時に呼び出され、userID → matchID の逆引きインデックスを作成する。
-// presence とは独立した試合ドメインのデータであり、試合終了時には必ず削除される。
-func (r *RoundStateRepositoryRedis) SetUserActiveMatch(
+// SetActiveMatchForUsers は、指定された複数ユーザーを同一試合に原子的に紐づけるメソッド。
+// 全ユーザー分の対応関係が成功した場合のみ確定し、
+// 途中失敗による部分的な保存は発生しない。
+func (r *RoundStateRepositoryRedis) SetActiveMatchForUsers(
 	ctx context.Context,
-	userID,
+	user1ID,
+	user2ID,
 	matchID string,
 ) error {
-	userMatchKey := fmt.Sprintf("user_active_match:%s", userID)
-	return r.redisClient.Set(ctx, userMatchKey, matchID, config.MatchExpiryOnStart).Err()
+	keys := []string{
+		fmt.Sprintf("user_active_match:%s", user1ID),
+		fmt.Sprintf("user_active_match:%s", user2ID),
+	}
+	return setKeyWithTTLScript.
+		Run(ctx, r.redisClient, keys, matchID, config.MatchExpiryOnStart.Milliseconds()).
+		Err()
 }
 
 // LoadUserActiveMatchID は、ユーザーが現在参加している試合の matchID を取得するメソッド。

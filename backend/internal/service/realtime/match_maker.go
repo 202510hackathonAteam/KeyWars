@@ -73,9 +73,16 @@ func (s *MatchRealtimeService) tryMakeMatch(ctx context.Context) {
 		return
 	}
 
-	// ユーザー → 試合の対応関係を確定
-	s.roundStateRepo.SetUserActiveMatch(ctx, user1ID, matchID)
-	s.roundStateRepo.SetUserActiveMatch(ctx, user2ID, matchID)
+	// ユーザー → 試合の対応関係を原子的に確定(途中失敗による不整合状態を防ぐ)
+	setUsersCtx, cancelSetUsers := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancelSetUsers()
+	if err := s.roundStateRepo.SetActiveMatchForUsers(setUsersCtx, user1ID, user2ID, matchID); err != nil {
+		s.logger.Error().
+			Err(err).
+			Str("match_id", matchID).
+			Msg("failed to activate match for users")
+		return
+	}
 
 	// マッチ成立通知（即時 push）
   s.notifyMatchFoundIfConnected(user1ID, matchID, user2ID)

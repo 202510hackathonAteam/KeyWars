@@ -23,10 +23,10 @@ type RoundStateRepository interface {
 	// 「再戦に影響する一時データのみ」を安全に削除するクリーンアップ処理する。
 	CleanupMatch(ctx context.Context, matchID, user1ID, user2ID string) error
 
-	// ユーザーが現在参加している試合の対応関係を永続化する。
-	// 試合開始時に呼び出され、userID → matchID の逆引きインデックスを作成する。
-	// presence とは独立した試合ドメインのデータであり、試合終了時には必ず削除される。
-	SetUserActiveMatch(ctx context.Context, userID,	matchID string) error
+	// 指定された複数ユーザーを同一試合に原子的に紐づける。
+	// 全ユーザー分の対応関係が成功した場合のみ確定し、
+	// 途中失敗による部分的な保存は発生しない。
+	SetActiveMatchForUsers(ctx context.Context, user1ID, user2ID, matchID string) error
 
 	// ユーザーが現在参加している試合の matchID を取得する。
 	// user_active_match:{userID} に保存された逆引きインデックスを参照し、
