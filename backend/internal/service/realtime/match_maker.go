@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"keywars/backend/internal/domain/constant"
 	"keywars/backend/internal/transport/websocket"
 )
 
@@ -51,23 +52,26 @@ func (s *MatchRealtimeService) tryMakeMatch(ctx context.Context) {
 		// 競合発生 or 2名未満の場合は何もしない
 		return
 	}
-	// log.Printf("[matchmaker] matched: matchID=%s p1=%s p2=%s", matchID, user1ID, user2ID)
 
 	// 初期化
 	initMeasurementCtx, cancelInitMeasurement := context.WithTimeout(ctx, 300*time.Millisecond)
 	defer cancelInitMeasurement()
-	err = s.roundStateRepo.InitMeasurementFinishCount(initMeasurementCtx, matchID)
-	if err != nil {
+	if err := s.roundStateRepo.InitMeasurementFinishCount(initMeasurementCtx, matchID);err != nil {
+		s.logger.Error().
+			Err(err).
+			Str("event", constant.EventMatchTryMake).
+			Str("match_id", matchID).
+			Msg("failed to initialize measurement finish count")
 		return
 	}
 
 	// 問題抽出
 	deckSaveCtx, cancelDeckSave := context.WithTimeout(ctx, 700*time.Millisecond)
 	defer cancelDeckSave()
-	err = s.deckGeneratorService.GenerateAndSaveDeck(deckSaveCtx, matchID)
-	if err != nil {
+	if err := s.deckGeneratorService.GenerateAndSaveDeck(deckSaveCtx, matchID);err != nil {
 		s.logger.Error().
 			Err(err).
+			Str("event", constant.EventMatchTryMake).
 			Str("match_id", matchID).
 			Msg("failed to generate prompts")
 		return
@@ -79,6 +83,7 @@ func (s *MatchRealtimeService) tryMakeMatch(ctx context.Context) {
 	if err := s.roundStateRepo.SetActiveMatchForUsers(setUsersCtx, user1ID, user2ID, matchID); err != nil {
 		s.logger.Error().
 			Err(err).
+			Str("event", constant.EventMatchTryMake).
 			Str("match_id", matchID).
 			Msg("failed to activate match for users")
 		return
@@ -92,6 +97,7 @@ func (s *MatchRealtimeService) tryMakeMatch(ctx context.Context) {
 	if err := s.roundFlowService.StartFirstRound(ctx, matchID, user1ID, user2ID); err != nil {
     s.logger.Error().
 			Err(err).
+			Str("event", constant.EventMatchTryMake).
 			Str("matchID", matchID).
 			Msg("failed to start first round")
     return

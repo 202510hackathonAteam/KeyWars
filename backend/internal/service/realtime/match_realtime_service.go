@@ -101,7 +101,7 @@ func (s *MatchRealtimeService) OnMessage(
 		if err != nil {
 			s.logger.Error().
         Err(err).
-        Str("event", "queue.join").
+        Str("event", constant.EventQueueJoin).
         Msg("failed to enqueue user into match queue")
 			return nil, err
 		}
@@ -307,7 +307,8 @@ func (s *MatchRealtimeService) OnDisconnect(
 	if err := s.matchQueueRepo.Cancel(ctx, userID); err != nil {
 		s.logger.Warn().
 			Err(err).
-			Str("event", "OnDisconnect").
+			Str("event", constant.EventMatchDisconnect).
+			Str("user_id", userID).
 			Msg("failed to cancel match queue on disconnect")
 	}
 }
