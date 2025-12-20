@@ -92,7 +92,7 @@ func (s *MatchMakerService) tryMakeMatch(ctx context.Context) {
 	//   - match:{matchID} / match:{matchID}:state を初期化
 	dequeueCtx, cancelDequeue := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancelDequeue()
-	user1ID, user2ID, matchID, _, err := s.matchQueueRepo.DequeuePairAndInitMatch(dequeueCtx)
+	user1ID, user2ID, matchID, err := s.matchQueueRepo.DequeuePairAndInitMatch(dequeueCtx)
 	if err != nil || matchID == "" {
 		// 競合発生 or 2名未満の場合は何もしない
 		return
@@ -181,6 +181,17 @@ func (s *MatchMakerService) notifyMatchFoundIfConnected(
     return // 未接続なら後回し
   }
 
-  _ = s.websocketHub.Move(conns[0], "match:"+matchID)
-  _ = conns[0].SendJSON(websocket.NewMatchFoundPayload(matchID, opponentID))
+  if err := s.websocketHub.Move(conns[0], "match:"+matchID); err != nil {
+		s.logger.Debug().
+			Err(err).
+			Str("match_id", matchID).
+			Msg("failed to move websocket room (best-effort)")
+		return
+	}
+  if err := conns[0].SendJSON(websocket.NewMatchFoundPayload(matchID, opponentID)); err != nil {
+		s.logger.Debug().
+			Err(err).
+			Str("match_id", matchID).
+			Msg("failed to send match found payload (best-effort)")
+	}
 }

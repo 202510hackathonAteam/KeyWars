@@ -82,10 +82,10 @@ func (r *MatchQueueRepositoryRedis) Score(contextObject context.Context, userID 
 //  3. 2名未満なら ZADD で戻して終了
 //  4. match:{matchID} / match:{matchID}:state を TxPipeline で初期化
 //  5. 初期化失敗時は 2 名を ZADD で再投入してロールバック
-func (r *MatchQueueRepositoryRedis) DequeuePairAndInitMatch(contextObject context.Context) (user1ID, user2ID, matchID, lockToken string, err error) {
+func (r *MatchQueueRepositoryRedis) DequeuePairAndInitMatch(contextObject context.Context) (user1ID, user2ID, matchID string, err error) {
 
 	// 1) ロック取得（トークン発行→NX セット）
-	lockToken, err = generateRandomToken()
+	lockToken, err := generateRandomToken()
 	if err != nil {
 		return
 	}
@@ -111,7 +111,7 @@ func (r *MatchQueueRepositoryRedis) DequeuePairAndInitMatch(contextObject contex
 		for _, zsetEntry := range zsetResults {
 			_ = r.redisClient.ZAdd(contextObject, keyQueue, zsetEntry).Err()
 		}
-		return "", "", "", "", nil
+		return "", "", "", nil
 	}
 	user1ID = zsetResults[0].Member.(string)
 	user2ID = zsetResults[1].Member.(string)

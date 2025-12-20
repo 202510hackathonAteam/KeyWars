@@ -338,7 +338,14 @@ func (s *MatchRealtimeService) tryRestore(
 
 	conns := s.websocketHub.Members(userRoom)
 	if len(conns) > 0 {
-		_ = s.websocketHub.Move(conns[0], matchRoom)
+		if err := s.websocketHub.Move(conns[0], matchRoom); err != nil {
+			s.logger.Debug().
+				Err(err).
+				Str("event", constant.EventMatchRestore).
+				Str("match_id", matchID).
+				Msg("restore aborted due to websocket room move failure")
+			return nil, false
+		}
 	}
 
 	// 4) 復帰用ペイロードを返す
