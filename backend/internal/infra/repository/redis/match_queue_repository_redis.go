@@ -97,7 +97,7 @@ func (r *MatchQueueRepositoryRedis) DequeuePairAndInitMatch(contextObject contex
 		return
 	}
 	defer func() {
-		_ = r.ReleaseLock(contextObject, lockToken)
+		_ = r.releaseLock(contextObject, lockToken)
 	}()
 
 	// 2) キューから 2 名取り出し（atomic pop）
@@ -163,12 +163,12 @@ func (r *MatchQueueRepositoryRedis) DequeuePairAndInitMatch(contextObject contex
 	return
 }
 
-// ReleaseLock は、与えられたトークンが現行のロックと一致する場合に限って
-// ロックキーを削除する。Watch を用いてトークンの整合性を保証する。
+// releaseLock は、与えられたトークンが現行のロックと一致する場合に限って
+// ロックキーを削除する内部用ヘルパー。Watch を用いてトークンの整合性を保証する。
 // トークン不一致・キー欠損は no-op（安全側）。
 //
 // Redis: GET lock:mq → (一致時) Tx(DEL lock:mq)
-func (r *MatchQueueRepositoryRedis) ReleaseLock(contextObject context.Context, lockToken string) error {
+func (r *MatchQueueRepositoryRedis) releaseLock(contextObject context.Context, lockToken string) error {
 	return r.redisClient.Watch(contextObject, func(transaction *redis.Tx) error {
 		storedToken, err := transaction.Get(contextObject, keyLock).Result()
 		if err == redis.Nil {
