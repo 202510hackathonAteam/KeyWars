@@ -24,7 +24,7 @@ func StartServer(
 			matchMakerCtx, cancel := context.WithCancel(context.Background())
 			server.MatchMakerCancel = cancel
 
-			go matchMakerService.StartMatchmaker(matchMakerCtx, 500*time.Millisecond)
+			matchMakerService.StartMatchmaker(matchMakerCtx, 500*time.Millisecond)
 
 			// Echo サーバー起動（非同期）
 			go func() {

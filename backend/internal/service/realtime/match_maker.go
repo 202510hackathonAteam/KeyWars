@@ -62,6 +62,15 @@ func NewMatchMakerService(
 // tick には試行間隔（例: 500ms, 1s など）を指定する。
 func (s *MatchMakerService) StartMatchmaker(ctx context.Context, interval time.Duration) {
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				s.logger.Error().
+					Str("event", constant.EventMatchmakerPanic).
+					Interface("panic", r).
+					Stack().
+					Msg("matchmaker goroutine panicked")
+			}
+		}()
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
@@ -84,55 +93,82 @@ func (s *MatchMakerService) StartMatchmaker(ctx context.Context, interval time.D
 //
 
 // tryMakeMatch は、Redis の待機キューから 2 名を取り出し、
-// 新しいマッチを初期化して各クライアントへ通知する。
-// 取り出しは排他ロックにより、同時実行を防止する。
+// 新しいマッチを生成・初期化するユースケース処理。
+// 
+// 本関数は「原子的成功 or 完全クリーンアップ」を保証する。
+// 途中で失敗した場合は、defer によって必ず CleanupMatch が実行され、
+// 外部から中途半端な試合状態が観測されないことを保証する。
+//
+// ※ 通知・ラウンド開始は副作用フェーズとして扱い、
+//   マッチ生成の原子性には含めない。
 func (s *MatchMakerService) tryMakeMatch(ctx context.Context) {
 	// DequeuePairAndInitMatch:
 	//   - 2名を ZPOPMIN で取り出す
 	//   - match:{matchID} / match:{matchID}:state を初期化
-	dequeueCtx, cancelDequeue := context.WithTimeout(ctx, 500*time.Millisecond)
-	defer cancelDequeue()
-	user1ID, user2ID, matchID, err := s.matchQueueRepo.DequeuePairAndInitMatch(dequeueCtx)
+	user1ID, user2ID, matchID, err := s.matchQueueRepo.DequeuePairAndInitMatch(ctx)
 	if err != nil || matchID == "" {
 		// 競合発生 or 2名未満の場合は何もしない
 		return
 	}
 
+	// true になった場合のみ、Cleanup を抑止する。
+	committed := false
+	// マッチ生成途中で return した場合に備えた後始末。
+	// committed == false のまま関数が終了した場合は、
+	// 途中生成された試合状態を必ずクリーンアップする。
+	//
+	// これにより、部分的に初期化された「壊れた match」が
+	// Redis 上に残らないことを保証する。
+	defer func() {
+		if !committed {
+			if err := s.roundStateRepo.CleanupMatch(ctx, matchID, user1ID, user2ID); err != nil {
+				s.logger.Error().
+					Err(err).
+					Str("event", constant.EventMatchMakerTry).
+					Str("match_id", matchID).
+					Msg("failed to cleanup incomplete match")
+			}
+		}
+	}()
+
 	// 初期化
-	initMeasurementCtx, cancelInitMeasurement := context.WithTimeout(ctx, 300*time.Millisecond)
-	defer cancelInitMeasurement()
-	if err := s.roundStateRepo.InitMeasurementFinishCount(initMeasurementCtx, matchID);err != nil {
+	if err := s.roundStateRepo.InitMeasurementFinishCount(ctx, matchID);err != nil {
 		s.logger.Error().
 			Err(err).
-			Str("event", constant.EventMatchTryMake).
+			Str("event", constant.EventMatchMakerTry).
 			Str("match_id", matchID).
 			Msg("failed to initialize measurement finish count")
 		return
 	}
 
 	// 問題抽出
-	deckSaveCtx, cancelDeckSave := context.WithTimeout(ctx, 700*time.Millisecond)
-	defer cancelDeckSave()
-	if err := s.deckGeneratorService.GenerateAndSaveDeck(deckSaveCtx, matchID);err != nil {
+	if err := s.deckGeneratorService.GenerateAndSaveDeck(ctx, matchID);err != nil {
 		s.logger.Error().
 			Err(err).
-			Str("event", constant.EventMatchTryMake).
+			Str("event", constant.EventMatchMakerTry).
 			Str("match_id", matchID).
 			Msg("failed to generate prompts")
 		return
 	}
 
 	// ユーザー → 試合の対応関係を原子的に確定(途中失敗による不整合状態を防ぐ)
-	setUsersCtx, cancelSetUsers := context.WithTimeout(ctx, 500*time.Millisecond)
-	defer cancelSetUsers()
-	if err := s.roundStateRepo.SetActiveMatchForUsers(setUsersCtx, user1ID, user2ID, matchID); err != nil {
+	if err := s.roundStateRepo.SetActiveMatchForUsers(ctx, user1ID, user2ID, matchID); err != nil {
 		s.logger.Error().
 			Err(err).
-			Str("event", constant.EventMatchTryMake).
+			Str("event", constant.EventMatchMakerTry).
 			Str("match_id", matchID).
 			Msg("failed to activate match for users")
 		return
 	}
+
+	// ここまで到達した時点で、試合生成に必要な状態はすべて揃った。
+	// 以降は副作用フェーズ（通知・ラウンド開始）となるため、
+	// Cleanup を抑止するため committed を true にする。
+	committed = true
+
+	// ===== 副作用フェーズ =====
+	// 以降の処理は、マッチ生成の原子性には含めない。
+	// 通知やラウンド開始に失敗しても、試合自体は成立済みとして扱う。
 
 	// マッチ成立通知（即時 push）
   s.notifyMatchFoundIfConnected(user1ID, matchID, user2ID)
@@ -142,7 +178,7 @@ func (s *MatchMakerService) tryMakeMatch(ctx context.Context) {
 	if err := s.roundFlowService.StartFirstRound(ctx, matchID, user1ID, user2ID); err != nil {
     s.logger.Error().
 			Err(err).
-			Str("event", constant.EventMatchTryMake).
+			Str("event", constant.EventMatchMakerTry).
 			Str("matchID", matchID).
 			Msg("failed to start first round")
     return

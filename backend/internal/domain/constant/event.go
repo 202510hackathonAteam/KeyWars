@@ -1,7 +1,8 @@
 package constant
 
 const (
-	EventMatchTryMake = "match.try_make"
+	EventMatchmakerPanic = "matchmaker.panic"
+	EventMatchMakerTry = "matchmaker.try"
 	EventQueueJoin = "queue.join"
 	EventMatchDisconnect = "match.disconnect"
 	EventMatchRestore = "match.restore"
