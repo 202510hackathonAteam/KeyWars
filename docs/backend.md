@@ -14,7 +14,7 @@
 
 <br>
 
-## 新しいService／Handlerを追加する方法
+## 新しいService／Repository／Handlerを追加する方法
 ### 1. Serviceを追加する
 1. `internal/service/` に、`<feature>_service.go` を新規作成。  
     新しいサービスは、以下のようにインターフェース／実装構造体／コンストラクタ関数を最低限用意します。  
@@ -23,8 +23,7 @@
 
     import "keywars/backend/internal/domain/repository"
 
-    // XxxService は、<機能> のユースケースを定義するインターフェース。
-    // 将来的にメソッドを追加していく（例：Create, Update, Deleteなど）
+    // XxxService は <機能> のユースケースを定義するインターフェース。
     type XxxService interface {
       // 例: CreateXxx(ctx context.Context, input XxxInput) (XxxOutput, error)
     }
@@ -34,139 +33,155 @@
       xxx repository.XxxRepository
     }
 
-    // NewXxxService は、対応する Repository を受け取り、
-    // XxxService の実装インスタンスを生成して返す。
-    func NewXxxService(xxx repository.XxxRepository) XxxService {
-      return &xxxService{
-        xxx: xxx,
-      }
+    // NewXxxService は XxxService 実装を生成。
+    func NewXxxService(repo repository.XxxRepository) XxxService {
+      return &xxxService{xxx: repo}
     }
     ```
-2. `internal/domain/repository/` に必要なリポジトリインターフェースを追加（存在しない場合）。  
-    新しいリポジトリは、以下のようにインターフェースを最低限用意します。
+2. `internal/service/module.go` に追加。
+    ```go
+    var Module = fx.Module(
+      "service",
+      fx.Provide(
+        NewXxxService, // ← 追加
+      ),
+    )
+    ```
+
+### 2. Repository を追加する
+1. Domain の Repository Interface を追加。
+`internal/domain/repository/xxx_repository.go` に必要なリポジトリインターフェースを追加（存在しない場合）。  
     ```go
     package repository
 
-    // XxxRepository は、<機能> に関するデータ取得・保存を行うリポジトリのインターフェース。
-    // あとでメソッドを追加。
-    type XxxRepository interface {}
+    // XxxRepository は <機能> の永続化操作を定義するインターフェース。
+    type XxxRepository interface{}
     ```
-3. もし SQL を使う場合は、`internal/infra/repository/sql/` に以下を追加します。
-    - `repository.go`：SQL系リポジトリの集約と初期化を行う。
-      ```go
-      // 
-      type Repos struct {
-        User repository.UserRepository
-        Match repository.MatchRepository // ← 追加
-      }
-
-      func New(db *gorm.DB) *Repos {
-        return &Repos{
-          User: NewUserRepo(db),
-          Match: NewMatchRepo(db), // ← 追加
-        }
-      }
-      ```
-    - `<feature>_repository.go`：各機能ごとの具体的なリポジトリ実装を記述する。
-      ```go
-      package sql
-
-      import (
-        "gorm.io/gorm"
-        "keywars/backend/internal/domain/repository"
-      )
-
-      // xxxRepo は、domain 層の XxxRepository を GORM を用いて実装した構造体の定義。
-      // データベース操作を担当し、domain 層からの要求を SQL に変換して処理。
-      type xxxRepo struct {
-        db *gorm.DB
-      }
-
-      // NewXxxRepo は、*gorm.DB を受け取り xxxRepo を生成。
-      // domain/repository.XxxRepository インターフェースを実装した具体型を返却。
-      func NewXxxRepo(db *gorm.DB) repository.XxxRepository {
-        return &xxxRepo{db: db}
-      }
-      ```
-3. `internal/app/app.go` の `Repos` にリポジトリを追加。
+2. SQL 実装を追加。
+もし SQL を使う場合は、`internal/infra/repository/sql/xxx_repository.go` に以下を作成。
     ```go
-    repos := sqlrepository.Repos {
-      User: sqlrepository.NewUserRepo(gormDB),
-      Match:  sqlrepository.NewMatchRepository(gormDB), // ← 追加
+    package sql
+
+    import (
+      "gorm.io/gorm"
+      "keywars/backend/internal/domain/repository"
+    )
+
+    // xxxRepositorySQL は XxxRepository の SQL 実装。
+    type xxxRepo struct {
+      db *gorm.DB
+    }
+
+    // NewXxxRepositorySQL は SQL リポジトリを生成。
+    func NewXxxRepo(db *gorm.DB) repository.XxxRepository {
+      return &xxxRepo{db: db}
     }
     ```
-4. `internal/app/app.go` の `Services` に新しいサービスを追加。
+3. Fx Module に Repository を登録。
+`internal/infra/repository/sql/module.go` に追加。
     ```go
-    services := service.Services{
-      Auth: service.NewAuthService(repos.User),
-      Match: service.NewMatchService(repos.Match), // ← 追加
-    }
-    ```
-5. `internal/service/service.go`にも、構造体を追記。
-    ```go
-    type Repositories struct {
-      User repository.UserRepository
-      Match repository.MatchRepository // ← 追加
-    }
-
-    type Services struct {
-      Auth AuthService
-      Match MatchService // ← 追加
-    }
-
-    func NewServices(repos Repositories) Services {
-      return Services{
-        Auth: NewAuthService(repos.User),
-        Match: NewMatchService(repos.Match), // ← 追加
-      }
-    }
+    var Module = fx.Module(
+      "sql",
+      fx.Provide(
+        NewXxxRepositorySQL, // ← 追加
+      ),
+    )
     ```
 
-### 2. Handlerを追加する
-1. `internal/transport/http/handler/` に `<feature>_handler.go`(feature部分は複数形) を新規作成。  
-    新しいハンドラーは、以下のように実装構造体／コンストラクタ関数を最低限用意します。  
+### 3. Handler を追加する
+1. Handler を作成。
+`internal/transport/http/handler/<feature>s_handler.go` に `Handler` を追加。
     ```go
     package handler
 
     import "keywars/backend/internal/service"
 
-    // XxxsHandler は、<機能> に関する HTTP リクエストを処理するハンドラ。
+    // XxxsHandler は <機能> の HTTP Handler。
     type XxxsHandler struct {
       xxxService service.XxxService
     }
 
-    // NewXxxsHandler は XxxService を受け取り、XxxsHandler を生成。
-    func NewXxxsHandler(service service.XxxService) *XxxsHandler {
-      return &XxxsHandler{xxxService: service}
+    // NewXxxsHandler は Handler を生成。
+    func NewXxxsHandler(s service.XxxService) *XxxsHandler {
+      return &XxxsHandler{xxxService: s}
     }
     ```
-2. `api_handler.go` に依存注入を追加。
+2. Fx Module に Handler を登録。
+`internal/transport/http/handler/module.go`に追加。
     ```go
-    type API struct {
-      Auth *AuthHandler
-      Match *MatchesHandler // ← 追加（複数形）
+    var Module = fx.Module(
+      "handler",
+      fx.Provide(
+        NewXxxsHandler, // ← 追加
+      ),
+    )
+    ```
+
+### 4. Router にハンドラーを紐付ける
+1. Fx では Router Module でハンドラーを受け取り、ルーティング登録。
+`router/router.go` に認証不要のAPI、認証必須のAPIグループどちらかのルートを登録。
+    ```go
+    // Handlers は、ルーターで利用する HTTP ハンドラー群を Fx から受け取るための依存セット。
+    type Handlers struct {
+      fx.In
+      Auth *handler.AuthHandler
+      Matches *handler.MatchHandler // ← 新しいハンドラーを追加
     }
 
-    func New(services service.Services) *API {
-      return &API{
-        Auth: NewAuthHandler(services.Auth),
-        Match: NewMatchesHandler(services.Match), // ← 追加
-      }
-    }
-    ```
-3. `router/router.go` に認証不要のAPI、認証必須のAPIグループどちらかのルートを登録。
-    ```go
     // ──────────────────────────────
     // 認証不要のAPI
     // ──────────────────────────────
-    e.GET("/matches", api.Matches.GetMatches) // ← どちらかに追加
+    e.GET("/matches", handlers.Matches.GetMatches) // ← どちらかに追加
 
     // ──────────────────────────────
     // 認証必須のAPIグループ (/api/v1)
     // ──────────────────────────────
     v1 := e.Group("/api/v1", authMiddleware)
-    v1.GET("/matches", api.Matches.GetMatches) // ← どちらかに追加
+    v1.GET("/matches", handlers.Matches.GetMatches) // ← どちらかに追加
     ```
+### 5. di 統合は Fx が自動で実行
+`internal/di/module.go`:  
+
+  ```go
+  var Module = fx.Options(
+    config.Module,
+    db.Module,
+    redisx.Module,
+
+    // SQL repos
+    sqlrepository.Module,
+
+    // Redis
+    redisrepository.Module,
+
+    // JWT
+    auth.Module,
+
+    // Service
+    service.Module,
+    round.Module,
+    realtime.Module,
+
+    // middleware / validator
+    httpmiddleware.Module,
+    validator.Module,
+
+    // handler
+    handler.Module,
+
+    // websocket
+    ws.Module,
+
+    app.Module,
+  )
+  ```
+
+`cmd/server/main.go`:  
+```go
+func main() {
+  fx.New(di.Module).Run()
+}
+```
 
 <br>  
 
@@ -248,6 +263,7 @@ backend/
 ├─ internal/   # アプリ本体（外部からはimport不可）
 │  ├─ app/         # アプリ全体の初期化・依存関係の組み立て（DB→Service→Handler）
 │  ├─ config/      # 環境変数・設定ファイルの読み込み（Config構造体定義）
+│  ├─ di/          # 依存関係の集約ポイント（Fx Module をまとめる統合レイヤー）
 │  ├─ service/     # ビジネスロジック層（アプリの振る舞い・ユースケースを記述）
 │  │  ├─ realtime/   # WebSocket を用いたリアルタイム処理（入出力層）
 │  │  └─ round/      # ゲーム進行ロジック（ドメインアクション。ラウンド管理の中心）
@@ -276,7 +292,6 @@ backend/
 │  │  │  └─ response/      # 共通レスポンス生成処理（HTTPレスポンスの形式統一）
 │  │  └─ websocket/    # WebSocket通信関連の処理をまとめる
 │  └─ util/         # 汎用的な共通処理をまとめる（アプリ全体から再利用される）
-│     ├─ password/       # パスワードハッシュ化・検証などの共通ロジックを提供
 │     ├─ validator/      # 入力値の検証（バリデーション）ロジックを提供
 │     └─ cookie/         # Cookie操作（設定・削除）を提供
 └─ migrations/     # DBマイグレーションSQL（テーブル作成や変更）

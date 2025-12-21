@@ -5,17 +5,21 @@ import (
 	"math/rand"
 	"time"
 
+	"gorm.io/gorm"
+
 	"keywars/backend/internal/config"
 	domainmodel "keywars/backend/internal/domain/model"
-
-	"gorm.io/gorm"
+	"keywars/backend/internal/domain/repository"
 )
+
+var _ repository.PromptRepository = (*PromptRepositorySQL)(nil)
 
 type PromptRepositorySQL struct {
 	db *gorm.DB
 }
 
-func NewPromptRepositorySQL(db *gorm.DB) *PromptRepositorySQL {
+// NewPromptRepositorySQL は、SQL を用いた PromptRepository の生成。
+func NewPromptRepositorySQL(db *gorm.DB) repository.PromptRepository {
 	return &PromptRepositorySQL{db: db}
 }
 

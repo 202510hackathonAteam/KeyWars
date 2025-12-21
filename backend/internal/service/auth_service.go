@@ -33,7 +33,10 @@ type authService struct{
 }
 
 // NewAuthService は UserRepository を受け取り、AuthServiceを生成。
-func NewAuthService(userRepo repository.UserRepository, jwtHandler *auth.JWTHandler) *authService {
+func NewAuthService(
+	userRepo repository.UserRepository,
+	jwtHandler *auth.JWTHandler,
+) AuthService {
 	return &authService{
 		userRepo: userRepo,
 		jwtHandler: jwtHandler,
