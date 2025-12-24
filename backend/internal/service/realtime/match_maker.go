@@ -171,8 +171,8 @@ func (s *MatchMakerService) tryMakeMatch(ctx context.Context) {
 	// 通知やラウンド開始に失敗しても、試合自体は成立済みとして扱う。
 
 	// マッチ成立通知（即時 push）
-  s.notifyMatchFoundIfConnected(user1ID, matchID, user2ID)
-  s.notifyMatchFoundIfConnected(user2ID, matchID, user1ID)
+  s.pushMatchFound(user1ID, matchID, user2ID)
+  s.pushMatchFound(user2ID, matchID, user1ID)
 
 	// 第1ラウンド開始（1回だけ）
 	if err := s.roundFlowService.StartFirstRound(ctx, matchID, user1ID, user2ID); err != nil {
@@ -189,45 +189,12 @@ func (s *MatchMakerService) tryMakeMatch(ctx context.Context) {
 // ==== 内部ヘルパー ====
 //
 
-// moveClientIfConnected は、指定されたユーザーIDのクライアントが現在オンラインであれば、
-// 新しいルーム（newRoomName）へ安全に移動させる。
-// 切断済み（Hubに存在しない）場合は no-op（何もしない）。
-func (s *MatchMakerService) moveClientIfConnected(userID string, newRoomName string) error {
-	// 個人ルーム（user:<userID>）に現在接続中のクライアントを取得
-	clientConnections := s.websocketHub.Members("user:" + userID)
-	if len(clientConnections) == 0 {
-		// 未接続または直前に切断された場合
-		return nil
-	}
-
-	// 想定上、同一ユーザーに対して複数の接続は存在しない。
-	// 仮に複数ある場合は、最初の1件のみを対象とする。
-	s.websocketHub.Move(clientConnections[0], newRoomName)
-	return nil
-}
-
-// notifyMatchFoundIfConnected は、接続中ユーザーに対するマッチ成立の即時通知処理。
-// WebSocket 接続が存在する場合のみ通知とルーム移動を行い、
-// 未接続の場合は OnConnect による再送に委ねる実装。
-func (s *MatchMakerService) notifyMatchFoundIfConnected(
+// pushMatchFound は、指定された userID に対して
+// マッチ成立を即時通知する best-effort な副作用処理。
+// 接続が存在しない場合は何も行わず、
+// OnConnect / restore による回収に委ねる。
+func (s *MatchMakerService) pushMatchFound(
   userID, matchID, opponentID string,
 ) {
-  conns := s.websocketHub.Members("user:" + userID)
-  if len(conns) == 0 {
-    return // 未接続なら後回し
-  }
-
-  if err := s.websocketHub.Move(conns[0], "match:"+matchID); err != nil {
-		s.logger.Debug().
-			Err(err).
-			Str("match_id", matchID).
-			Msg("failed to move websocket room (best-effort)")
-		return
-	}
-  if err := conns[0].SendJSON(websocket.NewMatchFoundPayload(matchID, opponentID)); err != nil {
-		s.logger.Debug().
-			Err(err).
-			Str("match_id", matchID).
-			Msg("failed to send match found payload (best-effort)")
-	}
+  s.websocketHub.DispatchToUser(userID, websocket.NewMatchFoundPayload(matchID, opponentID))
 }

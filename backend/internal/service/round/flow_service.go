@@ -79,7 +79,10 @@ func (s *RoundFlowService) StartFirstRound(ctx context.Context, matchID, user1ID
 		},
 	)
 
-	s.websocketHub.Broadcast(ctx, "match:"+matchID, payload)
+	userIDs := []string{user1ID, user2ID}
+	for _, userID := range userIDs{
+		s.websocketHub.DispatchToUser(userID, payload)
+	}
 
 	timeoutCtx, timeoutCancel := context.WithCancel(context.Background())
 	s.timeoutCancelMap[matchID] = timeoutCancel
@@ -144,7 +147,10 @@ func (s *RoundFlowService) ProcessRoundResult(ctx context.Context, matchID strin
 		)
 
 		// match.end をフロントへ送信
-		s.websocketHub.Broadcast(ctx, "match:"+matchID, payload)
+		userIDs := []string{players.Player1ID, players.Player2ID}
+		for _, userID := range userIDs{
+			s.websocketHub.DispatchAndCloseUser(userID, payload)
+		}
 
 		if err := s.completeMatch(ctx, matchID, players.Player1ID, players.Player2ID); err != nil {
 			return fmt.Errorf("completeMatch failed")
@@ -235,7 +241,10 @@ func (s *RoundFlowService) ProcessRoundResult(ctx context.Context, matchID strin
 		},
 	)
 
-	s.websocketHub.Broadcast(ctx, "match:"+matchID, payload)
+	userIDs := []string{players.Player1ID, players.Player2ID}
+	for _, userID := range userIDs{
+		s.websocketHub.DispatchToUser(userID, payload)
+	}
 
 	timeoutCtx, timeoutCancel := context.WithCancel(context.Background())
 	s.timeoutCancelMap[matchID] = timeoutCancel
@@ -245,21 +254,17 @@ func (s *RoundFlowService) ProcessRoundResult(ctx context.Context, matchID strin
 }
 
 // completeMatch は、試合の終了後に実行される「後処理専用」の関数。
-func (s *RoundFlowService) completeMatch(ctx context.Context, matchID, player1ID, player2ID string) error {
+func (s *RoundFlowService) completeMatch(
+	ctx context.Context, matchID, player1ID, player2ID string,
+) error {
 	cleanupCtx, cancelCleanup := context.WithTimeout(ctx, 200*time.Millisecond)
-	err := s.roundStateRepo.CleanupMatch(cleanupCtx, matchID, player1ID, player2ID)
-	cancelCleanup()
-	if err != nil {
+	defer cancelCleanup()
+	if err := s.roundStateRepo.CleanupMatch(cleanupCtx, matchID, player1ID, player2ID); err != nil {
 		return fmt.Errorf("cleanup failed: %w", err)
 	}
 
-	roomName := fmt.Sprintf("match:%s", matchID)
-
-	// Hub から全メンバーを除外
-	conns := s.websocketHub.Members(roomName)
-	for _, conn := range conns {
-		_ = s.websocketHub.Leave(conn)
-	}
+	s.websocketHub.LeaveUser(player1ID)
+	s.websocketHub.LeaveUser(player2ID)
 
 	return nil
 }

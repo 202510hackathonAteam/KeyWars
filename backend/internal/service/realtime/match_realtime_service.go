@@ -26,11 +26,9 @@ import (
 // 責務：
 //   - クライアントから受信した WebSocket メッセージ（queue.join, queue.cancel など）を処理する
 //   - Redis リポジトリ（MatchQueueRepositoryRedis）を通じて待機キューを操作する
-//   - Hub（WebSocket Hub）を用いてイベントをブロードキャストする
 type MatchRealtimeService struct {
 	matchQueueRepo 					repository.MatchQueueRepository
 	roundStateRepo 					repository.RoundStateRepository
-	websocketHub         		*websocket.Hub
 	logger 							 		*zerolog.Logger
 	roundFlowService 		 		*round.RoundFlowService
 	measurementRoundService *round.MeasurementRoundService
@@ -41,7 +39,6 @@ type MatchRealtimeService struct {
 func NewMatchRealtimeService(
 	matchQueueRepo repository.MatchQueueRepository,
 	roundStateRepo repository.RoundStateRepository,
-	websocketHub *websocket.Hub,
 	logger *zerolog.Logger,
 	roundFlowService *round.RoundFlowService,
 	measurementRoundService *round.MeasurementRoundService,
@@ -49,7 +46,6 @@ func NewMatchRealtimeService(
 	return &MatchRealtimeService{
 		matchQueueRepo: 	 			 matchQueueRepo,
 		roundStateRepo: 	 			 roundStateRepo,
-		websocketHub:         	 websocketHub,
 		logger:									 logger,
 		roundFlowService:				 roundFlowService,
 		measurementRoundService: measurementRoundService,
@@ -66,7 +62,6 @@ func NewMatchRealtimeService(
 func (s *MatchRealtimeService) OnConnect(
 	ctx context.Context,
 	userID string,
-	roomName string,
 ) (any, error) {
 	nowMs := time.Now().UnixMilli()
 
@@ -312,7 +307,7 @@ func (s *MatchRealtimeService) OnDisconnect(
 }
 
 // tryRestore は、WebSocket 接続時の途中復帰判定および復帰処理。
-// 対象ユーザーが進行中試合に参加している場合のみ、ルーム移動と
+// 対象ユーザーが進行中試合に参加している場合のみ、
 // 復帰用ペイロード生成を行い、復帰不可の場合は処理を行わない。
 func (s *MatchRealtimeService) tryRestore(
 	ctx context.Context,
@@ -332,23 +327,7 @@ func (s *MatchRealtimeService) tryRestore(
 	}
 
 	// ここまで来た場合、途中復帰できる
-	// 3) 接続をマッチルームへ移動
-	userRoom := "user:" + userID
-	matchRoom := "match:" + matchID
-
-	conns := s.websocketHub.Members(userRoom)
-	if len(conns) > 0 {
-		if err := s.websocketHub.Move(conns[0], matchRoom); err != nil {
-			s.logger.Debug().
-				Err(err).
-				Str("event", constant.EventMatchRestore).
-				Str("match_id", matchID).
-				Msg("restore aborted due to websocket room move failure")
-			return nil, false
-		}
-	}
-
-	// 4) 復帰用ペイロードを返す
+	// 3) 復帰用ペイロードを返す
 	return websocket.NewMatchRestorePayload(
 		matchID,
 		websocket.MatchRestoreState{

@@ -2,7 +2,6 @@ package websocket
 
 import (
 	"encoding/json"
-	"errors"
 	"log"
 	"net/http"
 	"time"
@@ -72,8 +71,8 @@ type IncomingMessage struct {
 // 1) トークン検証 → 2) Upgrade → 3) Hub への Join → 4) writer 起動 → 5) reader ループ → 6) クリーンアップ
 func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	// WebSocket接続生存期間用
-	connCtx, connCancel := context.WithCancel(context.Background())
-	defer connCancel()
+	connCtx, closeConn := context.WithCancel(context.Background())
+	defer closeConn()
 
 	// --- 1) 認証 ---
 	cookie, err := request.Cookie("access_token")
@@ -86,7 +85,6 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		http.Error(writer, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	roomName := "user:" + userID
 
 	// --- 2) Upgrade ---
 	wsConn, err := upgrader.Upgrade(writer, request, nil)
@@ -97,24 +95,12 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 
 	// 接続インスタンス（送信用チャネル付き）
 	clientConn := &Client{
-		userID:      userID,
-		roomName:    "",
 		sendChannel: make(chan []byte, sendBufSize),
+		closeConn:   closeConn,
 	}
 
-	// --- 3) Hub.Join（マッチング待機は個人ルームへ） ---
-	if err := handler.hub.Join(roomName, clientConn); err != nil {
-		log.Println("[WS] hub.Join error:", err)
-		if errors.Is(err, ErrRoomFull) {
-			_ = wsConn.WriteControl(
-				websocket.CloseMessage,
-				websocket.FormatCloseMessage(websocket.CloseTryAgainLater, "room full"),
-				time.Now().Add(writeWait),
-			)
-		}
-		_ = wsConn.Close()
-		return
-	}
+	// --- 3) Hub.JoinUser（マッチング待機は個人ルームへ） ---
+	handler.hub.JoinUser(userID, clientConn)
 
 	// --- 4) writer goroutine（Ping 送信込み）---
 	doneChan := make(chan struct{})
@@ -131,7 +117,14 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 				_ = wsConn.SetWriteDeadline(time.Now().Add(writeWait))
 				if !ok {
 					// close frame を送って終了
-					_ = wsConn.WriteMessage(websocket.CloseMessage, []byte{})
+					_ = wsConn.WriteControl(
+						websocket.CloseMessage,
+						websocket.FormatCloseMessage(
+							websocket.CloseNormalClosure,
+							"connection closed",
+						),
+						time.Now().Add(writeWait),
+					)
 					return
 				}
 				frameWriter, err := wsConn.NextWriter(websocket.TextMessage)
@@ -153,10 +146,13 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 				}
 
 			case <-connCtx.Done():
-				// サーバ都合で閉じる
+				// match.end 送信後、この接続を正常終了する
 				_ = wsConn.WriteControl(
 					websocket.CloseMessage,
-					websocket.FormatCloseMessage(websocket.CloseServiceRestart, "server stopping"),
+					websocket.FormatCloseMessage(
+						websocket.CloseNormalClosure,
+						"match ended",
+					),
 					time.Now().Add(writeWait),
 				)
 				return
@@ -167,7 +163,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	// --- 接続直後の初期メッセージ（writer 起動後に） ---
 	onConnectCtx, onConnectcancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
 	defer onConnectcancel()
-	reply, err := handler.service.OnConnect(onConnectCtx, userID, clientConn.Room())
+	reply, err := handler.service.OnConnect(onConnectCtx, userID)
 	if err == nil && onConnectCtx.Err() != nil {
 		err = onConnectCtx.Err()
 	}
@@ -176,7 +172,10 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
     // エラー理由をクライアントへ送信（任意）
     _ = wsConn.WriteControl(
 			websocket.CloseMessage,
-			websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "on connect failed"),
+			websocket.FormatCloseMessage(
+				websocket.CloseInternalServerErr,
+				"on connect failed",
+			),
 			time.Now().Add(writeWait),
     )
     wsConn.Close()
@@ -184,7 +183,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	}
 
 	if reply != nil {
-		_ = clientConn.SendJSON(reply)
+		_ = clientConn.WriteJSON(reply)
 	}
 
 	// --- 5) reader ループ（Pong/ReadDeadline 込み） ---
@@ -195,7 +194,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		return nil
 	})
 	wsConn.SetCloseHandler(func(_ int, _ string) error {
-		connCancel()
+		closeConn()
 		return nil
 	})
 
@@ -213,22 +212,22 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		if err != nil {
 			log.Println("[WS-OnMessageError]", err)
 
-			_ = clientConn.SendJSON(NewErrorPayload())
+			_ = clientConn.WriteJSON(NewErrorPayload())
 
 			continue
 		}
 
 		if reply != nil {
-			_ = clientConn.SendJSON(reply)
+			_ = clientConn.WriteJSON(reply)
 		}
 	}
 
 	// --- 6) 終了処理 ---
-	_ = handler.hub.Leave(clientConn)
+	<-doneChan
+
+	handler.hub.Leave(clientConn)
 
 	onDisconnectCtx, onDisconnectcancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
 	defer onDisconnectcancel()
 	handler.service.OnDisconnect(onDisconnectCtx, userID)
-
-	<-doneChan
 }
