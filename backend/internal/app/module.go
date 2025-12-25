@@ -16,6 +16,5 @@ var Module = fx.Module(
 	fx.Invoke(
 		SetupRouter,
 		StartServer,
-		ConnectForceFinishServices,
 	),
 )
