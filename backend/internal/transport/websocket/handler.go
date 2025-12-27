@@ -146,7 +146,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 					websocket.CloseMessage,
 					websocket.FormatCloseMessage(
 						websocket.CloseNormalClosure,
-						"session ended",
+						"session closed",
 					),
 					time.Now().Add(writeWait),
 				)
