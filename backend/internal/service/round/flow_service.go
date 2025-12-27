@@ -271,8 +271,5 @@ func (s *RoundFlowService) completeMatch(
 		return fmt.Errorf("cleanup failed: %w", err)
 	}
 
-	s.websocketHub.LeaveUser(player1ID)
-	s.websocketHub.LeaveUser(player2ID)
-
 	return nil
 }

@@ -57,7 +57,7 @@ func NewWebSocketHandler(
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:    1024,
 	WriteBufferSize:   1024,
-	EnableCompression: true,
+	EnableCompression: false,
 	CheckOrigin:       func(_ *http.Request) bool { return true }, // 本番はオリジンを限定
 }
 
@@ -72,7 +72,6 @@ type IncomingMessage struct {
 func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	// WebSocket接続生存期間用
 	connCtx, closeConn := context.WithCancel(context.Background())
-	defer closeConn()
 
 	// --- 1) 認証 ---
 	cookie, err := request.Cookie("access_token")
@@ -94,26 +93,22 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	}
 
 	// 接続インスタンス（送信用チャネル付き）
-	clientConn := &Client{
+	client := &Client{
+		wsConn: wsConn,
 		sendChannel: make(chan []byte, sendBufSize),
-		closeConn:   closeConn,
 	}
 
 	// --- 3) Hub.JoinUser（マッチング待機は個人ルームへ） ---
-	handler.hub.JoinUser(userID, clientConn)
+	handler.hub.JoinUser(userID, client)
 
 	// --- 4) writer goroutine（Ping 送信込み）---
-	doneChan := make(chan struct{})
 	go func() {
-		defer close(doneChan)
-		defer wsConn.Close()
-
 		pingTicker := time.NewTicker(pingInterval)
 		defer pingTicker.Stop()
 
 		for {
 			select {
-			case messageBytes, ok := <-clientConn.sendChannel:
+			case messageBytes, ok := <-client.sendChannel:
 				_ = wsConn.SetWriteDeadline(time.Now().Add(writeWait))
 				if !ok {
 					// close frame を送って終了
@@ -146,12 +141,12 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 				}
 
 			case <-connCtx.Done():
-				// match.end 送信後、この接続を正常終了する
+				// サーバ都合で閉じる
 				_ = wsConn.WriteControl(
 					websocket.CloseMessage,
 					websocket.FormatCloseMessage(
 						websocket.CloseNormalClosure,
-						"match ended",
+						"session ended",
 					),
 					time.Now().Add(writeWait),
 				)
@@ -183,7 +178,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	}
 
 	if reply != nil {
-		_ = clientConn.WriteJSON(reply)
+		_ = client.WriteJSON(reply)
 	}
 
 	// --- 5) reader ループ（Pong/ReadDeadline 込み） ---
@@ -191,10 +186,6 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	_ = wsConn.SetReadDeadline(time.Now().Add(pongWait))
 	wsConn.SetPongHandler(func(_ string) error {
 		_ = wsConn.SetReadDeadline(time.Now().Add(pongWait))
-		return nil
-	})
-	wsConn.SetCloseHandler(func(_ int, _ string) error {
-		closeConn()
 		return nil
 	})
 
@@ -211,21 +202,19 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		reply, err := handler.service.OnMessage(connCtx, userID, incoming.Type, incoming.Body)
 		if err != nil {
 			log.Println("[WS-OnMessageError]", err)
-
-			_ = clientConn.WriteJSON(NewErrorPayload())
-
+			_ = client.WriteJSON(NewErrorPayload())
 			continue
 		}
 
 		if reply != nil {
-			_ = clientConn.WriteJSON(reply)
+			_ = client.WriteJSON(reply)
 		}
 	}
 
 	// --- 6) 終了処理 ---
-	<-doneChan
+	closeConn()
 
-	handler.hub.Leave(clientConn)
+	handler.hub.LeaveUser(userID)
 
 	onDisconnectCtx, onDisconnectcancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
 	defer onDisconnectcancel()
