@@ -15,7 +15,6 @@ import (
 // NewEcho は、Echo インスタンスを作成し、共通ミドルウェア・CSRF・CORS などの
 // アプリケーション共通設定を適用して返す関数。
 func NewEcho(logger *zerolog.Logger) *echo.Echo {
-	cookieConfig := config.LoadCookieConfig()
 	// Echo 本体の初期化と共通ミドルウェア設定
 	e := echo.New()
 	e.HideBanner = true
@@ -25,9 +24,6 @@ func NewEcho(logger *zerolog.Logger) *echo.Echo {
 	e.Use(echomiddleware.CSRFWithConfig(echomiddleware.CSRFConfig{
 		CookieName: "csrf_token",
 		CookiePath: "/",
-		CookieDomain:   cookieConfig.Domain,        
-		CookieSameSite: cookieConfig.SameSite,      
-		CookieSecure:   cookieConfig.Secure,   
 		CookieHTTPOnly: false,
 		TokenLookup: "header:X-CSRF-Token",
 	}))
