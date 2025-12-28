@@ -11,11 +11,12 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [csrfToken, setCsrfToken] = useState("");
 
+  const API_URL = import.meta.env.VITE_API_URL
   // ★ ① 初回レンダリング時に /healthz を叩いて CSRF Cookie を取得
   useEffect(() => {
     const fetchCsrf = async () => {
       try {
-        await fetch("/healthz", {
+        await fetch(`${API_URL}/healthz`, {
           method: "GET",
           credentials: "include",  // ← Cookie を受け取るために必要
         });
@@ -37,7 +38,7 @@ export default function Login() {
     e.preventDefault();
 
     try {
-      const response = await fetch("/auth/signin", {
+      const response = await fetch(`${API_URL}/auth/signin`, {
         method: "POST",
         headers: { "Content-Type": "application/json",
           ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),

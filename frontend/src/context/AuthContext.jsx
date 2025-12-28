@@ -7,6 +7,7 @@ export const AuthContext = createContext();
 export function AuthProvider({ children }) {
   const [isAuth, setIsAuth] = useState(null);
   const justLoggedInRef = useRef(localStorage.getItem("justLoggedIn") === "true");
+  const API_URL = import.meta.env.VITE_API_URL
 
   useEffect(() => {
 
@@ -18,7 +19,7 @@ export function AuthProvider({ children }) {
 
     const checkAuth = async () => {
       const csrf = getCookie("csrf_token");
-      const res = await fetch("/auth/check", { 
+      const res = await fetch(`${API_URL}/auth/check`, { 
         method: "POST", 
         credentials: "include",
         headers: {

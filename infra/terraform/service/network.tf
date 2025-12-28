@@ -77,13 +77,13 @@ resource "google_compute_global_address" "lb_ip" {
 }
 
 # バックエンドバケット
-resource "google_compute_backend_bucket" "static_bucket" {
-  name        = "static-bucket"
-  description = "CloudStrage bucket"
-  bucket_name = google_storage_bucket.static.name
-  enable_cdn  = true
-  depends_on  = [google_storage_bucket.static]
-}
+# resource "google_compute_backend_bucket" "static_bucket" {
+#   name        = "static-bucket"
+#   description = "CloudStrage bucket"
+#   bucket_name = google_storage_bucket.static.name
+#   enable_cdn  = true
+#   depends_on  = [google_storage_bucket.static]
+# }
 
 # サーバーレスNEG
 resource "google_compute_region_network_endpoint_group" "cloudrun_api_neg" {
@@ -108,10 +108,16 @@ resource "google_compute_region_network_endpoint_group" "cloudrun_websocket_neg"
 resource "google_compute_backend_service" "api_service" {
   name                  = "api-service"
   load_balancing_scheme = "EXTERNAL_MANAGED"
-
   backend {
     group = google_compute_region_network_endpoint_group.cloudrun_api_neg.id
   }
+  # カスタムレスポンスヘッダーの設定
+  custom_response_headers = [
+    "Access-Control-Allow-Origin: https://${var.domain}",
+    "Access-Control-Allow-Credentials: true",
+    "Access-Control-Allow-Headers: X-CSRF-Token, Content-Type",
+    "Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS"
+  ]
   security_policy = google_compute_security_policy.default.self_link
 
   depends_on = [
@@ -123,10 +129,16 @@ resource "google_compute_backend_service" "api_service" {
 resource "google_compute_backend_service" "websocket_service" {
   name                  = "websocket-service"
   load_balancing_scheme = "EXTERNAL_MANAGED"
-
   backend {
     group = google_compute_region_network_endpoint_group.cloudrun_websocket_neg.id
   }
+  # カスタムレスポンスヘッダーの設定
+ custom_response_headers = [
+    "Access-Control-Allow-Origin: https://${var.domain}",
+    "Access-Control-Allow-Credentials: true",
+    "Access-Control-Allow-Headers: X-CSRF-Token, Content-Type",
+    "Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS"
+  ]
   security_policy = google_compute_security_policy.default.self_link
 
   depends_on = [
@@ -137,16 +149,16 @@ resource "google_compute_backend_service" "websocket_service" {
 # urlマップ(バックエンドルール)
 resource "google_compute_url_map" "default" {
   name            = "url-map"
-  default_service = google_compute_backend_bucket.static_bucket.id
+  default_service = google_compute_backend_service.api_service.id
   # 指定したドメインに対して、使用するpath_matcherを指定
   host_rule {
-    hosts        = ["keywars.jp"]
+    hosts        = [var.subdomain]
     path_matcher = "path-matcher"
   }
   # パスに応じて選択するバックエンドを指定
   path_matcher {
     name            = "path-matcher"
-    default_service = google_compute_backend_bucket.static_bucket.id # どれにも該当しないトラフィックの転送先
+    default_service = google_compute_backend_service.api_service.id # どれにも該当しないトラフィックの転送先
 
     # 特定のパターンに合致する場合の転送先
     # WebSocket用 
@@ -162,30 +174,30 @@ resource "google_compute_url_map" "default" {
     }
 
     # js, css, jpegへのルーティングルール
-    path_rule {
-      paths   = ["/assets/*", "/public/*"]
-      service = google_compute_backend_bucket.static_bucket.id
-    }
+    # path_rule {
+    #   paths   = ["/assets/*", "/public/*"]
+    #   service = google_compute_backend_bucket.static_bucket.id
+    # }
 
     # そのほかのパス
-    path_rule {
-      paths = ["/*"]
-      route_action {
-        url_rewrite {
-          path_prefix_rewrite = "/index.html"
-        }
-      }
-      service = google_compute_backend_bucket.static_bucket.id
-    }
+    # path_rule {
+    #   paths = ["/*"]
+    #   route_action {
+    #     url_rewrite {
+    #       path_prefix_rewrite = "/index.html"
+    #     }
+    #   }
+    #   service = google_compute_backend_bucket.static_bucket.id
+    # }
   }
 }
 
 # GoogleマネージドSSL証明書の発行
 resource "google_compute_managed_ssl_certificate" "default" {
   provider = google
-  name     = "ssl-cert"
+  name     = "subdomain-ssl-cert"
   managed {
-    domains = ["keywars.jp"]
+    domains = [var.subdomain]
   }
 }
 
@@ -235,9 +247,18 @@ resource "google_compute_global_forwarding_rule" "http_rule" {
 # CloudDNS
 #----------------------------
 
-# Aレコード作成
-resource "google_dns_record_set" "A_record" {
-  name         = var.dns_record_name
+# ドメインのAレコード作成
+resource "google_dns_record_set" "domain_A_record" {
+  name         = "${var.domain}."
+  managed_zone = var.dns_zone_name
+  type         = "A"
+  ttl          = "300"
+  rrdatas      = [var.firebase_hosting_ip]
+}
+
+# サブドメインのAレコード作成
+resource "google_dns_record_set" "subdomain_A_record" {
+  name         = "${var.subdomain}."
   managed_zone = var.dns_zone_name
   type         = "A"
   ttl          = "300"

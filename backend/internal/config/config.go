@@ -50,13 +50,27 @@ type CookieConfig struct {
 // LoadCookieConfig は、CookieConfig のデフォルト設定を読み込む初期化関数。
 func LoadCookieConfig() CookieConfig {
 	return CookieConfig{
-		// 本番環境では必ずhttp.SameSiteStrictModeにすること
-		SameSite: http.SameSiteLaxMode,
+		// クロスサイトになるのでNone
+		SameSite: parseSameSite(os.Getenv("COOKIE_SAMESITE")),
 		// 本番環境ではドメイン名を記載すること
 		Domain: os.Getenv("COOKIE_DOMAIN"),
 		// 本番環境では必ずtrueにすること
 		// Secure: false,
 		Secure: os.Getenv("COOKIE_SECURE") == "true",
+	}
+}
+
+func parseSameSite(value string) http.SameSite {
+	switch value {
+	case "Strict":
+		return http.SameSiteStrictMode
+	case "Lax":
+		return http.SameSiteLaxMode
+	case "None":
+		return http.SameSiteNoneMode
+	default:
+		// デフォルト値（環境変数が未設定の場合）
+		return http.SameSiteNoneMode
 	}
 }
 

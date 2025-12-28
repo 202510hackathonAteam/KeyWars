@@ -1,7 +1,7 @@
 package redisx
 
 import (
-	"context"
+	// "context"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -51,8 +51,9 @@ func NewRedis(cfg *config.RedisConfig) (*redis.Client, error) {
 	})
 
 	// Pingテスト: 実際に接続確認を行う
-	contextWithTimeout, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
+	// contextWithTimeout, cancel := context.WithTimeout(context.Background(), time.Second)
+	// defer cancel()
 
-	return redisClient, redisClient.Ping(contextWithTimeout).Err()
+	// return redisClient, redisClient.Ping(contextWithTimeout).Err()
+	return redisClient, nil
 }
