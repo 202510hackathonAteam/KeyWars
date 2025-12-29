@@ -99,9 +99,3 @@ func ClearTokens(c echo.Context) {
 	ClearAccessToken(c)
 	ClearRefreshToken(c)
 }
-
-// SetCSRFToken は、CSRFトークンをCookieに設定
-func SetCSRFToken(c echo.Context, csrfToken string, expiry time.Duration) {
-	csrfCookie := newCookie("csrf_token", csrfToken, expiry)
-	c.SetCookie(csrfCookie)
-}
