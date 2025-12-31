@@ -89,12 +89,17 @@ func (s *MatchRealtimeService) OnMessage(
 	case "queue.join":
 		currentTimeMs := time.Now().UnixMilli()
 
+		if _, err := s.roundStateRepo.LoadUserActiveMatchID(ctx, userID); err == nil {
+			return websocket.NewActiveMatchExistsPayload(currentTimeMs), nil
+		}
+
 		// Redis の待機キューに追加
 		err := s.matchQueueRepo.Enqueue(ctx, userID, currentTimeMs)
 		if err != nil {
 			s.logger.Error().
         Err(err).
         Str("event", constant.EventQueueJoin).
+        Str("user_id", userID).
         Msg("failed to enqueue user into match queue")
 			return nil, err
 		}

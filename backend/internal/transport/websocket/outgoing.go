@@ -2,6 +2,7 @@ package websocket
 
 // イベント種別（type）を定数化
 const (
+	TypeActiveMatchExists = "match.active_exists"
 	TypeQueueJoined = "queue.joined"
 	TypeQueueLeft   = "queue.cancelled"
 
@@ -33,16 +34,29 @@ type PromptPayload struct {
 
 // --- 各イベントのペイロード定義 ---
 
+// 
+type ActiveMatchExistsPayload struct {
+	Type string `json:"type"`
+	At 	 int64	`json:"at"`
+}
+
+func NewActiveMatchExistsPayload(atMs int64) ActiveMatchExistsPayload {
+	return ActiveMatchExistsPayload{
+		Type: TypeActiveMatchExists,
+		At:		atMs,
+	}
+}
+
 // QueueJoinedPayload: キュー参加通知
 type QueueJoinedPayload struct {
 	Type string `json:"type"` // "queue.joined"
 	At   int64  `json:"at"`   // enqueueしたサーバ時刻（ms）
 }
 
-func NewQueueJoinedPayload(atMS int64) QueueJoinedPayload {
+func NewQueueJoinedPayload(atMs int64) QueueJoinedPayload {
 	return QueueJoinedPayload{
 		Type: TypeQueueJoined,
-		At:   atMS,
+		At:   atMs,
 	}
 }
 
