@@ -89,6 +89,7 @@ func (s *MatchRealtimeService) OnMessage(
 	case "queue.join":
 		currentTimeMs := time.Now().UnixMilli()
 
+		// すでに進行中の試合が存在するユーザーは、はじく
 		if _, err := s.roundStateRepo.LoadUserActiveMatchID(ctx, userID); err == nil {
 			return websocket.NewActiveMatchExistsPayload(currentTimeMs), nil
 		}
