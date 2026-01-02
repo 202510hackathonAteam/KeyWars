@@ -34,7 +34,7 @@ type PromptPayload struct {
 
 // --- 各イベントのペイロード定義 ---
 
-// 
+// ActiveMatchExistsPayload: すでに進行中の試合があることを通知
 type ActiveMatchExistsPayload struct {
 	Type string `json:"type"`
 	At 	 int64	`json:"at"`
