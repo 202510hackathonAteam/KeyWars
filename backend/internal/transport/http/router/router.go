@@ -15,6 +15,7 @@ import (
 type Handlers struct {
 	fx.In
 	Auth *handler.AuthHandler
+	Match *handler.MatchHandler
 }
 
 // SetupRouter は、アプリケーションのルーティング定義。
@@ -41,6 +42,7 @@ func SetupRouter(e *echo.Echo, handlers Handlers, authMiddleware echo.Middleware
 	v1 := e.Group("/api/v1", authMiddleware)
 	v1.Use(httpmiddleware.AuthUserContextLogger())
 	v1.POST("/auth/signout", handlers.Auth.Signout)
+	v1.GET("/match/state", handlers.Match.FrontendState)
 
 	// --- マッチングAPI ---
 	// 認証付きws

@@ -9,7 +9,6 @@ import (
 	"keywars/backend/internal/domain/constant"
 	"keywars/backend/internal/domain/repository"
 	"keywars/backend/internal/service/round"
-	"keywars/backend/internal/transport/websocket"
 )
 
 //
@@ -26,7 +25,6 @@ import (
 type MatchMakerService struct {
 	matchQueueRepo 			 repository.MatchQueueRepository
 	roundStateRepo 			 repository.RoundStateRepository
-	websocketHub         *websocket.Hub
 	logger 							 *zerolog.Logger
 	deckGeneratorService *round.DeckGeneratorService
 	roundFlowService 		 *round.RoundFlowService
@@ -38,7 +36,6 @@ type MatchMakerService struct {
 func NewMatchMakerService(
 	matchQueueRepo repository.MatchQueueRepository,
 	roundStateRepo repository.RoundStateRepository,
-	websocketHub *websocket.Hub,
 	logger *zerolog.Logger,
 	deckGeneratorService *round.DeckGeneratorService,
 	roundFlowService *round.RoundFlowService,
@@ -46,7 +43,6 @@ func NewMatchMakerService(
 	return &MatchMakerService{
 		matchQueueRepo: 	 		matchQueueRepo,
 		roundStateRepo: 	 		roundStateRepo,
-		websocketHub:         websocketHub,
 		logger:								logger,
 		deckGeneratorService: deckGeneratorService,
 		roundFlowService:			roundFlowService,
@@ -99,8 +95,7 @@ func (s *MatchMakerService) StartMatchmaker(ctx context.Context, interval time.D
 // 途中で失敗した場合は、defer によって必ず CleanupMatch が実行され、
 // 外部から中途半端な試合状態が観測されないことを保証する。
 //
-// ※ 通知・ラウンド開始は副作用フェーズとして扱い、
-//   マッチ生成の原子性には含めない。
+// ※ ラウンド開始は副作用フェーズとして扱い、マッチ生成の原子性には含めない。
 func (s *MatchMakerService) tryMakeMatch(ctx context.Context) {
 	// DequeuePairAndInitMatch:
 	//   - 2名を ZPOPMIN で取り出す
@@ -168,11 +163,7 @@ func (s *MatchMakerService) tryMakeMatch(ctx context.Context) {
 
 	// ===== 副作用フェーズ =====
 	// 以降の処理は、マッチ生成の原子性には含めない。
-	// 通知やラウンド開始に失敗しても、試合自体は成立済みとして扱う。
-
-	// マッチ成立通知（即時 push）
-  s.pushMatchFound(user1ID, matchID, user2ID)
-  s.pushMatchFound(user2ID, matchID, user1ID)
+	// ラウンド開始に失敗しても、試合自体は成立済みとして扱う。
 
 	// 第1ラウンド開始（1回だけ）
 	if err := s.roundFlowService.StartFirstRound(ctx, matchID, user1ID, user2ID); err != nil {
@@ -183,18 +174,4 @@ func (s *MatchMakerService) tryMakeMatch(ctx context.Context) {
 			Msg("failed to start first round")
     return
 	}
-}
-
-//
-// ==== 内部ヘルパー ====
-//
-
-// pushMatchFound は、指定された userID に対して
-// マッチ成立を即時通知する best-effort な副作用処理。
-// 接続が存在しない場合は何も行わず、
-// OnConnect / restore による回収に委ねる。
-func (s *MatchMakerService) pushMatchFound(
-  userID, matchID, opponentID string,
-) {
-  s.websocketHub.DispatchToUser(userID, websocket.NewMatchFoundPayload(matchID, opponentID))
 }

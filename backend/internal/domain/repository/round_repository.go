@@ -56,6 +56,17 @@ type RoundStateRepository interface {
 	// ラウンドの開始予定時刻と終了予定時刻を、Redis の match:{matchID}:state に保存する。
 	UpdateRoundTiming(ctx context.Context, matchID string, roundStartAtMs int64, roundEndAtMs int64) error
 
+	// SetFrontendState は、フロントエンド再構築用状態を Redis に保存する。
+	SetFrontendState(ctx context.Context, matchID string, payloadBytes []byte) error
+
+	// LoadFrontendState は、指定された試合のフロントエンド再構築用状態を
+	// Redis から取得する。
+	LoadFrontendState(ctx context.Context, matchID string) ([]byte, error)
+
+	// DeleteFrontendState は、指定された試合のフロントエンド再構築用状態を
+	// Redis から完全に削除する。
+	DeleteFrontendState(ctx context.Context, matchID string) error
+
 	// Redis に保存されたmatch:{matchID} のプレイヤー情報（player1 / player2）を取得する。
 	LoadMatchPlayers(ctx context.Context, matchID string) (*model.MatchPlayers, error)
 

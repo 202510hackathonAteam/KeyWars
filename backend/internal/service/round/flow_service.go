@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"time"
+	"encoding/json"
 
 	"keywars/backend/internal/config"
 	"keywars/backend/internal/domain/repository"
@@ -67,8 +68,8 @@ func (s *RoundFlowService) StartFirstRound(ctx context.Context, matchID, user1ID
 		user2ID,
 		websocket.MatchState{
 			Round:            config.InitialRound,
-			RoundStartAtMS:   roundStartAtMs,
-			RoundEndAtMS:     roundEndAtMs,
+			RoundStartAtMs:   roundStartAtMs,
+			RoundEndAtMs:     roundEndAtMs,
 			Player1Lifepoint: config.InitialLifePoint,
 			Player2Lifepoint: config.InitialLifePoint,
 		},
@@ -82,6 +83,19 @@ func (s *RoundFlowService) StartFirstRound(ctx context.Context, matchID, user1ID
 	userIDs := []string{user1ID, user2ID}
 	for _, userID := range userIDs{
 		s.websocketHub.DispatchToUser(userID, payload)
+	}
+
+	// フロントエンド再構築用に、
+	// match.start / match.end の最新ペイロードを JSON 化して Redis にスナップショット保存する
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal frontend payload: %w", err)
+	}
+	setFrontendStateCtx, cancelSetFrontendState := context.WithTimeout(ctx, 500*time.Millisecond)
+	err = s.roundStateRepo.SetFrontendState(setFrontendStateCtx, matchID, payloadBytes)
+	cancelSetFrontendState()
+	if err != nil {
+		return fmt.Errorf("failed to save frontend match snapshot (non-fatal): %w", err)
 	}
 
 	roundTimeoutCtx, roundTimeoutCancel := context.WithCancel(context.Background())
@@ -156,6 +170,19 @@ func (s *RoundFlowService) ProcessRoundResult(ctx context.Context, matchID strin
 			s.websocketHub.DispatchAndCloseUser(userID, payload)
 		}
 
+		// フロントエンド再構築用に、
+		// match.start / match.end の最新ペイロードを JSON 化して Redis にスナップショット保存する
+		payloadBytes, err := json.Marshal(payload)
+		if err != nil {
+			return fmt.Errorf("failed to marshal frontend payload: %w", err)
+		}
+		setFrontendStateCtx, cancelSetFrontendStateState := context.WithTimeout(ctx, 500*time.Millisecond)
+		err = s.roundStateRepo.SetFrontendState(setFrontendStateCtx, matchID, payloadBytes)
+		cancelSetFrontendStateState()
+		if err != nil {
+			return fmt.Errorf("failed to save frontend match snapshot (non-fatal): %w", err)
+		}
+
 		if err := s.completeMatch(ctx, matchID, players.Player1ID, players.Player2ID); err != nil {
 			return fmt.Errorf("completeMatch failed")
 		}
@@ -171,6 +198,13 @@ func (s *RoundFlowService) ProcessRoundResult(ctx context.Context, matchID strin
 	cancelNextState()
 	if err != nil {
 		return fmt.Errorf("failed to prepare next round state: %w", err)
+	}
+
+	clearFrontendStateCtx, cancelClearFrontendState := context.WithTimeout(ctx, 300*time.Millisecond)
+	err = s.roundStateRepo.DeleteFrontendState(clearFrontendStateCtx, matchID)
+	cancelClearFrontendState()
+	if err != nil {
+		return fmt.Errorf("failed to clear frontend state: %w", err)
 	}
 
 	resetMeasurementCtx, cancelResetMeasurement := context.WithTimeout(ctx, 300*time.Millisecond)
@@ -233,8 +267,8 @@ func (s *RoundFlowService) ProcessRoundResult(ctx context.Context, matchID strin
 		players.Player2ID,
 		websocket.MatchState{
 			Round:            nextRound,
-			RoundStartAtMS:   roundStartAtMs,
-			RoundEndAtMS:     roundEndAtMs,
+			RoundStartAtMs:   roundStartAtMs,
+			RoundEndAtMs:     roundEndAtMs,
 			Player1Lifepoint: player1Lifepoint,
 			Player2Lifepoint: player2Lifepoint,
 		},
@@ -248,6 +282,19 @@ func (s *RoundFlowService) ProcessRoundResult(ctx context.Context, matchID strin
 	userIDs := []string{players.Player1ID, players.Player2ID}
 	for _, userID := range userIDs{
 		s.websocketHub.DispatchToUser(userID, payload)
+	}
+
+	// フロントエンド再構築用に、
+	// match.start / match.end の最新ペイロードを JSON 化して Redis にスナップショット保存する
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal frontend payload: %w", err)
+	}
+	setFrontendStateCtx, cancelSetFrontendState := context.WithTimeout(ctx, 500*time.Millisecond)
+	err = s.roundStateRepo.SetFrontendState(setFrontendStateCtx, matchID, payloadBytes)
+	cancelSetFrontendState()
+	if err != nil {
+		return fmt.Errorf("failed to save frontend match snapshot (non-fatal): %w", err)
 	}
 
 	roundTimeoutCtx, roundTimeoutCancel := context.WithCancel(context.Background())
@@ -265,11 +312,16 @@ func (s *RoundFlowService) ProcessRoundResult(ctx context.Context, matchID strin
 func (s *RoundFlowService) completeMatch(
 	ctx context.Context, matchID, player1ID, player2ID string,
 ) error {
-	cleanupCtx, cancelCleanup := context.WithTimeout(ctx, 200*time.Millisecond)
-	defer cancelCleanup()
-	if err := s.roundStateRepo.CleanupMatch(cleanupCtx, matchID, player1ID, player2ID); err != nil {
-		return fmt.Errorf("cleanup failed: %w", err)
-	}
+	// match.end をフロントが確実に取得できるよう、
+	// Redis 上の試合関連データ削除は遅延実行する
+	time.AfterFunc(5*time.Second, func() {
+		cleanupCtx, cancelCleanup := context.WithTimeout(context.Background(), 200*time.Millisecond)
+		defer cancelCleanup()
+
+		if err := s.roundStateRepo.CleanupMatch(cleanupCtx, matchID, player1ID, player2ID); err != nil {
+			fmt.Printf("cleanup failed (delayed): %v\n", err)
+		}
+	})
 
 	return nil
 }

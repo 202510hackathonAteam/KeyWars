@@ -7,7 +7,6 @@ const (
 	TypeQueueLeft   = "queue.cancelled"
 
 	TypeWelcome = "welcome"
-	TypeMatchFound = "match.found"
 	TypeMatchRestore = "match.restore"
 	TypeMatchStart = "match.start"
 	TypeMatchEnd   = "match.end"
@@ -20,8 +19,8 @@ const (
 // MatchState は試合の進行状態（match.start などで配信）
 type MatchState struct {
 	Round          	 int64 `json:"round"`
-	RoundStartAtMS 	 int64 `json:"round_start_at_ms"`
-	RoundEndAtMS   	 int64 `json:"round_end_at_ms"`
+	RoundStartAtMs 	 int64 `json:"round_start_at_ms"`
+	RoundEndAtMs   	 int64 `json:"round_end_at_ms"`
 	Player1Lifepoint int64 `json:"player1_lifepoint"`
 	Player2Lifepoint int64 `json:"player2_lifepoint"`
 }
@@ -82,21 +81,6 @@ func NewWelcomePayload(userID string) WelcomePayload {
 	return WelcomePayload{
 		Type: TypeWelcome,
 		UserID: userID,
-	}
-}
-
-// MatchFoundPayload: マッチ成立通知（個人ルーム user:<uid> 宛に送る）
-type MatchFoundPayload struct {
-	Type     string `json:"type"`    // "match.found"
-	MatchID  string `json:"match_id"` // 例: "cd4d6af01a..."
-	Opponent string `json:"opponent"`
-}
-
-func NewMatchFoundPayload(matchID, opponentUserID string) MatchFoundPayload {
-	return MatchFoundPayload{
-		Type:     TypeMatchFound,
-		MatchID:  matchID,
-		Opponent: opponentUserID,
 	}
 }
 

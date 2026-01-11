@@ -46,6 +46,7 @@ func init() {
 //   - match:{matchID}:state   ... 進行状態（deck_index, round, round_start_at_ms, round_end_at_ms,
 //                                     player1_lifepoint, player2_lifepoint,
 //                                     player1_total_miss_count, player2_total_miss_count）
+// 	 - match:{matchID}:frontend_state ... フロントエンド再構築用の最新スナップショット
 //   - match:{matchID}:events  ... イベント Streams（answer などの出来事）
 //   - match:{matchID}:deck    ... 出題デッキ（LIST; 要素はJSON文字列）
 //   - match:{matchID}:measurement_finished_count
@@ -70,6 +71,7 @@ func (r *RoundStateRepositoryRedis) CleanupMatch(ctx context.Context, matchID, u
 		fmt.Sprintf("user_active_match:%s", user1ID),
 		fmt.Sprintf("user_active_match:%s", user2ID),
 		fmt.Sprintf("match:%s", matchID),
+		fmt.Sprintf("match:%s:frontend_state", matchID),
 		fmt.Sprintf("match:%s:state", matchID),
 		fmt.Sprintf("match:%s:measurement_finished_count", matchID),
 		fmt.Sprintf("match:%s:answer_finish_flag:%s", matchID, user1ID),
@@ -351,6 +353,36 @@ func (r *RoundStateRepositoryRedis) UpdateRoundTiming(ctx context.Context, match
 		"round_start_at_ms": roundStartAtMs,
 		"round_end_at_ms":   roundEndAtMs,
 	}).Err()
+}
+
+// SetFrontendState は、フロントエンド再構築用状態を Redis に保存するメソッド。
+func (r *RoundStateRepositoryRedis) SetFrontendState(ctx context.Context, matchID string, payloadBytes []byte) error {
+	frontendStateKey := fmt.Sprintf("match:%s:frontend_state", matchID)
+
+	return r.redisClient.Set(ctx, frontendStateKey, payloadBytes, config.MatchExpiryOnStart).Err()
+}
+
+// LoadFrontendState は、指定された試合のフロントエンド再構築用状態を
+// Redis から取得するメソッド。
+func (r *RoundStateRepositoryRedis) LoadFrontendState(ctx context.Context, matchID string) ([]byte, error) {
+	frontendStateKey := fmt.Sprintf("match:%s:frontend_state", matchID)
+
+	payloadBytes, err := r.redisClient.Get(ctx, frontendStateKey).Bytes()
+	if err != nil {
+		if err == redis.Nil {
+			return nil, redis.Nil
+		}
+		return nil, err
+	}
+
+	return payloadBytes, nil
+}
+
+// DeleteFrontendState は、指定された試合のフロントエンド再構築用状態を
+// Redis から完全に削除するメソッド。
+func (r *RoundStateRepositoryRedis) DeleteFrontendState(ctx context.Context, matchID string) error {
+	frontendStateKey := fmt.Sprintf("match:%s:frontend_state", matchID)
+	return r.redisClient.Del(ctx, frontendStateKey).Err()
 }
 
 // LoadMatchPlayers は Redis に保存された
