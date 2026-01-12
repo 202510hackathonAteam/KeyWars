@@ -546,7 +546,6 @@ export default function GamePage() {
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
-              sendAnswerFinish();
               return;
             }
 
@@ -558,7 +557,7 @@ export default function GamePage() {
             }
           }}
           disabled={isInputDisabled}
-          placeholder="Enterで攻撃　ここにタイプ"
+          placeholder="ここにタイプ"
           className="
             w-full p-[3vh] rounded-lg border-2 border-white/5 bg-transparent text-white 
             font-['Press_Start_2P'] text-[] 
