@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 export const WebSocketContext = createContext();
 
 export function WebSocketProvider({ children }) {
+  const API_URL = import.meta.env.VITE_API_URL
   const wsRef = useRef(null);
   const [connected, setConnected] = useState(false);
   const reconnectTimer = useRef(null);
@@ -128,7 +129,7 @@ export function WebSocketProvider({ children }) {
   // HTTP ポーリングでフロントエンド再構築用の試合状態を取得し、
   // match.start / match.end を一度だけ適用するための関数
   const fetchFrontendState = async () => {
-    const response = await fetch(`/api/v1/match/state`, {
+    const response = await fetch(`${API_URL}/api/v1/match/state`, {
       credentials: "include",
     });
 
