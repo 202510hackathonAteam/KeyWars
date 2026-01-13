@@ -35,6 +35,7 @@ export default function GamePage() {
   const [input, setInput] = useState("");
   const [progress, setProgress] = useState(0);
   const [missCount, setMissCount] = useState(0);
+  const missCountRef = useRef(0);
   const [targetRomaji, setTargetRomaji] = useState("");
   const [promptText, setPromptText] = useState("");
   const ignoreTypingRef = useRef(false);
@@ -88,7 +89,7 @@ export default function GamePage() {
 
     console.log("✅ doFinishOnce FIRST SEND:", type, {
     match_id: matchStartPayload?.match_id,
-    miss_count: missCount,
+    miss_count: missCountRef.current,
     });
 
     finishSentRef.current = true;
@@ -102,7 +103,7 @@ export default function GamePage() {
       type,
       body: {
         match_id: matchStartPayload.match_id,
-        miss_count: missCount,
+        miss_count: missCountRef.current,
       },
     };
 
@@ -311,6 +312,7 @@ export default function GamePage() {
 
     if (!isCorrect) {
       setMissCount((prev) => prev + miss);
+      missCountRef.current += miss;
       return;
     }
 
