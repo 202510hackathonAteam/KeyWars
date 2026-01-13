@@ -67,14 +67,13 @@ export function WebSocketProvider({ children }) {
     };
 
     socket.onmessage = (event) => {
-      console.log("WS Message:", event.data);
       const data = JSON.parse(event.data);
       switch (data.type) {
           case "welcome":
             localStorage.setItem("user_id", data.user_id);
             break;
           case "match.start":
-            console.log("🔥 match.start received:", data);
+            console.log("[push] 🔥 match.start received:", data);
             const round = data.state.round;
             // すでにこのラウンドを適用済みなら無視
             if (appliedRoundRef.current === round) {
@@ -96,7 +95,7 @@ export function WebSocketProvider({ children }) {
             break;
 
           case "match.end":
-            console.log("試合終了:", data);
+            console.log("[push] 試合終了:", data);
             if (appliedEndRef.current) return;
 
             appliedEndRef.current = true;
@@ -149,7 +148,7 @@ export function WebSocketProvider({ children }) {
           return;
         }
 
-        console.log("🔥 match.start received:", data);
+        console.log("[polling] 🔥 match.start received:", data);
 
         appliedRoundRef.current = nextRound;
 
@@ -165,7 +164,7 @@ export function WebSocketProvider({ children }) {
 
       case "match.end":
         if (appliedEndRef.current) return;
-        console.log("試合終了:", data);
+        console.log("[polling] 試合終了:", data);
 
         appliedEndRef.current = true;
         setMatchEndPayload(data);
