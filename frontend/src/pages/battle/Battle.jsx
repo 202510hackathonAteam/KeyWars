@@ -337,13 +337,24 @@ export default function GamePage() {
 
   const myId = localStorage.getItem("user_id"); // ← 自分のユーザーID
 
-    // ★ 自分の total miss count を判定
+  // ★ 自分の total miss count を判定
   const isPlayer1 = matchEndPayload.player1 === myId;
   const myTotalMiss = isPlayer1
     ? matchEndPayload.player1_total_miss_count
     : matchEndPayload.player2_total_miss_count;
 
-  const didWin = matchEndPayload.winner === myId;
+  let result;
+
+  if (matchEndPayload.result === "draw") {
+    result = "draw";
+  } else if (matchEndPayload.result === "win") {
+    result = matchEndPayload.winner === myId
+      ? "victory"
+      : "defeat";
+  } else {
+    console.warn("Unknown match result:", matchEndPayload.result);
+    result = "defeat";
+  }
 
   const payloadForResult = matchEndPayload;
   resetMatchState();
@@ -351,7 +362,7 @@ export default function GamePage() {
   // 結果画面へ
   navigate("/result", {
     state: {
-      result: didWin ? "victory" : "defeat",
+      result: result,
       totalMiss: myTotalMiss,              
       matchEnd: payloadForResult, // ← 必要ならデータ丸ごと送れる
       round: matchStartPayload?.state?.round,  // ← 追加！！
