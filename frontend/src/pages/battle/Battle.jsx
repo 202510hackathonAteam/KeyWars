@@ -174,7 +174,6 @@ export default function GamePage() {
     finishSentRef.current = false;
 
     const myId = localStorage.getItem("user_id");
-    console.log("🔥 finish${myId}")
 
       // --- ★ プレイヤーが自分なのか判定 ---
     const isPlayer1 = matchStartPayload.player1 === myId;
