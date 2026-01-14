@@ -18,6 +18,7 @@ export function WebSocketProvider({ children }) {
   const appliedRoundRef = useRef(null);
   const appliedEndRef = useRef(false);
   const pollingRef = useRef(null);
+  const backoffRef = useRef(false);
 
 
   const getUserId = () => localStorage.getItem("user_name");
@@ -152,6 +153,21 @@ export function WebSocketProvider({ children }) {
     const response = await fetch(`${API_URL}/api/v1/match/state`, {
       credentials: "include",
     });
+
+    if (response.status === 429) {
+      console.warn("🚫 429 received → backoff");
+
+      stopPolling();
+      backoffRef.current = true;
+
+      setTimeout(() => {
+        backoffRef.current = false;
+        startPolling();
+        console.log("🔁 polling resumed after backoff");
+      }, 600); // ← バックオフ時間
+
+      return;
+    }
 
     if (response.status === 204) return;
     if (!response.ok) return;
