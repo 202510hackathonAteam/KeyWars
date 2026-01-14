@@ -17,9 +17,30 @@ export function WebSocketProvider({ children }) {
   const [isRestoring, setIsRestoring] = useState(false);
   const appliedRoundRef = useRef(null);
   const appliedEndRef = useRef(false);
+  const pollingRef = useRef(null);
 
 
   const getUserId = () => localStorage.getItem("user_name");
+
+  const startPolling = () => {
+    if (pollingRef.current) {
+      console.log("🚫 polling already running");
+      return
+    };
+
+    console.log("▶️ polling started");
+    pollingRef.current = setInterval(async () => {
+      await fetchFrontendState();
+    }, 300);
+  }
+
+  const stopPolling = () => {
+    if (!pollingRef.current) return;
+
+    clearInterval(pollingRef.current);
+    pollingRef.current = null;
+    console.log("⏹ polling stopped");
+  }
 
   const connect = () => {
     const userId = getUserId();
@@ -176,23 +197,16 @@ export function WebSocketProvider({ children }) {
   // 試合終了（match.end）を検知したら自動で停止する
   useEffect(() => {
     if (!connected || appliedEndRef.current) {
+      stopPolling();
       console.log("⏸ polling skipped (WS not connected)");
       return;
     }
+
+    startPolling();
     console.log("▶️ polling started (WS connected)");
-    let cancelled = false;
-
-    const poll = async () => {
-      if (cancelled) return;
-      await fetchFrontendState();
-    };
-
-    poll();
-    const timer = setInterval(poll, 300);
 
     return () => {
-      cancelled = true;
-      clearInterval(timer);
+      stopPolling();
       console.log("⏹ polling stopped");
     };
   }, [connected]);
