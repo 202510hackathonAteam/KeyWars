@@ -40,6 +40,7 @@ export default function GamePage() {
   const ignoreTypingRef = useRef(false);
 
   // 時間 & HP
+  const [timeUp, setTimeUp] = useState(false);
   const [timeLeft, setTimeLeft] = useState(60);
   const [playerHp, setPlayerHp] = useState(150);
   const [enemyHp, setEnemyHp] = useState(150);
@@ -135,7 +136,7 @@ export default function GamePage() {
       setTimeLeft((prev) => {
         if (prev <= 1) {
           clearInterval(timerRef.current);
-          sendAnswerTimeout();
+          setTimeUp(true);
           return 0;
         }
         return prev - 1;
@@ -164,6 +165,8 @@ export default function GamePage() {
 
     // ★ 相手待ちモード解除（次のラウンドが始まったので）
     setIsWaiting(false);
+
+    setTimeUp(false);
 
     console.log("【🐱 新しいラウンド開始】", matchStartPayload.state.round);
 
@@ -226,25 +229,13 @@ export default function GamePage() {
     setCountdown(count);
 
     countdownRef.current = setInterval(() => {
-      count -= 1;
-
-      if (roundIdRef.current !== matchStartPayload.state.round) {
-        clearInterval(countdownRef.current);
-        return;
-      }
-
-      if (count > 0) {
-        setCountdown(count);
-      } else {
-        clearInterval(countdownRef.current);
-        setCountdown(null);
-
-        // 入力欄フォーカス
-        inputRef.current?.focus();
-
-        // バトルタイマー開始
-        startBattleTimer(roundIdRef.current);
-      }
+      setCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(countdownRef.current);
+          return null;
+        }
+        return prev - 1;
+      });
     }, 1000);
 
     // return () => {
@@ -283,6 +274,8 @@ export default function GamePage() {
 
   // 入力停止
   ignoreTypingRef.current = true;
+
+  setTimeUp(false);
 
   // Countdown / Timer 停止
   clearInterval(timerRef.current);
@@ -360,13 +353,25 @@ export default function GamePage() {
 }, [matchEndPayload, navigate, resetMatchState]);
 
   useEffect(() => {
-    if (countdown === null) {
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 50);
-    }
+    if (countdown !== null) return;
+    if (!roundIdRef.current) return;
+
+    startBattleTimer(roundIdRef.current);
   }, [countdown]);
 
+  useEffect(() => {
+    if (!timeUp) return;
+    if (finishSentRef.current) return;
+
+    sendAnswerTimeout();
+  }, [timeUp]);
+
+  useEffect(() => {
+    if (isInputDisabled) return;
+
+    // battle 開始の瞬間だけ
+    inputRef.current?.focus();
+  }, [isInputDisabled]);
 
   return (
     
