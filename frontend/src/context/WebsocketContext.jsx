@@ -17,11 +17,22 @@ export function WebSocketProvider({ children }) {
   const [isRestoring, setIsRestoring] = useState(false);
   const appliedRoundRef = useRef(null);
   const appliedEndRef = useRef(false);
+  const sessionIdRef = useRef(0);
+  const backoffTimerRef = useRef(null);
   const pollingRef = useRef(null);
-  const backoffRef = useRef(false);
 
 
   const getUserId = () => localStorage.getItem("user_name");
+
+  const newSession = () => {
+    sessionIdRef.current += 1;
+    stopPolling();
+
+    if (backoffTimerRef.current) {
+      clearTimeout(backoffTimerRef.current);
+      backoffTimerRef.current = null;
+    }
+  }
 
   const startPolling = () => {
     if (pollingRef.current) {
@@ -29,9 +40,11 @@ export function WebSocketProvider({ children }) {
       return
     };
 
+    const sessionId = sessionIdRef.current;
+
     console.log("▶️ polling started");
     pollingRef.current = setInterval(async () => {
-      await fetchFrontendState();
+      await fetchFrontendState(sessionId);
     }, 300);
   }
 
@@ -149,7 +162,9 @@ export function WebSocketProvider({ children }) {
 
   // HTTP ポーリングでフロントエンド再構築用の試合状態を取得し、
   // match.start / match.end を一度だけ適用するための関数
-  const fetchFrontendState = async () => {
+  const fetchFrontendState = async (sessionId) => {
+    if (sessionIdRef.current !== sessionId) return;
+
     const response = await fetch(`${API_URL}/api/v1/match/state`, {
       credentials: "include",
     });
@@ -158,10 +173,15 @@ export function WebSocketProvider({ children }) {
       console.warn("🚫 429 received → backoff");
 
       stopPolling();
-      backoffRef.current = true;
 
-      setTimeout(() => {
-        backoffRef.current = false;
+      if (backoffTimerRef.current) {
+        clearTimeout(backoffTimerRef.current);
+      }
+
+      const sessionId = sessionIdRef.current;
+
+      backoffTimerRef.current = setTimeout(() => {
+        if (sessionIdRef.current !== sessionId) return;
         startPolling();
         console.log("🔁 polling resumed after backoff");
       }, 600); // ← バックオフ時間
@@ -247,11 +267,15 @@ export function WebSocketProvider({ children }) {
   };
 
   const disconnect = () => {
-    if (wsRef.current) wsRef.current.close();
-    wsRef.current = null;
+    newSession();
+    stopPolling();
     setConnected(false);
-    clearTimeout(reconnectTimer.current);
     matchStartedRef.current = false;
+    clearTimeout(reconnectTimer.current);
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
   };
 
   const resetMatchState = () => {
