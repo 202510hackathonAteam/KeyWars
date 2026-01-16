@@ -26,6 +26,31 @@ resource "google_compute_security_policy" "default" {
   name        = "${var.project_name}-security-policy"
   description = "OWASP Top 10 protection with Cloud Armor"
 
+  # ======================================
+  # match/state 用 高頻度APIの例外ルール
+  # ======================================
+  rule {
+    priority = 900
+    action   = "allow"
+
+    match {
+      expr {
+        expression = "request.path == '/api/v1/match/state'"
+      }
+    }
+
+    rate_limit_options {
+      conform_action = "allow"
+      exceed_action  = "allow"   # BANしない・429返さない
+      enforce_on_key = "IP"
+
+      rate_limit_threshold {
+        count        = 2000
+        interval_sec = 60
+      }
+    }
+  }
+
   # デフォルトルール(すべて許可)
   rule {
     action   = "allow"

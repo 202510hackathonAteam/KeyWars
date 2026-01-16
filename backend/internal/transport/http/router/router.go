@@ -3,6 +3,7 @@ package router
 import (
 	"net/http"
 
+	echomiddleware "github.com/labstack/echo/v4/middleware"
 	"github.com/labstack/echo/v4"
 	"go.uber.org/fx"
 
@@ -42,7 +43,12 @@ func SetupRouter(e *echo.Echo, handlers Handlers, authMiddleware echo.Middleware
 	v1 := e.Group("/api/v1", authMiddleware)
 	v1.Use(httpmiddleware.AuthUserContextLogger())
 	v1.POST("/auth/signout", handlers.Auth.Signout)
-	v1.GET("/match/state", handlers.Match.FrontendState)
+
+	matchState := v1.Group("/match/state")
+	matchState.Use(echomiddleware.RateLimiter(
+    echomiddleware.NewRateLimiterMemoryStore(20),
+	))
+	matchState.GET("", handlers.Match.FrontendState)
 
 	// --- マッチングAPI ---
 	// 認証付きws
