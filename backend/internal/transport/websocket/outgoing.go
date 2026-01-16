@@ -107,20 +107,24 @@ func NewMatchRestorePayload(matchID string, state MatchRestoreState) MatchRestor
 
 // RoundStartPayload: 試合開始通知（ルーム match:<matchId> にブロードキャスト）
 type RoundStartPayload struct {
-	Type    string     		`json:"type"`    // "match.start"
-	MatchID string     		`json:"match_id"` // 例: "cd4d6af01a..."
-	Player1 string     		`json:"player1"`
-	Player2 string     		`json:"player2"`
+	Type    string `json:"type"`    // "match.start"
+	MatchID string `json:"match_id"` // 例: "cd4d6af01a..."
+	Player1 string `json:"player1"`
+	Player2 string `json:"player2"`
+	Player1Name string `json:"player1_name"`
+	Player2Name string `json:"player2_name"`
 	State   MatchState 		`json:"state"`
 	Prompt  PromptPayload `json:"prompt"`
 }
 
-func NewRoundStartPayload(matchID, player1, player2 string, state MatchState, prompt PromptPayload) RoundStartPayload {
+func NewRoundStartPayload(matchID, player1, player2, player1Name, player2Name string, state MatchState, prompt PromptPayload) RoundStartPayload {
 	return RoundStartPayload{
 		Type:    TypeMatchStart,
 		MatchID: matchID,
 		Player1: player1,
 		Player2: player2,
+		Player1Name: player1Name,
+		Player2Name: player2Name,
 		State:   state,
 		Prompt:  prompt,
 	}

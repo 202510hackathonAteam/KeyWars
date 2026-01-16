@@ -35,6 +35,7 @@ export default function GamePage() {
   const [input, setInput] = useState("");
   const [progress, setProgress] = useState(0);
   const [missCount, setMissCount] = useState(0);
+  const missCountRef = useRef(0);
   const [targetRomaji, setTargetRomaji] = useState("");
   const [promptText, setPromptText] = useState("");
   const ignoreTypingRef = useRef(false);
@@ -89,7 +90,7 @@ export default function GamePage() {
 
     console.log("✅ doFinishOnce FIRST SEND:", type, {
     match_id: matchStartPayload?.match_id,
-    miss_count: missCount,
+    miss_count: missCountRef.current,
     });
 
     finishSentRef.current = true;
@@ -103,7 +104,7 @@ export default function GamePage() {
       type,
       body: {
         match_id: matchStartPayload.match_id,
-        miss_count: missCount,
+        miss_count: missCountRef.current,
       },
     };
 
@@ -185,21 +186,13 @@ export default function GamePage() {
     const p2Hp = matchStartPayload.state.player2_lifepoint;
 
      // --- ★ callsign / user_name の設定 ---
-    // if (isPlayer1) {
-    //   setMyCallsign(matchStartPayload.player1_name);
-    //   setEnemyCallsign(matchStartPayload.player2_name);
-    // } else {
-    //   setMyCallsign(matchStartPayload.player2_name);
-    //   setEnemyCallsign(matchStartPayload.player1_name);
-    // }
-    // --- ★ callsign / user_name の設定（固定仕様）---
-    const storedUserName = localStorage.getItem("user_name") || "PLAYER";
-
-    // 自分は常に localStorage の user_name
-    setMyCallsign(storedUserName);
-
-    // 敵は常に固定 "RYU"
-    setEnemyCallsign("RYU");
+    if (isPlayer1) {
+      setMyCallsign(matchStartPayload.player1_name);
+      setEnemyCallsign(matchStartPayload.player2_name);
+    } else {
+      setMyCallsign(matchStartPayload.player2_name);
+      setEnemyCallsign(matchStartPayload.player1_name);
+    }
 
     // // 🔥 古いタイマーを完全停止
     // clearInterval(timerRef.current);
@@ -303,6 +296,7 @@ export default function GamePage() {
 
     if (!isCorrect) {
       setMissCount((prev) => prev + miss);
+      missCountRef.current += miss;
       return;
     }
 
@@ -329,13 +323,24 @@ export default function GamePage() {
 
   const myId = localStorage.getItem("user_id"); // ← 自分のユーザーID
 
-    // ★ 自分の total miss count を判定
+  // ★ 自分の total miss count を判定
   const isPlayer1 = matchEndPayload.player1 === myId;
   const myTotalMiss = isPlayer1
     ? matchEndPayload.player1_total_miss_count
     : matchEndPayload.player2_total_miss_count;
 
-  const didWin = matchEndPayload.winner === myId;
+  let result;
+
+  if (matchEndPayload.result === "draw") {
+    result = "draw";
+  } else if (matchEndPayload.result === "win") {
+    result = matchEndPayload.winner === myId
+      ? "victory"
+      : "defeat";
+  } else {
+    console.warn("Unknown match result:", matchEndPayload.result);
+    result = "defeat";
+  }
 
   const payloadForResult = matchEndPayload;
   resetMatchState();
@@ -343,7 +348,7 @@ export default function GamePage() {
   // 結果画面へ
   navigate("/result", {
     state: {
-      result: didWin ? "victory" : "defeat",
+      result: result,
       totalMiss: myTotalMiss,              
       matchEnd: payloadForResult, // ← 必要ならデータ丸ごと送れる
       round: matchStartPayload?.state?.round,  // ← 追加！！
@@ -550,7 +555,6 @@ export default function GamePage() {
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
-              sendAnswerFinish();
               return;
             }
 
@@ -562,7 +566,7 @@ export default function GamePage() {
             }
           }}
           disabled={isInputDisabled}
-          placeholder="Enterで攻撃　ここにタイプ"
+          placeholder="ここにタイプ"
           className="
             w-full p-[3vh] rounded-lg border-2 border-white/5 bg-transparent text-white 
             font-['Press_Start_2P'] text-[] 
