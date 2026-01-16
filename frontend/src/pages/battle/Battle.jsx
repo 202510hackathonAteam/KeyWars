@@ -184,21 +184,13 @@ export default function GamePage() {
     const p2Hp = matchStartPayload.state.player2_lifepoint;
 
      // --- ★ callsign / user_name の設定 ---
-    // if (isPlayer1) {
-    //   setMyCallsign(matchStartPayload.player1_name);
-    //   setEnemyCallsign(matchStartPayload.player2_name);
-    // } else {
-    //   setMyCallsign(matchStartPayload.player2_name);
-    //   setEnemyCallsign(matchStartPayload.player1_name);
-    // }
-    // --- ★ callsign / user_name の設定（固定仕様）---
-    const storedUserName = localStorage.getItem("user_name") || "PLAYER";
-
-    // 自分は常に localStorage の user_name
-    setMyCallsign(storedUserName);
-
-    // 敵は常に固定 "RYU"
-    setEnemyCallsign("RYU");
+    if (isPlayer1) {
+      setMyCallsign(matchStartPayload.player1_name);
+      setEnemyCallsign(matchStartPayload.player2_name);
+    } else {
+      setMyCallsign(matchStartPayload.player2_name);
+      setEnemyCallsign(matchStartPayload.player1_name);
+    }
 
     // // 🔥 古いタイマーを完全停止
     // clearInterval(timerRef.current);

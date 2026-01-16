@@ -44,7 +44,7 @@ func NewRoundFlowService(
 }
 
 // StartFirstRound は、試合の最初のラウンドを開始するメソッド。
-func (s *RoundFlowService) StartFirstRound(ctx context.Context, matchID, user1ID, user2ID string) error {
+func (s *RoundFlowService) StartFirstRound(ctx context.Context, matchID string) error {
 	// 1問目取得
 	loadCtx, cancelLoad := context.WithTimeout(ctx, 500*time.Millisecond)
 	roundQuestion, err := s.nextRoundService.LoadNextPrompt(loadCtx, matchID, 0)
@@ -61,11 +61,20 @@ func (s *RoundFlowService) StartFirstRound(ctx context.Context, matchID, user1ID
 		return err
 	}
 
+	playersCtx, cancelPlayers := context.WithTimeout(ctx, 200*time.Millisecond)
+	players, err := s.roundStateRepo.LoadMatchPlayers(playersCtx, matchID)
+	cancelPlayers()
+	if err != nil {
+		return fmt.Errorf("failed to load players: %w", err)
+	}
+
 	// マッチ開始メッセージをルーム内の全員にブロードキャスト
 	payload := websocket.NewRoundStartPayload(
 		matchID,
-		user1ID,
-		user2ID,
+		players.Player1ID,
+		players.Player2ID,
+		players.Player1Name,
+		players.Player2Name,
 		websocket.MatchState{
 			Round:            config.InitialRound,
 			RoundStartAtMs:   roundStartAtMs,
@@ -80,7 +89,7 @@ func (s *RoundFlowService) StartFirstRound(ctx context.Context, matchID, user1ID
 		},
 	)
 
-	userIDs := []string{user1ID, user2ID}
+	userIDs := []string{players.Player1ID, players.Player2ID}
 	for _, userID := range userIDs{
 		s.websocketHub.DispatchToUser(userID, payload)
 	}
@@ -265,6 +274,8 @@ func (s *RoundFlowService) ProcessRoundResult(ctx context.Context, matchID strin
 		matchID,
 		players.Player1ID,
 		players.Player2ID,
+		players.Player1Name,
+		players.Player2Name,
 		websocket.MatchState{
 			Round:            nextRound,
 			RoundStartAtMs:   roundStartAtMs,
