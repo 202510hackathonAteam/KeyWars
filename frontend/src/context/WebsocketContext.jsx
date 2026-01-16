@@ -139,6 +139,17 @@ export function WebSocketProvider({ children }) {
 
           case "match.restore":
             console.log("再接続:", data);
+
+            setIsRestoring(true);
+
+            newSession();
+
+            appliedEndRef.current = false;
+
+            if (connected) {
+              startPolling();
+            }
+
             const restoredRound = data.state.round;
 
             // restore は「基準点をジャンプさせる」
@@ -147,7 +158,6 @@ export function WebSocketProvider({ children }) {
 
             // 試合再発見 → battle 画面へ遷移
             setMatchRestorePayload(data);
-            setIsRestoring(true); 
             if (!matchStartedRef.current) {
               matchStartedRef.current = true;
               navigate("/battle");
@@ -159,6 +169,14 @@ export function WebSocketProvider({ children }) {
     // setWs(socket);
 
   };
+
+  useEffect(() => {
+    if (!isRestoring) return;
+    if (!matchRestorePayload) return;
+    if (!matchStartPayload) return;
+
+    setIsRestoring(false);
+  }, [isRestoring, matchStartPayload]);
 
   // HTTP ポーリングでフロントエンド再構築用の試合状態を取得し、
   // match.start / match.end を一度だけ適用するための関数
@@ -196,7 +214,7 @@ export function WebSocketProvider({ children }) {
     if (!data) return;
 
     switch (data.type) {
-      case "match.start":        
+      case "match.start":
         const nextRound = data?.state?.round;
         if (
           appliedRoundRef.current !== null &&
@@ -259,11 +277,10 @@ export function WebSocketProvider({ children }) {
     wsRef.current.send(JSON.stringify({ type: "queue.left" }));
     console.log("📤 Sent: queue.left");
 
-    // 自動再接続も止めたい場合、disconnect する
-    disconnect();
-
     // match 開始フラグをリセット
     matchStartedRef.current = false;
+
+    window.location.reload();
   };
 
   const disconnect = () => {
