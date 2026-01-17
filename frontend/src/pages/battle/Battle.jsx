@@ -313,13 +313,9 @@ export default function GamePage() {
   // 🔚 バトル終了
   // ============================================
   const { matchEndPayload, resetMatchState } = useContext(WebSocketContext);
-  const appliedEndRef = useRef(false);
 
   useEffect(() => {
   if (!matchEndPayload) return;
-  if (appliedEndRef.current) return;
-
-  appliedEndRef.current = true;
 
   console.log("🎌 match.end received in GamePage:", matchEndPayload);
 
