@@ -31,7 +31,7 @@ resource "google_compute_security_policy" "default" {
   # ======================================
   rule {
     priority = 900
-    action   = "allow"
+    action   = "throttle"
 
     match {
       expr {
@@ -41,11 +41,11 @@ resource "google_compute_security_policy" "default" {
 
     rate_limit_options {
       conform_action = "allow"
-      exceed_action  = "allow"   # BANしない・429返さない
+      exceed_action  = "deny(429)"
       enforce_on_key = "IP"
 
       rate_limit_threshold {
-        count        = 2000
+        count        = 1000000  # 実質無制限
         interval_sec = 60
       }
     }
