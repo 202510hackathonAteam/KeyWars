@@ -48,7 +48,6 @@ export default function GamePage() {
 
   // カウントダウン
   const [countdown, setCountdown] = useState(null);
-  const countdownFinishedRef = useRef(false);
 
   // WebSocket
   const { wsRef, matchStartPayload, matchRestorePayload, isRestoring, setIsRestoring } = useContext(WebSocketContext);
@@ -233,7 +232,6 @@ export default function GamePage() {
       setCountdown(prev => {
         if (prev <= 1) {
           clearInterval(countdownRef.current);
-          countdownFinishedRef.current = true;
           return null;
         }
         return prev - 1;
@@ -355,7 +353,7 @@ export default function GamePage() {
 }, [matchEndPayload, navigate, resetMatchState]);
 
   useEffect(() => {
-    if (!countdownFinishedRef.current) return;
+    if (countdown !== null) return;
     if (!roundIdRef.current) return;
 
     startBattleTimer(roundIdRef.current);
