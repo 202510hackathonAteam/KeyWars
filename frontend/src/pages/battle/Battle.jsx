@@ -208,6 +208,7 @@ export default function GamePage() {
     setInput("");
     setProgress(0);
     setMissCount(0);
+    missCountRef.current = 0;
     setTargetRomaji(matchStartPayload.prompt.target_romaji);
     setPromptText(matchStartPayload.prompt.prompt_text_ja);
 
