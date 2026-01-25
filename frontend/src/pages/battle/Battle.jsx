@@ -68,7 +68,7 @@ export default function GamePage() {
   const [enemyCallsign, setEnemyCallsign] = useState("");
 
   // websocket閉じる
-  const { leaveQueue } = useContext(WebSocketContext);
+  const { leaveQueueFromBattle } = useContext(WebSocketContext);
 
   // カウントダウン時のインプット不可
   const isInputDisabled = countdown !== null || isRestoring;
@@ -580,7 +580,7 @@ export default function GamePage() {
               className="px-3 py-2 rounded-lg border-2 border-white/5 text-white hover:bg-red-900/40 text-[2vh] "
               onClick={() => {
                 // 1. queue.left を送信して接続解除
-                leaveQueue();
+                leaveQueueFromBattle();
 
                 // 2. 結果画面へ defeat として遷移
                 navigate("/result", {
