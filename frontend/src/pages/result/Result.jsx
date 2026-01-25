@@ -141,15 +141,7 @@ const Result = () => {
             再戦
           </button>
           <button
-              onClick={() => {
-                // （任意）履歴や WS の best effort クリーンアップ
-                goHome?.();
-
-                // Redis / WS / polling の残骸を完全に捨てる
-                setTimeout(() => {
-                  window.location.reload();
-                }, 300);
-              }}
+            onClick={goHome}
             className="border-2 border-[#ff6600] px-6 py-3 rounded-xl text-xs shadow-[0_0_15px_#ff6600] transition duration-300 hover:bg-[#ff6600]/20"
           >
             ホームに戻る

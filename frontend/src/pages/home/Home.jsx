@@ -6,7 +6,7 @@ import LogoutButton from "../../components/LogoutButton";
 
 export default function Home() {
   // 現在接続中かどうかを保持するstate(connectによって再描画される。)
-  const { connect, connected, leaveQueue } = useContext(WebSocketContext);
+  const { connect, connected, leaveQueueFromHome } = useContext(WebSocketContext);
 
   const storedUserName = localStorage.getItem("user_name") || "GUEST";
   // Websocketの接続を担う関数 
@@ -121,7 +121,7 @@ export default function Home() {
             </button>
             {connected && (
               <button
-                onClick={leaveQueue}
+                onClick={leaveQueueFromHome}
                 className="
                   px-6 py-3
                   rounded-lg

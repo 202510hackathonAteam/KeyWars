@@ -5,7 +5,6 @@ body {
   background: #000;
   color: #fff;
   transition: background 1s ease;
-  overflow: hidden;
 }
 
 /* === 背景フラッシュ（勝利） === */

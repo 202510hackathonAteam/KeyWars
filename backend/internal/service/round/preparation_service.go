@@ -60,10 +60,10 @@ func (s *NextRoundService) SaveRoundTiming(ctx context.Context, matchID string, 
 }
 
 // SaveFirstRoundTiming は初回ラウンドだけ開始までの余裕時間を長く取るメソッド。
-// UIロードやフロント側での初回処理のため17秒遅延している。
+// UIロードやフロント側での初回処理のため4秒遅延している。
 func (s *NextRoundService) SaveFirstRoundTiming(ctx context.Context, matchID string, limitMs int64) (int64, int64, error) {
 	// 開始予定時刻と終了予定時刻を作成
-	roundStartDelay := 17000 * time.Millisecond
+	roundStartDelay := 4000 * time.Millisecond
 	roundStartAtMs := time.Now().Add(roundStartDelay).UnixMilli()
 	roundEndAtMs := roundStartAtMs + limitMs
 
