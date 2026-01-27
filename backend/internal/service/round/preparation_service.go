@@ -45,7 +45,7 @@ func (s *NextRoundService) LoadNextPrompt(ctx context.Context, matchID string, d
 // SaveRoundTiming は、開始/終了予定時刻を作成して Redis に保存するメソッド。
 func (s *NextRoundService) SaveRoundTiming(ctx context.Context, matchID string, limitMs int64) (int64, int64, error) {
 	// 開始予定時刻と終了予定時刻を作成
-	roundStartDelay := 3500 * time.Millisecond
+	roundStartDelay := 4000 * time.Millisecond
 	roundStartAtMs := time.Now().Add(roundStartDelay).UnixMilli()
 	roundEndAtMs := roundStartAtMs + limitMs
 
