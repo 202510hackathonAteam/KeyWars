@@ -42,7 +42,7 @@ func init() {
 // Redis 上の複数キーに分割して管理するリポジトリ実装。
 // キー構成：
 // 	 - user_active_match:{userID} ... ユーザーIDに紐づいたマッチID（matchID）
-//   - match:{matchID}         ... メタ情報（player1, player2）
+//   - match:{matchID}         ... メタ情報（player1, player2, player1_name, player2_name）
 //   - match:{matchID}:state   ... 進行状態（deck_index, round, round_start_at_ms, round_end_at_ms,
 //                                     player1_lifepoint, player2_lifepoint,
 //                                     player1_total_miss_count, player2_total_miss_count）
@@ -385,8 +385,19 @@ func (r *RoundStateRepositoryRedis) DeleteFrontendState(ctx context.Context, mat
 	return r.redisClient.Del(ctx, frontendStateKey).Err()
 }
 
+// InitMatch は、マッチ作成直後の初期化フェーズにおいて、
+// 試合メタ情報（表示用の player_name など）を match:{matchID} に保存するメソッド。
+func (r *RoundStateRepositoryRedis) InitMatch(ctx context.Context, matchID, user1Name, user2Name string) error {
+	matchKey := fmt.Sprintf("match:%s", matchID)
+
+	return r.redisClient.HSet(ctx, matchKey,
+		"player1_name", user1Name,
+		"player2_name", user2Name,
+	).Err()
+}
+
 // LoadMatchPlayers は Redis に保存された
-// match:{matchID} のプレイヤー情報（player1 / player2）を取得するメソッド。
+// match:{matchID} のプレイヤー情報を取得するメソッド。
 func (r *RoundStateRepositoryRedis) LoadMatchPlayers(ctx context.Context, matchID string) (*domainmodel.MatchPlayers, error) {
 	matchKey := fmt.Sprintf("match:%s", matchID)
 
@@ -402,6 +413,8 @@ func (r *RoundStateRepositoryRedis) LoadMatchPlayers(ctx context.Context, matchI
 	players := &domainmodel.MatchPlayers{
 		Player1ID: data["player1"],
 		Player2ID: data["player2"],
+		Player1Name: data["player1_name"],
+		Player2Name: data["player2_name"],
 	}
 
 	return players, nil

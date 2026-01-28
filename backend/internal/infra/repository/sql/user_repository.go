@@ -136,3 +136,19 @@ func (r *userRepo) FindUserByUsername(ctx context.Context, username string) (*do
 
 	return toDomain(&userRecord), nil
 }
+
+// FindUserNameByUserID は、指定されたユーザーIDに一致するユーザー名を取得する関数。
+func (r *userRepo) FindUserNameByUserID(ctx context.Context, userID string) (string, error) {
+	var userName string
+	err := r.db.WithContext(ctx).
+		Table("users").
+		Select("user_name").
+		Where("id = ?", userID).
+		Scan(&userName).Error
+
+	if err != nil {
+		return "", err
+	}
+
+	return userName, nil
+}

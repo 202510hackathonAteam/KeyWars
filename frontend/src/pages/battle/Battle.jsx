@@ -35,6 +35,7 @@ export default function GamePage() {
   const [input, setInput] = useState("");
   const [progress, setProgress] = useState(0);
   const [missCount, setMissCount] = useState(0);
+  const missCountRef = useRef(0);
   const [targetRomaji, setTargetRomaji] = useState("");
   const [promptText, setPromptText] = useState("");
   const ignoreTypingRef = useRef(false);
@@ -67,7 +68,7 @@ export default function GamePage() {
   const [enemyCallsign, setEnemyCallsign] = useState("");
 
   // websocket閉じる
-  const { leaveQueue } = useContext(WebSocketContext);
+  const { leaveQueueFromBattle } = useContext(WebSocketContext);
 
   // カウントダウン時のインプット不可
   const isInputDisabled = countdown !== null || isRestoring;
@@ -80,43 +81,35 @@ export default function GamePage() {
   // answer.finish / answer.timeout を1回だけ送る
   // ============================================
   const doFinishOnce = (type) => {
-    if (finishSentRef.current){
-      console.log("🚫 doFinishOnce SKIP (already sent)", type);
-      return;
-    }
-    
+    if (finishSentRef.current) return;
 
-    console.log("✅ doFinishOnce FIRST SEND:", type, {
-    match_id: matchStartPayload?.match_id,
-    miss_count: missCount,
-    });
-
+    // 二重送信を防ぐ
     finishSentRef.current = true;
 
+    // 自分側のタイマーは即終了
     clearInterval(timerRef.current);
 
-    // ★★★ ここで「相手待ち」状態にする ★★★
-    setIsWaiting(true);
-
+    // 送信データを作る
     const msg = {
       type,
       body: {
         match_id: matchStartPayload.match_id,
-        miss_count: missCount,
+        miss_count: missCountRef.current,
       },
     };
 
-    console.log("🔥 SEND", msg);
+    // サーバーへ通知
     wsRef.current?.send(JSON.stringify(msg));
+
+    // 相手待ち UI へ
+    setIsWaiting(true);
   };
 
   const sendAnswerFinish = () => {
-  console.log("🔵 sendAnswerFinish called");
-  doFinishOnce("answer.finish");
+    doFinishOnce("answer.finish");
   }
   const sendAnswerTimeout = () => {
-  console.log("🟠 sendAnswerTimeout called");
-  doFinishOnce("answer.timeout");
+    doFinishOnce("answer.timeout");
   }
 
   // ============================================
@@ -152,10 +145,7 @@ export default function GamePage() {
     const round = matchStartPayload.state.round;
 
     // --- 重複ガード ---
-    if (appliedRoundRef.current === round) {
-      console.log("⏭ duplicate round ignored:", round);
-      return;
-    }
+    if (appliedRoundRef.current === round) return;
 
     // 初めて見るラウンドなので適用
     appliedRoundRef.current = round;
@@ -164,8 +154,6 @@ export default function GamePage() {
 
     // ★ 相手待ちモード解除（次のラウンドが始まったので）
     setIsWaiting(false);
-
-    console.log("【🐱 新しいラウンド開始】", matchStartPayload.state.round);
 
     // 🔥 ラウンドID を設定（これで二重ラウンドを防ぐ）
     roundIdRef.current = matchStartPayload.state.round;
@@ -182,21 +170,13 @@ export default function GamePage() {
     const p2Hp = matchStartPayload.state.player2_lifepoint;
 
      // --- ★ callsign / user_name の設定 ---
-    // if (isPlayer1) {
-    //   setMyCallsign(matchStartPayload.player1_name);
-    //   setEnemyCallsign(matchStartPayload.player2_name);
-    // } else {
-    //   setMyCallsign(matchStartPayload.player2_name);
-    //   setEnemyCallsign(matchStartPayload.player1_name);
-    // }
-    // --- ★ callsign / user_name の設定（固定仕様）---
-    const storedUserName = localStorage.getItem("user_name") || "PLAYER";
-
-    // 自分は常に localStorage の user_name
-    setMyCallsign(storedUserName);
-
-    // 敵は常に固定 "RYU"
-    setEnemyCallsign("RYU");
+    if (isPlayer1) {
+      setMyCallsign(matchStartPayload.player1_name);
+      setEnemyCallsign(matchStartPayload.player2_name);
+    } else {
+      setMyCallsign(matchStartPayload.player2_name);
+      setEnemyCallsign(matchStartPayload.player1_name);
+    }
 
     // // 🔥 古いタイマーを完全停止
     // clearInterval(timerRef.current);
@@ -215,6 +195,7 @@ export default function GamePage() {
     setInput("");
     setProgress(0);
     setMissCount(0);
+    missCountRef.current = 0;
     setTargetRomaji(matchStartPayload.prompt.target_romaji);
     setPromptText(matchStartPayload.prompt.prompt_text_ja);
 
@@ -261,7 +242,6 @@ export default function GamePage() {
   if (!matchRestorePayload) return;
 
   const restore = matchRestorePayload;
-  console.log("🔥 RESTORE DATA:", restore);
 
   const myId = localStorage.getItem("user_id");
   const isPlayer1 = matchStartPayload?.player1 === myId;
@@ -310,6 +290,7 @@ export default function GamePage() {
 
     if (!isCorrect) {
       setMissCount((prev) => prev + miss);
+      missCountRef.current += miss;
       return;
     }
 
@@ -324,25 +305,30 @@ export default function GamePage() {
   // 🔚 バトル終了
   // ============================================
   const { matchEndPayload, resetMatchState } = useContext(WebSocketContext);
-  const appliedEndRef = useRef(false);
 
   useEffect(() => {
   if (!matchEndPayload) return;
-  if (appliedEndRef.current) return;
-
-  appliedEndRef.current = true;
-
-  console.log("🎌 match.end received in GamePage:", matchEndPayload);
 
   const myId = localStorage.getItem("user_id"); // ← 自分のユーザーID
 
-    // ★ 自分の total miss count を判定
+  // ★ 自分の total miss count を判定
   const isPlayer1 = matchEndPayload.player1 === myId;
   const myTotalMiss = isPlayer1
     ? matchEndPayload.player1_total_miss_count
     : matchEndPayload.player2_total_miss_count;
 
-  const didWin = matchEndPayload.winner === myId;
+  let result;
+
+  if (matchEndPayload.result === "draw") {
+    result = "draw";
+  } else if (matchEndPayload.result === "win") {
+    result = matchEndPayload.winner === myId
+      ? "victory"
+      : "defeat";
+  } else {
+    console.warn("Unknown match result:", matchEndPayload.result);
+    result = "defeat";
+  }
 
   const payloadForResult = matchEndPayload;
   resetMatchState();
@@ -350,7 +336,7 @@ export default function GamePage() {
   // 結果画面へ
   navigate("/result", {
     state: {
-      result: didWin ? "victory" : "defeat",
+      result: result,
       totalMiss: myTotalMiss,              
       matchEnd: payloadForResult, // ← 必要ならデータ丸ごと送れる
       round: matchStartPayload?.state?.round,  // ← 追加！！
@@ -545,7 +531,6 @@ export default function GamePage() {
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
-              sendAnswerFinish();
               return;
             }
 
@@ -557,7 +542,7 @@ export default function GamePage() {
             }
           }}
           disabled={isInputDisabled}
-          placeholder="Enterで攻撃　ここにタイプ"
+          placeholder="ここにタイプ"
           className="
             w-full p-[3vh] rounded-lg border-2 border-white/5 bg-transparent text-white 
             font-['Press_Start_2P'] text-[] 
@@ -579,7 +564,7 @@ export default function GamePage() {
               className="px-3 py-2 rounded-lg border-2 border-white/5 text-white hover:bg-red-900/40 text-[2vh] "
               onClick={() => {
                 // 1. queue.left を送信して接続解除
-                leaveQueue();
+                leaveQueueFromBattle();
 
                 // 2. 結果画面へ defeat として遷移
                 navigate("/result", {

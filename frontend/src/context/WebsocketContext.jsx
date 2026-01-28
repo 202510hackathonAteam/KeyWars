@@ -20,6 +20,7 @@ export function WebSocketProvider({ children }) {
   const sessionIdRef = useRef(0);
   const backoffTimerRef = useRef(null);
   const pollingRef = useRef(null);
+  const endLockRef = useRef(false);
 
 
   const getUserId = () => localStorage.getItem("user_name");
@@ -35,14 +36,10 @@ export function WebSocketProvider({ children }) {
   }
 
   const startPolling = () => {
-    if (pollingRef.current) {
-      console.log("🚫 polling already running");
-      return
-    };
+    if (pollingRef.current) return;
 
     const sessionId = sessionIdRef.current;
 
-    console.log("▶️ polling started");
     pollingRef.current = setInterval(async () => {
       await fetchFrontendState(sessionId);
     }, 300);
@@ -53,7 +50,6 @@ export function WebSocketProvider({ children }) {
 
     clearInterval(pollingRef.current);
     pollingRef.current = null;
-    console.log("⏹ polling stopped");
   }
 
   const connect = () => {
@@ -63,13 +59,16 @@ export function WebSocketProvider({ children }) {
       return;
     }
 
-    appliedRoundRef.current = null;
-    appliedEndRef.current = false;
-    matchStartedRef.current = false;
+    // 試合終了クールダウン中は新規接続しない
+    if (endLockRef.current) return;
 
-    if (wsRef.current) {
-      console.log("WS: closing old socket...");
+    // 既存 WS があれば必ず閉じる
+    if (
+      wsRef.current &&
+      wsRef.current.readyState === WebSocket.OPEN
+    ) {
       wsRef.current.close();
+      wsRef.current = null;
     }
 
     const wsUrl = import.meta.env.VITE_WS_URL;  // MUST include /api/v1/ws
@@ -78,8 +77,6 @@ export function WebSocketProvider({ children }) {
     wsRef.current = socket;
 
     socket.onopen = () => {
-      console.log("WS: connected");
-
       if (!matchStartedRef.current) {
         socket.send(JSON.stringify({ type: "queue.join" }));
       }
@@ -88,7 +85,6 @@ export function WebSocketProvider({ children }) {
     };
 
     socket.onclose = () => {
-      console.log("WS: disconnected");
       setConnected(false);
 
       // reconnectTimer.current = setTimeout(() => {
@@ -108,7 +104,6 @@ export function WebSocketProvider({ children }) {
             localStorage.setItem("user_id", data.user_id);
             break;
           case "match.start":
-            console.log("[push] 🔥 match.start received:", data);
             const round = data.state.round;
             // すでにこのラウンドを適用済みなら無視
             if (appliedRoundRef.current === round) {
@@ -130,38 +125,35 @@ export function WebSocketProvider({ children }) {
             break;
 
           case "match.end":
-            console.log("[push] 試合終了:", data);
             if (appliedEndRef.current) return;
 
+            endLockRef.current = true;
             appliedEndRef.current = true;
             setMatchEndPayload(data);
+            setTimeout(() => {
+              endLockRef.current = false;
+            }, 5000);
             break;
 
           case "match.restore":
-            console.log("再接続:", data);
 
+            if (endLockRef.current) return;
             setIsRestoring(true);
 
             newSession();
 
             appliedEndRef.current = false;
 
-            if (connected) {
-              startPolling();
-            }
-
-            const restoredRound = data.state.round;
-
             // restore は「基準点をジャンプさせる」
+            const restoredRound = data.state.round;
             appliedRoundRef.current = restoredRound;
-            appliedEndRef.current = false;
 
             // 試合再発見 → battle 画面へ遷移
             setMatchRestorePayload(data);
             if (!matchStartedRef.current) {
               matchStartedRef.current = true;
               navigate("/battle");
-              }
+            }
             break;
         }
       };
@@ -201,7 +193,6 @@ export function WebSocketProvider({ children }) {
       backoffTimerRef.current = setTimeout(() => {
         if (sessionIdRef.current !== sessionId) return;
         startPolling();
-        console.log("🔁 polling resumed after backoff");
       }, 600); // ← バックオフ時間
 
       return;
@@ -223,8 +214,6 @@ export function WebSocketProvider({ children }) {
           return;
         }
 
-        console.log("[polling] 🔥 match.start received:", data);
-
         appliedRoundRef.current = nextRound;
 
         // context に保存（GamePage がこれを読む）
@@ -239,10 +228,13 @@ export function WebSocketProvider({ children }) {
 
       case "match.end":
         if (appliedEndRef.current) return;
-        console.log("[polling] 試合終了:", data);
 
+        endLockRef.current = true;
         appliedEndRef.current = true;
         setMatchEndPayload(data);
+        setTimeout(() => {
+          endLockRef.current = false;
+        }, 5000);
         break;
     }
   };
@@ -250,37 +242,31 @@ export function WebSocketProvider({ children }) {
   // WebSocket 接続中のみポーリングを有効化し、
   // 試合終了（match.end）を検知したら自動で停止する
   useEffect(() => {
-    if (!connected || appliedEndRef.current) {
+    if (!connected && !isRestoring) {
       stopPolling();
-      console.log("⏸ polling skipped (WS not connected)");
       return;
     }
 
-    startPolling();
-    console.log("▶️ polling started (WS connected)");
-
-    return () => {
-      stopPolling();
-      console.log("⏹ polling stopped");
-    };
+    if (!appliedEndRef.current) {
+      startPolling();
+    }
   }, [connected]);
 
   // ===========================
   // 🔥 対戦をやめる（queue.left）
   // ===========================
-  const leaveQueue = () => {
+  const leaveQueueFromHome = () => {
+    wsRef.current?.send(JSON.stringify({ type: "queue.left" }));
+    window.location.reload();
+  };
+
+  const leaveQueueFromBattle = () => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
       console.warn("WS not connected → queue.left を送信できません");
       return;
     }
 
     wsRef.current.send(JSON.stringify({ type: "queue.left" }));
-    console.log("📤 Sent: queue.left");
-
-    // match 開始フラグをリセット
-    matchStartedRef.current = false;
-
-    window.location.reload();
   };
 
   const disconnect = () => {
@@ -296,9 +282,9 @@ export function WebSocketProvider({ children }) {
   };
 
   const resetMatchState = () => {
-    console.log("🔁 resetMatchState called");
     setMatchStartPayload(null);
     setMatchEndPayload(null);
+    setMatchRestorePayload(null);
 
     appliedRoundRef.current = null;
     appliedEndRef.current = false;
@@ -314,7 +300,8 @@ export function WebSocketProvider({ children }) {
         connect,
         fetchFrontendState,
         disconnect,
-        leaveQueue,
+        leaveQueueFromHome,
+        leaveQueueFromBattle,
         matchStartPayload,
         matchEndPayload,
         resetMatchState,

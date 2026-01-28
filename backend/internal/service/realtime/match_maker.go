@@ -23,6 +23,7 @@ import (
 //   - 試合状態・初期データの生成
 //   - 成立時の通知（接続中ユーザーのみ）
 type MatchMakerService struct {
+	userRepo 						 repository.UserRepository
 	matchQueueRepo 			 repository.MatchQueueRepository
 	roundStateRepo 			 repository.RoundStateRepository
 	logger 							 *zerolog.Logger
@@ -34,6 +35,7 @@ type MatchMakerService struct {
 // リポジトリ・Hub・ラウンド制御サービスを受け取り、
 // MatchMakerService を生成するコンストラクタ。
 func NewMatchMakerService(
+	userRepo repository.UserRepository,
 	matchQueueRepo repository.MatchQueueRepository,
 	roundStateRepo repository.RoundStateRepository,
 	logger *zerolog.Logger,
@@ -41,6 +43,7 @@ func NewMatchMakerService(
 	roundFlowService *round.RoundFlowService,
 ) *MatchMakerService {
 	return &MatchMakerService{
+		userRepo:							userRepo,
 		matchQueueRepo: 	 		matchQueueRepo,
 		roundStateRepo: 	 		roundStateRepo,
 		logger:								logger,
@@ -127,6 +130,33 @@ func (s *MatchMakerService) tryMakeMatch(ctx context.Context) {
 	}()
 
 	// 初期化
+	user1Name, err := s.userRepo.FindUserNameByUserID(ctx, user1ID)
+	if err != nil {
+		s.logger.Error().
+			Err(err).
+			Str("event", constant.EventMatchMakerTry).
+			Str("match_id", matchID).
+			Msg("failed to fetch user name for match initialization")
+		return
+	}
+	user2Name, err := s.userRepo.FindUserNameByUserID(ctx, user2ID)
+	if err != nil {
+		s.logger.Error().
+			Err(err).
+			Str("event", constant.EventMatchMakerTry).
+			Str("match_id", matchID).
+			Msg("failed to fetch user name for match initialization")
+		return
+	}
+	if err := s.roundStateRepo.InitMatch(ctx, matchID, user1Name, user2Name); err != nil {
+		s.logger.Error().
+			Err(err).
+			Str("event", constant.EventMatchMakerTry).
+			Str("match_id", matchID).
+			Msg("failed to initialize match metadata")
+		return
+	}
+
 	if err := s.roundStateRepo.InitMeasurementFinishCount(ctx, matchID);err != nil {
 		s.logger.Error().
 			Err(err).
@@ -166,7 +196,7 @@ func (s *MatchMakerService) tryMakeMatch(ctx context.Context) {
 	// ラウンド開始に失敗しても、試合自体は成立済みとして扱う。
 
 	// 第1ラウンド開始（1回だけ）
-	if err := s.roundFlowService.StartFirstRound(ctx, matchID, user1ID, user2ID); err != nil {
+	if err := s.roundFlowService.StartFirstRound(ctx, matchID); err != nil {
     s.logger.Error().
 			Err(err).
 			Str("event", constant.EventMatchMakerTry).

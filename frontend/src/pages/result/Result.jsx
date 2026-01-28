@@ -18,12 +18,12 @@ const Result = () => {
   }, [disconnect, resetMatchState]);
 
   // Battleから受け取る
-  const result = location.state?.result || "victory"; // デフォルト値
+  const result = location.state?.result || "defeat"; // デフォルト値
   const isVictory = result === "victory";
+  const isDefeat  = result === "defeat";
+  const isDraw    = result === "draw";
   const totalRounds = location.state?.round || 20;
-  console.log("🟢 Result received round:", totalRounds);
   const totalMiss = location.state?.totalMiss;
-  console.log("🎯 自分の total miss:", totalMiss);
 
 
   useEffect(() => {
@@ -103,10 +103,14 @@ const Result = () => {
         className={`block text-2xl mt-5 ${
           isVictory
             ? "text-[#7CFF6B] drop-shadow-[0_0_15px_#00ff88,0_0_40px_#00cc66] animate-blink"
+            : isDraw
+            ? "text-[#FFD966] drop-shadow-[0_0_15px_#ffcc00]"
             : "text-[#88FFB2] drop-shadow-[0_0_15px_#00ff99,0_0_40px_#00cc88] animate-blink"
         }`}
       >
-        {isVictory ? "YOU WIN!" : "YOU LOSE..."}
+        {isVictory && "YOU WIN!"}
+        {isDraw && "DRAW"}
+        {isDefeat && "YOU LOSE..."}
       </span>
 
       </h1>

@@ -67,7 +67,11 @@ type RoundStateRepository interface {
 	// Redis から完全に削除する。
 	DeleteFrontendState(ctx context.Context, matchID string) error
 
-	// Redis に保存されたmatch:{matchID} のプレイヤー情報（player1 / player2）を取得する。
+	// InitMatch は、マッチ作成直後の初期化フェーズにおいて、
+	// 試合メタ情報（表示用の player_name など）を match:{matchID} に保存する。
+	InitMatch(ctx context.Context, matchID, user1Name, user2Name string) error
+
+	// Redis に保存されたmatch:{matchID} のプレイヤー情報を取得する。
 	LoadMatchPlayers(ctx context.Context, matchID string) (*model.MatchPlayers, error)
 
 	// 試合開始直後に呼び出される初期化処理する。

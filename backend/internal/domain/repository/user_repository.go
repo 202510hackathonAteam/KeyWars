@@ -12,4 +12,5 @@ type UserRepository interface{
 	ExistsByUsername(ctx context.Context, username string) (bool, error)
 	FindByID(ctx context.Context, userID string) (*domainmodel.User, error)
 	FindUserByUsername(ctx context.Context, username string) (*domainmodel.User, error)
+	FindUserNameByUserID(ctx context.Context, userID string) (string, error)
 }

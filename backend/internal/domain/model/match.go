@@ -4,4 +4,6 @@ package model
 type MatchPlayers struct {
 	Player1ID string
 	Player2ID string
+	Player1Name string
+	Player2Name string
 }
