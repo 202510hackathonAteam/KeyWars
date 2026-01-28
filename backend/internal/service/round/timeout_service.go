@@ -24,6 +24,9 @@ func NewTimeoutRoundService(roundStateRepo repository.RoundStateRepository, forc
 
 // ScheduleRoundTimeoutCheck は、ラウンドの制限時間(deadlineMs)を監視し、
 // 締切に到達した時点で両プレイヤーの回答状況を確認するメソッド。
+// 
+// 締切に到達した時点で一度だけ両プレイヤーの回答状況を確認し、
+// 必要と判断された場合は試合の強制終了を発動する。
 func (s *TimeoutRoundService) ScheduleRoundTimeoutCheck(ctx context.Context, matchID string, deadlineMs int64) {
 	ticker := time.NewTicker(200 * time.Millisecond)
 	defer ticker.Stop()
@@ -35,20 +38,7 @@ func (s *TimeoutRoundService) ScheduleRoundTimeoutCheck(ctx context.Context, mat
 		case <-ticker.C:
 			now := time.Now().UnixMilli()
 			if now >= deadlineMs {
-				players, err := s.roundStateRepo.LoadMatchPlayers(context.Background(), matchID)
-				if err != nil {
-					return
-				}
-				isPlayer1AnswerFinish, err := s.roundStateRepo.IsPlayerAnswerFinishFlagExists(context.Background(), matchID, players.Player1ID)
-				if err != nil {
-					return
-				}
-				isPlayer2AnswerFinish, err := s.roundStateRepo.IsPlayerAnswerFinishFlagExists(context.Background(), matchID, players.Player2ID)
-				if err != nil {
-					return
-				}
-				if !isPlayer1AnswerFinish || !isPlayer2AnswerFinish {
-					// 強制終了としてを発動
+				if s.shouldTriggerForceFinish(ctx, matchID) {
 					s.forceFinishService.ForceFinish(context.Background(), matchID)
 				}
 				return
@@ -57,4 +47,40 @@ func (s *TimeoutRoundService) ScheduleRoundTimeoutCheck(ctx context.Context, mat
 			return
 		}
 	}
+}
+
+// shouldTriggerForceFinish は、ラウンドのタイムアウト到達時に
+// 「試合を強制終了すべきか」を判定するためのフェイルセーフ判定メソッド。
+func (s *TimeoutRoundService) shouldTriggerForceFinish(
+	ctx context.Context,
+	matchID string,
+) bool {
+	loadStateCtx, cancelLoadState := context.WithTimeout(ctx, 300*time.Millisecond)
+	players, err := s.roundStateRepo.LoadMatchPlayers(loadStateCtx, matchID)
+	cancelLoadState()
+	if loadStateCtx.Err() != nil || err != nil {
+		return true
+	}
+	checkFinishCtx1, cancelCheck1 := context.WithTimeout(ctx, 200*time.Millisecond)
+	isPlayer1AnswerFinish, err := s.roundStateRepo.IsPlayerAnswerFinishFlagExists(
+		checkFinishCtx1, matchID, players.Player1ID,
+	)
+	cancelCheck1()
+	if checkFinishCtx1.Err() != nil || err != nil {
+		return true
+	}
+	checkFinishCtx2, cancelCheck2 := context.WithTimeout(ctx, 200*time.Millisecond)
+	isPlayer2AnswerFinish, err := s.roundStateRepo.IsPlayerAnswerFinishFlagExists(
+		checkFinishCtx2, matchID, players.Player2ID,
+	)
+	cancelCheck2()
+	if checkFinishCtx2.Err() != nil || err != nil {
+		return true
+	}
+
+	// 回答未完了のため、強制終了を発動する条件に該当
+	if !isPlayer1AnswerFinish || !isPlayer2AnswerFinish {
+		return true
+	}
+	return false
 }

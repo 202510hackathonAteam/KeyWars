@@ -14,4 +14,7 @@ var Module = fx.Module(
 		NewForceFinishService,
 		NewTimeoutRoundService,
 	),
+	fx.Invoke(
+		ConnectForceFinishServices,
+	),
 )

@@ -7,7 +7,6 @@ var Module = fx.Module(
 	fx.Provide(
 		// Redis
 		NewMatchQueueRepositoryRedis,
-		NewPresenceRepositoryRedis,
 		NewRoundStateRepositoryRedis,
 	),
 )

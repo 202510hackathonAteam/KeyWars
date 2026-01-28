@@ -8,6 +8,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
+	_ "embed"
 	domainmodel "keywars/backend/internal/domain/model"
 	"keywars/backend/internal/domain/repository"
 	inframodel "keywars/backend/internal/infra/repository/redis/model"
@@ -17,13 +18,35 @@ import (
 
 var _ repository.RoundStateRepository = (*RoundStateRepositoryRedis)(nil)
 
+//go:embed scripts/set_key_with_ttl.lua
+var setKeyWithTTLScriptSource string
+
+var setKeyWithTTLScript = redis.NewScript(setKeyWithTTLScriptSource)
+
+var criticalScripts = map[string]string{
+	"set_key_with_ttl.lua": setKeyWithTTLScriptSource,
+}
+
+// init は、重要な Lua スクリプトが正しく embed されていることを起動時に検証する関数。
+// embed に失敗した場合でも Go のコンパイルや Redis Script の実行自体は成功してしまい、
+// 実行時に静かに不整合が発生するため、ここで fail-fast させる。
+func init() {
+	for name, src := range criticalScripts {
+		if len(src) == 0 {
+			panic("embed failed: " + name)
+		}
+	}
+}
+
 // RoundStateRepositoryRedis は、対戦進行中の「メタ情報・状態・イベント・デッキ」を
 // Redis 上の複数キーに分割して管理するリポジトリ実装。
 // キー構成：
-//   - match:{matchID}         ... メタ情報（status, created_at, player1, player2, winner_user_id）
+// 	 - user_active_match:{userID} ... ユーザーIDに紐づいたマッチID（matchID）
+//   - match:{matchID}         ... メタ情報（player1, player2）
 //   - match:{matchID}:state   ... 進行状態（deck_index, round, round_start_at_ms, round_end_at_ms,
 //                                     player1_lifepoint, player2_lifepoint,
 //                                     player1_total_miss_count, player2_total_miss_count）
+// 	 - match:{matchID}:frontend_state ... フロントエンド再構築用の最新スナップショット
 //   - match:{matchID}:events  ... イベント Streams（answer などの出来事）
 //   - match:{matchID}:deck    ... 出題デッキ（LIST; 要素はJSON文字列）
 //   - match:{matchID}:measurement_finished_count
@@ -41,63 +64,14 @@ func NewRoundStateRepositoryRedis(redisClient *redis.Client) repository.RoundSta
 	return &RoundStateRepositoryRedis{redisClient: redisClient}
 }
 
-// CreateMeta は、マッチのメタ情報を新規作成する。
-// 役割：参加者IDや作成時刻を保存し、初期状態を "waiting" に設定する。
-// ここでは state/events/deck には触れず、責務を分離している。
-func (r *RoundStateRepositoryRedis) CreateMeta(contextObject context.Context, matchID, user1ID, user2ID string, currentTimeMs int64) error {
-	metaKey := fmt.Sprintf("match:%s", matchID)
-	return r.redisClient.HSet(contextObject, metaKey,
-		"status", "waiting",
-		"created_at", currentTimeMs,
-		"player1", user1ID,
-		"player2", user2ID,
-	).Err()
-}
-
-// Start は、マッチを playing 状態へ遷移し、関連キーへ TTL を設定する。
-// 意図：進行中の試合データが放置されても自動的に回収されるよう GC を効かせる。
-// TTL は運用方針に応じて調整可。
-func (r *RoundStateRepositoryRedis) Start(contextObject context.Context, matchID string) error {
-	matchKey := fmt.Sprintf("match:%s", matchID)
-	pipeline := r.redisClient.TxPipeline()
-
-	// ステータスを playing に更新
-	pipeline.HSet(contextObject, matchKey, "status", "playing")
-
-	for _, suffix := range []string{"", ":state", ":events", ":deck"} {
-		pipeline.Expire(contextObject, matchKey+suffix, config.MatchExpiryOnStart)
-	}
-
-	_, err := pipeline.Exec(contextObject)
-	return err
-}
-
-// Finish は、マッチを finished 状態に更新し、勝者を記録したうえで短い TTL に切り替える。
-// 意図：終了後しばらくは参照できるが、不要に残り続けないようにする。
-func (r *RoundStateRepositoryRedis) Finish(contextObject context.Context, matchID, winnerUserID string) error {
-	matchKey := fmt.Sprintf("match:%s", matchID)
-	pipeline := r.redisClient.TxPipeline()
-
-	// ステータスと勝者IDを保存
-	pipeline.HSet(contextObject, matchKey,
-		"status", "finished",
-		"winner_user_id", winnerUserID,
-	)
-
-	// 終了後は 10 分で掃除（ミリ秒精度で設定）
-	for _, suffix := range []string{"", ":state", ":events", ":deck"} {
-		pipeline.PExpire(contextObject, matchKey+suffix, config.MatchExpiryOnFinish)
-	}
-
-	_, err := pipeline.Exec(contextObject)
-	return err
-}
-
 // CleanupMatch は、1つのマッチが完全に終了した後に呼び出される
 // 「再戦に影響する一時データのみ」を安全に削除するクリーンアップ処理するメソッド。
 func (r *RoundStateRepositoryRedis) CleanupMatch(ctx context.Context, matchID, user1ID, user2ID string) error {
 	keys := []string{
+		fmt.Sprintf("user_active_match:%s", user1ID),
+		fmt.Sprintf("user_active_match:%s", user2ID),
 		fmt.Sprintf("match:%s", matchID),
+		fmt.Sprintf("match:%s:frontend_state", matchID),
 		fmt.Sprintf("match:%s:state", matchID),
 		fmt.Sprintf("match:%s:measurement_finished_count", matchID),
 		fmt.Sprintf("match:%s:answer_finish_flag:%s", matchID, user1ID),
@@ -105,6 +79,35 @@ func (r *RoundStateRepositoryRedis) CleanupMatch(ctx context.Context, matchID, u
 	}
 
 	return r.redisClient.Del(ctx, keys...).Err()
+}
+
+// SetActiveMatchForUsers は、指定された複数ユーザーを同一試合に原子的に紐づけるメソッド。
+// 全ユーザー分の対応関係が成功した場合のみ確定し、
+// 途中失敗による部分的な保存は発生しない。
+func (r *RoundStateRepositoryRedis) SetActiveMatchForUsers(
+	ctx context.Context,
+	user1ID,
+	user2ID,
+	matchID string,
+) error {
+	keys := []string{
+		fmt.Sprintf("user_active_match:%s", user1ID),
+		fmt.Sprintf("user_active_match:%s", user2ID),
+	}
+	return setKeyWithTTLScript.
+		Run(ctx, r.redisClient, keys, matchID, config.MatchExpiryOnStart.Milliseconds()).
+		Err()
+}
+
+// LoadUserActiveMatchID は、ユーザーが現在参加している試合の matchID を取得するメソッド。
+// user_active_match:{userID} に保存された逆引きインデックスを参照し、
+// 試合に参加していない場合は Redis のエラーをそのまま返す。
+func (r *RoundStateRepositoryRedis) LoadUserActiveMatchID(
+	ctx context.Context,
+	userID string,
+) (string, error) {
+	userMatchKey := fmt.Sprintf("user_active_match:%s", userID)
+	return r.redisClient.Get(ctx, userMatchKey).Result()
 }
 
 // SaveDeck は、試合で使用する出題デッキ（20問分）を Redis に保存するメソッド。
@@ -350,6 +353,36 @@ func (r *RoundStateRepositoryRedis) UpdateRoundTiming(ctx context.Context, match
 		"round_start_at_ms": roundStartAtMs,
 		"round_end_at_ms":   roundEndAtMs,
 	}).Err()
+}
+
+// SetFrontendState は、フロントエンド再構築用状態を Redis に保存するメソッド。
+func (r *RoundStateRepositoryRedis) SetFrontendState(ctx context.Context, matchID string, payloadBytes []byte) error {
+	frontendStateKey := fmt.Sprintf("match:%s:frontend_state", matchID)
+
+	return r.redisClient.Set(ctx, frontendStateKey, payloadBytes, config.MatchExpiryOnStart).Err()
+}
+
+// LoadFrontendState は、指定された試合のフロントエンド再構築用状態を
+// Redis から取得するメソッド。
+func (r *RoundStateRepositoryRedis) LoadFrontendState(ctx context.Context, matchID string) ([]byte, error) {
+	frontendStateKey := fmt.Sprintf("match:%s:frontend_state", matchID)
+
+	payloadBytes, err := r.redisClient.Get(ctx, frontendStateKey).Bytes()
+	if err != nil {
+		if err == redis.Nil {
+			return nil, redis.Nil
+		}
+		return nil, err
+	}
+
+	return payloadBytes, nil
+}
+
+// DeleteFrontendState は、指定された試合のフロントエンド再構築用状態を
+// Redis から完全に削除するメソッド。
+func (r *RoundStateRepositoryRedis) DeleteFrontendState(ctx context.Context, matchID string) error {
+	frontendStateKey := fmt.Sprintf("match:%s:frontend_state", matchID)
+	return r.redisClient.Del(ctx, frontendStateKey).Err()
 }
 
 // LoadMatchPlayers は Redis に保存された

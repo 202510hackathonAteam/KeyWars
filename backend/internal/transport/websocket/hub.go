@@ -1,58 +1,36 @@
 package websocket
 
 import (
-	"context"
-	"errors"
 	"sync"
-
-	domain "keywars/backend/internal/domain/port"
-)
-
-//
-// ==== 定数・エラー定義 ====
-//
-
-// 1ルームあたりの最大収容人数（2名マッチ）
-const RoomCapacity = 2
-
-var (
-	// ルームが満員のときに返すエラー
-	ErrRoomFull = errors.New("room full")
-
-	// 同じルームにすでに参加している場合に返す（冪等動作用）
-	ErrAlreadyJoined = errors.New("already joined the room")
 )
 
 //
 // ==== Hub 構造体 ====
 //
 
-// Hub は、room 単位で WebSocket 接続（ClientConn）を管理し、
-// 「参加 / 退出 / ブロードキャスト」などをスレッドセーフに扱う中心クラス。
+// Hub は、userID をキーとして WebSocket 接続（ClientConn）を管理し、
+// 指定された userID に対してメッセージを配送するための中継コンポーネントである。
 //
-// 複数ユーザーが同時に接続・切断しても安全に動くように
-// sync.RWMutex によるロックで保護されている。
+// Hub は接続の生死や配送先解決のみを責務とし、
+// 試合参加・人数制限・マッチ状態といったドメインルールは扱わない。
+// 複数 goroutine から安全に利用できるよう、内部状態は mutex により保護される。
 type Hub struct {
 	// mutex は rooms への同時アクセスを防ぐためのミューテックス。
 	mutex sync.RWMutex
-
-	// rooms は「ルーム名 → 接続集合」を保持するマップ。
-	// 各ルームの値は map[ClientConn]struct{} で集合的に管理（値は空構造体で省メモリ）。
-	rooms map[string]map[domain.ClientConn]struct{}
+	// connsByUser は userID ごとに現在有効な WebSocket 接続を保持する。
+	// 本 Hub では「1ユーザー = 1接続」を前提とし、
+	// 新しい接続が登録された場合は、既存の接続をクローズして上書きする。
+	connsByUser map[string]*Client
 }
-
-// domain.Broadcaster インターフェースを満たしていることを明示的に保証。
-// （これがあると、interface実装チェックがコンパイル時に行われる）
-var _ domain.Broadcaster = (*Hub)(nil)
 
 //
 // ==== コンストラクタ ====
 //
 
-// NewHub は、空のルームマップを持つ新しい Hub インスタンスを生成。
+// NewHub は、空の接続管理マップを初期化した Hub インスタンスを生成。
 func NewHub() *Hub {
 	return &Hub{
-		rooms: make(map[string]map[domain.ClientConn]struct{}),
+		connsByUser: make(map[string]*Client),
 	}
 }
 
@@ -60,204 +38,92 @@ func NewHub() *Hub {
 // ==== Join ====
 //
 
-// Join は、指定された roomName に clientConn を参加させる。
-// - すでに同じルームにいる場合は ErrAlreadyJoined を返して終了（冪等）
-// - 収容人数を超えると ErrRoomFull を返す
-// - 他ルームへの移動はサポート外（必要なら Move を使う）
-func (hub *Hub) Join(_ context.Context, roomName string, clientConn domain.ClientConn) error {
+// JoinUser は、指定された userID に対して
+// 現在有効な WebSocket 接続を登録する。
+//
+// 同一 userID に対して既存の接続が存在する場合は、
+// その接続をクローズしたうえで新しい接続で上書きする。
+//
+// 本関数は「接続管理」のみを責務とし、
+// 試合参加・人数制限・マッチ状態などの
+// ドメインロジックは一切扱わない。
+func (hub *Hub) JoinUser(userID string, conn *Client) {
 	hub.mutex.Lock()         // 書き込みロック開始
 	defer hub.mutex.Unlock() // 関数終了時に必ず解除
 
-	// 同じルームに既にいるなら冪等動作
-	if clientConn.Room() == roomName {
-		return ErrAlreadyJoined
+	if existingConn, ok := hub.connsByUser[userID]; ok {
+    _ = existingConn.Close()
 	}
-
-	// 対象ルームのメンバー集合を確保
-	memberSet := hub.ensureRoom(roomName)
-	if _, present := memberSet[clientConn]; present {
-		return ErrAlreadyJoined
-	}
-
-	// 収容上限チェック（2名制限）
-	if len(memberSet) >= RoomCapacity {
-		return ErrRoomFull
-	}
-
-	// 新しいクライアントをルームに追加
-	memberSet[clientConn] = struct{}{}
-	if c, ok := clientConn.(*Client); ok {
-		c.setRoom(roomName) // ルーム名を保持
-	}
-	return nil
+	hub.connsByUser[userID] = conn
 }
+
 
 //
 // ==== Leave ====
 //
 
-// Leave は、clientConn を所属ルームから削除する。
-// - ルームが空になれば、rooms マップ自体からも削除。
-// - 接続 Close はロック外で安全に行う（デッドロック防止）。
-func (hub *Hub) Leave(_ context.Context, clientConn domain.ClientConn) error {
-	var needClose bool
-
-	hub.mutex.Lock()
-	currentRoomName := clientConn.Room()
-
-	// roomName が空 → Hub.rooms を走査して探す
-	if currentRoomName == "" {
-		for candidateRoomName, memberSet := range hub.rooms {
-			if _, exists := memberSet[clientConn]; exists {
-				currentRoomName = candidateRoomName
-				break
-			}
-		}
-	}
-
-	// 所属ルームがある場合のみ処理
-	if currentRoomName != "" {
-		if memberSet, roomExists := hub.rooms[currentRoomName]; roomExists {
-			if _, exists := memberSet[clientConn]; exists {
-				// 1) このクライアントをルームから外す
-				delete(memberSet, clientConn)
-
-				// 2) Client 内の roomName もクリア
-				if client, ok := clientConn.(*Client); ok {
-					client.clearRoom()
-				}
-				needClose = true
-			}
-
-			// 3) ルームが空になったら rooms から削除
-			if len(memberSet) == 0 {
-				delete(hub.rooms, currentRoomName)
-			}
-		}
-	}
-	hub.mutex.Unlock()
-
-	// ロック外で接続をクローズ（チャネル競合回避）
-	if needClose {
-		_ = clientConn.Close()
-	}
-	return nil
-}
-
+// LeaveUser は、指定された userID に紐づく
+// WebSocket 接続を Hub の配送対象から解除する。
 //
-// ==== Broadcast ====
-//
-
-// Broadcast は、指定された roomName 内の全クライアントに対して
-// 任意のメッセージを JSON で送信する。
-// - ctx がキャンセルされると中断。
-// - 送信失敗した接続は Leave によってクリーンアップされる。
-// - ベストエフォート方式（部分的失敗を許容）。
-func (hub *Hub) Broadcast(ctx context.Context, roomName string, message any) (failed int, err error) {
-	// 読み取りロック下でメンバーのスナップショットを作成
-	hub.mutex.RLock()
-	memberSet, exists := hub.rooms[roomName]
-	if !exists {
-		hub.mutex.RUnlock()
-		return 0, nil // ルームなし＝誰もいない
-	}
-
-	// コピーしてロック時間を短縮
-	conns := make([]domain.ClientConn, 0, len(memberSet))
-	for c := range memberSet {
-		conns = append(conns, c)
-	}
-	hub.mutex.RUnlock()
-
-	// ロック外で送信処理を実行
-	for _, c := range conns {
-		select {
-		case <-ctx.Done():
-			return failed, ctx.Err() // コンテキストキャンセル時は即終了
-		default:
-		}
-		// 送信
-		if err := c.SendJSON(ctx, message); err != nil {
-			failed++
-			// 失敗した接続を掃除（Closeは Leave 内で実施）
-			_ = hub.Leave(context.Background(), c)
-		}
-	}
-	return failed, nil
-}
-
-//
-// ==== Members / Move ====
-//
-
-// Members は roomName の参加者スナップショットを返す（ロック短縮のためコピー）。
-// 「個人ルームから試合ルームへ一括移動」で利用する。
-func (hub *Hub) Members(roomName string) []domain.ClientConn {
-	hub.mutex.RLock()
-	defer hub.mutex.RUnlock()
-	set, ok := hub.rooms[roomName]
-	if !ok {
-		return nil
-	}
-	out := make([]domain.ClientConn, 0, len(set))
-	for c := range set {
-		out = append(out, c)
-	}
-	return out
-}
-
-// Move は clientConn を現在のルームから newRoom へ「原子的に」移動させる。
-// - 収容上限を尊重（満杯なら ErrRoomFull）
-// - roomName(setRoom/clearRoom) を正しく更新
-// - old ルームが空になれば削除
-func (hub *Hub) Move(_ context.Context, clientConn domain.ClientConn, newRoom string) error {
+// 本関数は Hub 内の接続参照を削除するのみで、
+// WebSocket 接続の Close は行わない。
+func (hub *Hub) LeaveUser(userID string) {
 	hub.mutex.Lock()
 	defer hub.mutex.Unlock()
 
-	// すでに同じルームなら冪等
-	if clientConn.Room() == newRoom {
-		return ErrAlreadyJoined
-	}
-
-	// 新ルームの収容チェック
-	newSet, ok := hub.rooms[newRoom]
-	if !ok {
-		newSet = make(map[domain.ClientConn]struct{})
-		hub.rooms[newRoom] = newSet
-	}
-	if len(newSet) >= RoomCapacity {
-		return ErrRoomFull
-	}
-
-	// 現在のルームから除外
-	if old := clientConn.Room(); old != "" {
-		if oldSet, ok := hub.rooms[old]; ok {
-			delete(oldSet, clientConn)
-			if len(oldSet) == 0 {
-				delete(hub.rooms, old)
-			}
-		}
-	}
-
-	// 新ルームに追加し、現在ルームを更新
-	newSet[clientConn] = struct{}{}
-	if c, ok := clientConn.(*Client); ok {
-		c.setRoom(newRoom)
-	}
-	return nil
+	delete(hub.connsByUser, userID)
 }
 
 //
-// ==== 内部ヘルパー ====
+// ==== DispatchToUser ====
 //
 
-// ensureRoom は、指定したルーム名に対応する memberSet を返す。
-// ルームが存在しない場合は新しく作成して返す。
-func (hub *Hub) ensureRoom(roomName string) map[domain.ClientConn]struct{} {
-	if s, ok := hub.rooms[roomName]; ok {
-		return s
+// DispatchToUser は、指定された userID に紐づく
+// 現在有効なすべてのクライアント接続に対して、
+// メッセージを配送する。
+//
+// 本 Hub では「1ユーザー = 1接続」を前提とするため、
+// 配送対象は常に高々 1 接続である。
+//
+// WebSocket の到達保証は行わず、
+// 再送や状態同期は上位レイヤに委ねる。
+func (hub *Hub) DispatchToUser(userID string, message any) {
+	// 対象 userID に紐づく接続のスナップショットを取得する。
+	hub.mutex.RLock()
+	conn, ok := hub.connsByUser[userID]
+	hub.mutex.RUnlock()
+
+	if !ok {
+		return
 	}
-	s := make(map[domain.ClientConn]struct{})
-	hub.rooms[roomName] = s
-	return s
+
+	if err := conn.WriteJSON(message); err != nil {
+		// 書き込みに失敗した接続は Hub から除外する
+		hub.LeaveUser(userID)
+	}
+}
+
+// DispatchAndCloseUser は、指定された userID に紐づく
+// 現在の接続に対してメッセージを送信し、
+// 直後に WebSocket 接続をクローズする。
+//
+// 本関数は match.end / kick / ban など、
+// 業務的に「この接続を確実に終了させる」必要がある場合にのみ使用する。
+func (hub *Hub) DispatchAndCloseUser(userID string, message any) {
+	// 対象 userID に紐づく接続のスナップショットを取得する。
+	hub.mutex.RLock()
+	client, ok := hub.connsByUser[userID]
+	hub.mutex.RUnlock()
+
+	if !ok {
+		return
+	}
+
+	_ = client.WriteJSON(message)
+
+	client.Close()
+
+	hub.mutex.Lock()
+	delete(hub.connsByUser, userID)
+	hub.mutex.Unlock()
 }

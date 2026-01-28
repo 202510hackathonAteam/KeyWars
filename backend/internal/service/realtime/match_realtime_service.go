@@ -19,20 +19,17 @@ import (
 // ==== Service 構造体 ====
 //
 
-// MatchRealtimeService は、WebSocket を介してマッチング待機・キャンセル・
-// マッチ成立などのリアルタイム処理を提供するアプリケーションサービス。
+// MatchRealtimeService は、WebSocket 接続中クライアントからの
+// リアルタイムイベントを処理するアプリケーションサービス。
+// バックグラウンドでのマッチング処理は担当しない。
 //
 // 責務：
 //   - クライアントから受信した WebSocket メッセージ（queue.join, queue.cancel など）を処理する
 //   - Redis リポジトリ（MatchQueueRepositoryRedis）を通じて待機キューを操作する
-//   - Hub（WebSocket Hub）を用いてイベントをブロードキャストする
 type MatchRealtimeService struct {
 	matchQueueRepo 					repository.MatchQueueRepository
 	roundStateRepo 					repository.RoundStateRepository
-	presenceRepo   					repository.PresenceRepository
-	websocketHub         		*websocket.Hub
 	logger 							 		*zerolog.Logger
-	deckGeneratorService		*round.DeckGeneratorService
 	roundFlowService 		 		*round.RoundFlowService
 	measurementRoundService *round.MeasurementRoundService
 }
@@ -42,20 +39,14 @@ type MatchRealtimeService struct {
 func NewMatchRealtimeService(
 	matchQueueRepo repository.MatchQueueRepository,
 	roundStateRepo repository.RoundStateRepository,
-	presenceRepo repository.PresenceRepository,
-	websocketHub *websocket.Hub,
 	logger *zerolog.Logger,
-	deckGeneratorService *round.DeckGeneratorService,
 	roundFlowService *round.RoundFlowService,
 	measurementRoundService *round.MeasurementRoundService,
-) *MatchRealtimeService {
+) websocket.MatchRealtimeService {
 	return &MatchRealtimeService{
 		matchQueueRepo: 	 			 matchQueueRepo,
 		roundStateRepo: 	 			 roundStateRepo,
-		presenceRepo:   	 			 presenceRepo,
-		websocketHub:         	 websocketHub,
 		logger:									 logger,
-		deckGeneratorService:    deckGeneratorService,
 		roundFlowService:				 roundFlowService,
 		measurementRoundService: measurementRoundService,
 	}
@@ -66,66 +57,21 @@ func NewMatchRealtimeService(
 //
 
 // OnConnect は、新しい WebSocket 接続が確立された際に呼び出される。
-// 接続直後のクライアントに対して歓迎メッセージを返す。
+// 接続直後のクライアントを現在の試合状態に同期し、
+// 必要に応じて復帰通知・通常歓迎メッセージのいずれかを返す。
 func (s *MatchRealtimeService) OnConnect(
 	ctx context.Context,
 	userID string,
-	roomName string,
 ) (any, error) {
 	nowMs := time.Now().UnixMilli()
 
-	// Presence が無い＝このユーザーは試合参加中ではない。
-	// 復帰対象が無いため通常接続として welcome を返す。
-	if s.presenceRepo == nil {
-		return websocket.NewWelcomePayload(userID), nil
+	// --- 1) 途中復帰できるか？ ---
+	if payload, ok := s.tryRestore(ctx, userID, nowMs); ok {
+		return payload, nil
 	}
 
-	presenceMap, err := s.presenceRepo.Get(ctx, userID)
-	if err != nil || len(presenceMap) == 0 {
-		_ = s.presenceRepo.SetOnline(ctx, userID, nowMs)
-		return websocket.NewWelcomePayload(userID), nil
-	}
-
-	status := presenceMap["status"]
-	matchID := presenceMap["match_id"]
-
-	// 途中復帰の前提条件をすべてチェック（否定条件は即 return）
-	if !(status == "ingame" || status == "reconnecting") {
-		_ = s.presenceRepo.SetOnline(ctx, userID, nowMs)
-		return websocket.NewWelcomePayload(userID), nil
-	}
-
-	if matchID == "" {
-		_ = s.presenceRepo.SetOnline(ctx, userID, nowMs)
-		return websocket.NewWelcomePayload(userID), nil
-	}
-
-	// state がない = 終了済み or 試合破棄 → 復帰できない
-	restoredState, err := s.roundStateRepo.LoadMatchState(ctx, matchID)
-	if err != nil || restoredState == nil {
-		_ = s.presenceRepo.SetOnline(ctx, userID, nowMs)
-		return websocket.NewWelcomePayload(userID), nil
-	}
-
-	// ここまで来た場合、途中復帰できる
-	matchRoom := "match:" + matchID
-	userRoom := "user:" + userID
-	conns := s.websocketHub.Members(userRoom)
-
-	if len(conns) > 0 {
-		_ = s.websocketHub.Move(ctx, conns[0], matchRoom)
-	}
-
-	_ = s.presenceRepo.SetIngame(ctx, userID, matchID, nowMs)
-
-	return websocket.NewMatchRestorePayload(
-		matchID,
-		websocket.MatchRestoreState{
-			Round:            restoredState.Round,
-			Player1Lifepoint: restoredState.Player1Lifepoint,
-			Player2Lifepoint: restoredState.Player2Lifepoint,
-		},
-	), nil
+	// --- 2) それ以外（通常接続） ---
+	return websocket.NewWelcomePayload(userID), nil
 }
 
 // OnMessage は、クライアントから受信した WebSocket メッセージを処理する。
@@ -133,7 +79,6 @@ func (s *MatchRealtimeService) OnConnect(
 func (s *MatchRealtimeService) OnMessage(
 	ctx context.Context,
 	userID string,
-	roomName string,
 	messageType string,
 	messagePayload []byte,
 ) (any, error) {
@@ -144,29 +89,31 @@ func (s *MatchRealtimeService) OnMessage(
 	case "queue.join":
 		currentTimeMs := time.Now().UnixMilli()
 
+		// すでに進行中の試合が存在するユーザーは、はじく
+		if _, err := s.roundStateRepo.LoadUserActiveMatchID(ctx, userID); err == nil {
+			return websocket.NewActiveMatchExistsPayload(currentTimeMs), nil
+		}
+
 		// Redis の待機キューに追加
 		err := s.matchQueueRepo.Enqueue(ctx, userID, currentTimeMs)
 		if err != nil {
-			return map[string]any{
-				"type":  "queue.error",
-				"error": err.Error(),
-			}, nil
+			s.logger.Error().
+        Err(err).
+        Str("event", constant.EventQueueJoin).
+        Str("user_id", userID).
+        Msg("failed to enqueue user into match queue")
+			return nil, err
 		}
 
 		// クライアントに成功レスポンスを返す
-		return map[string]any{
-			"type": "queue.joined",
-			"at":   currentTimeMs,
-		}, nil
+		return websocket.NewQueueJoinedPayload(currentTimeMs), nil
 
 	// --- マッチ待機キャンセル ---
 	case "queue.left":
 		// best-effort：失敗しても致命的ではない
 		_ = s.matchQueueRepo.Cancel(ctx, userID)
 
-		return map[string]any{
-			"type": "queue.cancelled",
-		}, nil
+		return websocket.NewQueueLeftPayload(), nil
 
 	// --- ラウンド完了 ---
 	case constant.TriggerAnswerFinish:
@@ -177,7 +124,7 @@ func (s *MatchRealtimeService) OnMessage(
 				Str("event", constant.TriggerAnswerFinish).
 				Str("match_id", payload.MatchID).
 				Msg("failed to unmarshal payload")
-			return websocket.NewErrorPayload(), nil
+			return nil, err
 		}
 
 		// プレイヤー認証
@@ -190,14 +137,14 @@ func (s *MatchRealtimeService) OnMessage(
 				Str("event", constant.TriggerAnswerFinish).
 				Str("match_id", payload.MatchID).
 				Msg("failed to load match players")
-			return websocket.NewErrorPayload(), nil
+			return nil, err
 		}
 		if userID != players.Player1ID && userID != players.Player2ID {
       s.logger.Warn().
         Str("event", constant.TriggerAnswerFinish).
         Str("match_id", payload.MatchID).
         Msg("unauthorized player")
-			return websocket.NewErrorPayload(), nil
+			return nil, err
 		}
 
 		// 計測機能実行（各プレイヤーが1回だけ実行）
@@ -214,7 +161,7 @@ func (s *MatchRealtimeService) OnMessage(
         Str("event", constant.TriggerAnswerFinish).
         Str("match_id", payload.MatchID).
         Msg("failed to SaveMeasurement (answer finish)")
-			return websocket.NewErrorPayload(), nil
+			return nil, err
 		}
 
 		// measurementFinishedCountを+1（全員が1回だけ実行）
@@ -222,7 +169,7 @@ func (s *MatchRealtimeService) OnMessage(
 		measurementFinishedCount, err := s.roundStateRepo.IncrementMeasurementFinishCount(incrementCountCtx, payload.MatchID)
 		cancelIncrement()
 		if err != nil {
-			return websocket.NewErrorPayload(), nil
+			return nil, err
 		}
 
 		// 両プレイヤーが揃うまで終了処理は実行しない（まだ各プレイヤー1回実行の領域）
@@ -236,7 +183,7 @@ func (s *MatchRealtimeService) OnMessage(
         Str("event", constant.TriggerAnswerFinish).
         Str("match_id", payload.MatchID).
         Msg("unexpected measurement count (too large)")
-			return websocket.NewErrorPayload(), nil
+			return nil, err
 		}
 
 		// =====================================
@@ -250,7 +197,7 @@ func (s *MatchRealtimeService) OnMessage(
         Str("event", constant.TriggerAnswerFinish).
         Str("match_id", payload.MatchID).
         Msg("ProcessRoundResult failed")
-			return websocket.NewErrorPayload(), nil
+			return nil, err
 		}
 
 		return nil, nil
@@ -264,7 +211,7 @@ func (s *MatchRealtimeService) OnMessage(
 				Str("event", constant.TriggerAnswerTimeout).
 				Str("match_id", payload.MatchID).
 				Msg("failed to unmarshal payload")
-			return websocket.NewErrorPayload(), nil
+			return nil, err
 		}
 
 		// プレイヤー認証
@@ -277,14 +224,14 @@ func (s *MatchRealtimeService) OnMessage(
 				Str("event", constant.TriggerAnswerTimeout).
 				Str("match_id", payload.MatchID).
 				Msg("failed to load match players")
-			return websocket.NewErrorPayload(), nil
+			return nil, err
 		}
 		if userID != players.Player1ID && userID != players.Player2ID {
       s.logger.Warn().
         Str("event", constant.TriggerAnswerTimeout).
         Str("match_id", payload.MatchID).
         Msg("unauthorized player")
-			return websocket.NewErrorPayload(), nil
+			return nil, err
 		}
 
 		// 計測機能実行（各プレイヤーが1回だけ実行）
@@ -301,7 +248,7 @@ func (s *MatchRealtimeService) OnMessage(
         Str("event", constant.TriggerAnswerTimeout).
         Str("match_id", payload.MatchID).
         Msg("failed to SaveMeasurement (answer timeout)")
-			return websocket.NewErrorPayload(), nil
+			return nil, err
 		}
 
 		// measurementFinishedCountを+1（全員が1回だけ実行）
@@ -309,7 +256,7 @@ func (s *MatchRealtimeService) OnMessage(
 		measurementFinishedCount, err := s.roundStateRepo.IncrementMeasurementFinishCount(incrementCountCtx, payload.MatchID)
 		cancelIncrement()
 		if err != nil {
-			return websocket.NewErrorPayload(), nil
+			return nil, err
 		}
 
 		// 両プレイヤーが揃うまで終了処理は実行しない（まだ各プレイヤー1回実行の領域）
@@ -323,7 +270,7 @@ func (s *MatchRealtimeService) OnMessage(
         Str("event", constant.TriggerAnswerTimeout).
         Str("match_id", payload.MatchID).
         Msg("unexpected measurement count (too large)")
-			return websocket.NewErrorPayload(), nil
+			return nil, err
 		}
 
 		// =====================================
@@ -337,7 +284,7 @@ func (s *MatchRealtimeService) OnMessage(
         Str("event", constant.TriggerAnswerTimeout).
         Str("match_id", payload.MatchID).
         Msg("ProcessRoundResult failed")
-			return websocket.NewErrorPayload(), nil
+			return nil, err
 		}
 
 		return nil, nil
@@ -349,13 +296,51 @@ func (s *MatchRealtimeService) OnMessage(
 	}
 }
 
-// OnDisconnect は、クライアントの WebSocket 接続が切断された際に呼び出される。
-// 待機中であれば Redis キューから安全に削除する。
+// OnDisconnect は WebSocket 切断という事実を受け取り、
+// 待機キューからの除外を best-effort で行う。
+// 失敗時もエラーは返さず、内部でログ出力のみ行う。
 func (s *MatchRealtimeService) OnDisconnect(
 	ctx context.Context,
 	userID string,
-	roomName string,
 ) {
-	// best-effort で待機解除（例: 切断時）
-	_ = s.matchQueueRepo.Cancel(context.Background(), userID)
+	if err := s.matchQueueRepo.Cancel(ctx, userID); err != nil {
+		s.logger.Warn().
+			Err(err).
+			Str("event", constant.EventMatchDisconnect).
+			Str("user_id", userID).
+			Msg("failed to cancel match queue on disconnect")
+	}
 }
+
+// tryRestore は、WebSocket 接続時の途中復帰判定および復帰処理。
+// 対象ユーザーが進行中試合に参加している場合のみ、
+// 復帰用ペイロード生成を行い、復帰不可の場合は処理を行わない。
+func (s *MatchRealtimeService) tryRestore(
+	ctx context.Context,
+	userID string,
+	nowMs int64,
+) (any, bool) {
+	// 1) ユーザーが参加中の試合を引く
+	matchID, err := s.roundStateRepo.LoadUserActiveMatchID(ctx, userID)
+	if err != nil {
+		return nil, false
+	}
+
+	// 2) 試合の state が生きているか確認
+	restoredState, err := s.roundStateRepo.LoadMatchState(ctx, matchID)
+	if err != nil || restoredState == nil {
+		return nil, false
+	}
+
+	// ここまで来た場合、途中復帰できる
+	// 3) 復帰用ペイロードを返す
+	return websocket.NewMatchRestorePayload(
+		matchID,
+		websocket.MatchRestoreState{
+			Round:            restoredState.Round,
+			Player1Lifepoint: restoredState.Player1Lifepoint,
+			Player2Lifepoint: restoredState.Player2Lifepoint,
+		},
+	), true
+}
+

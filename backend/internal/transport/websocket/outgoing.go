@@ -2,11 +2,11 @@ package websocket
 
 // イベント種別（type）を定数化
 const (
+	TypeActiveMatchExists = "match.active_exists"
 	TypeQueueJoined = "queue.joined"
-	TypeQueueLeft   = "queue.left"
+	TypeQueueLeft   = "queue.cancelled"
 
 	TypeWelcome = "welcome"
-	TypeMatchFound = "match.found"
 	TypeMatchRestore = "match.restore"
 	TypeMatchStart = "match.start"
 	TypeMatchEnd   = "match.end"
@@ -19,8 +19,8 @@ const (
 // MatchState は試合の進行状態（match.start などで配信）
 type MatchState struct {
 	Round          	 int64 `json:"round"`
-	RoundStartAtMS 	 int64 `json:"round_start_at_ms"`
-	RoundEndAtMS   	 int64 `json:"round_end_at_ms"`
+	RoundStartAtMs 	 int64 `json:"round_start_at_ms"`
+	RoundEndAtMs   	 int64 `json:"round_end_at_ms"`
 	Player1Lifepoint int64 `json:"player1_lifepoint"`
 	Player2Lifepoint int64 `json:"player2_lifepoint"`
 }
@@ -33,22 +33,35 @@ type PromptPayload struct {
 
 // --- 各イベントのペイロード定義 ---
 
+// ActiveMatchExistsPayload: すでに進行中の試合があることを通知
+type ActiveMatchExistsPayload struct {
+	Type string `json:"type"`
+	At 	 int64	`json:"at"`
+}
+
+func NewActiveMatchExistsPayload(atMs int64) ActiveMatchExistsPayload {
+	return ActiveMatchExistsPayload{
+		Type: TypeActiveMatchExists,
+		At:		atMs,
+	}
+}
+
 // QueueJoinedPayload: キュー参加通知
 type QueueJoinedPayload struct {
 	Type string `json:"type"` // "queue.joined"
 	At   int64  `json:"at"`   // enqueueしたサーバ時刻（ms）
 }
 
-func NewQueueJoinedPayload(atMS int64) QueueJoinedPayload {
+func NewQueueJoinedPayload(atMs int64) QueueJoinedPayload {
 	return QueueJoinedPayload{
 		Type: TypeQueueJoined,
-		At:   atMS,
+		At:   atMs,
 	}
 }
 
 // QueueLeftPayload: キュー離脱（キャンセル）通知
 type QueueLeftPayload struct {
-	Type   string `json:"type"`   // "queue.left"
+	Type   string `json:"type"`   // "queue.cancelled"
 	// Reason string `json:"reason"` // "canceled" など（任意）
 }
 
@@ -68,21 +81,6 @@ func NewWelcomePayload(userID string) WelcomePayload {
 	return WelcomePayload{
 		Type: TypeWelcome,
 		UserID: userID,
-	}
-}
-
-// MatchFoundPayload: マッチ成立通知（個人ルーム user:<uid> 宛に送る）
-type MatchFoundPayload struct {
-	Type     string `json:"type"`    // "match.found"
-	MatchID  string `json:"match_id"` // 例: "cd4d6af01a..."
-	Opponent string `json:"opponent"`
-}
-
-func NewMatchFoundPayload(matchID, opponentUserID string) MatchFoundPayload {
-	return MatchFoundPayload{
-		Type:     TypeMatchFound,
-		MatchID:  matchID,
-		Opponent: opponentUserID,
 	}
 }
 

@@ -10,18 +10,19 @@ import (
 // RoundStateRepository は、対戦中の進行状態（ラウンド状態）を管理するリポジトリインターフェース。
 // Redis の `match:{matchID}:state` や `match:{matchID}:events` に対する操作を抽象化する。
 type RoundStateRepository interface {
-	// 新しいマッチ用のメタ情報を初期化する。
-	CreateMeta(contextObject context.Context, matchID, user1ID, user2ID string, currentTimeMs int64) error
-
-	// マッチの開始フラグを立てる。
-	Start(contextObject context.Context, matchID string) error
-
-	// マッチを終了状態に更新する。
-	Finish(contextObject context.Context, matchID, winnerUserID string) error
-
 	// 1つのマッチが完全に終了した後に呼び出される
 	// 「再戦に影響する一時データのみ」を安全に削除するクリーンアップ処理する。
 	CleanupMatch(ctx context.Context, matchID, user1ID, user2ID string) error
+
+	// 指定された複数ユーザーを同一試合に原子的に紐づける。
+	// 全ユーザー分の対応関係が成功した場合のみ確定し、
+	// 途中失敗による部分的な保存は発生しない。
+	SetActiveMatchForUsers(ctx context.Context, user1ID, user2ID, matchID string) error
+
+	// ユーザーが現在参加している試合の matchID を取得する。
+	// user_active_match:{userID} に保存された逆引きインデックスを参照し、
+	// 試合に参加していない場合は Redis のエラーをそのまま返す。
+	LoadUserActiveMatchID(ctx context.Context, userID string) (string, error)
 
 	// 試合で使用する出題デッキ（20問分）を Redis に保存する。
 	SaveDeck(ctx context.Context, matchID string, deck []model.DeckPrompt) error
@@ -54,6 +55,17 @@ type RoundStateRepository interface {
 
 	// ラウンドの開始予定時刻と終了予定時刻を、Redis の match:{matchID}:state に保存する。
 	UpdateRoundTiming(ctx context.Context, matchID string, roundStartAtMs int64, roundEndAtMs int64) error
+
+	// SetFrontendState は、フロントエンド再構築用状態を Redis に保存する。
+	SetFrontendState(ctx context.Context, matchID string, payloadBytes []byte) error
+
+	// LoadFrontendState は、指定された試合のフロントエンド再構築用状態を
+	// Redis から取得する。
+	LoadFrontendState(ctx context.Context, matchID string) ([]byte, error)
+
+	// DeleteFrontendState は、指定された試合のフロントエンド再構築用状態を
+	// Redis から完全に削除する。
+	DeleteFrontendState(ctx context.Context, matchID string) error
 
 	// Redis に保存されたmatch:{matchID} のプレイヤー情報（player1 / player2）を取得する。
 	LoadMatchPlayers(ctx context.Context, matchID string) (*model.MatchPlayers, error)

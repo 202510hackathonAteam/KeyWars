@@ -72,6 +72,9 @@ export default function GamePage() {
   // カウントダウン時のインプット不可
   const isInputDisabled = countdown !== null || isRestoring;
 
+  // 同じ round を二重に適用しないためのガード用
+  const appliedRoundRef = useRef(null);
+
 
   // ============================================
   // answer.finish / answer.timeout を1回だけ送る
@@ -79,7 +82,7 @@ export default function GamePage() {
   const doFinishOnce = (type) => {
     if (finishSentRef.current){
       console.log("🚫 doFinishOnce SKIP (already sent)", type);
-       return;
+      return;
     }
     
 
@@ -104,7 +107,7 @@ export default function GamePage() {
     };
 
     console.log("🔥 SEND", msg);
-    wsRef.current.send(JSON.stringify(msg));
+    wsRef.current?.send(JSON.stringify(msg));
   };
 
   const sendAnswerFinish = () => {
@@ -146,6 +149,17 @@ export default function GamePage() {
   useEffect(() => {
     if (!matchStartPayload) return;
 
+    const round = matchStartPayload.state.round;
+
+    // --- 重複ガード ---
+    if (appliedRoundRef.current === round) {
+      console.log("⏭ duplicate round ignored:", round);
+      return;
+    }
+
+    // 初めて見るラウンドなので適用
+    appliedRoundRef.current = round;
+
     setIsRestoring(false);
 
     // ★ 相手待ちモード解除（次のラウンドが始まったので）
@@ -160,7 +174,6 @@ export default function GamePage() {
     finishSentRef.current = false;
 
     const myId = localStorage.getItem("user_id");
-    console.log("🔥 finish${myId}")
 
       // --- ★ プレイヤーが自分なのか判定 ---
     const isPlayer1 = matchStartPayload.player1 === myId;
@@ -311,9 +324,13 @@ export default function GamePage() {
   // 🔚 バトル終了
   // ============================================
   const { matchEndPayload, resetMatchState } = useContext(WebSocketContext);
+  const appliedEndRef = useRef(false);
 
   useEffect(() => {
   if (!matchEndPayload) return;
+  if (appliedEndRef.current) return;
+
+  appliedEndRef.current = true;
 
   console.log("🎌 match.end received in GamePage:", matchEndPayload);
 

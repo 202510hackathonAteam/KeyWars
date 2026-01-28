@@ -21,7 +21,7 @@ const (
 
 // ===== マッチ有効期限 =====
 const (
-	MatchExpiryOnStart  time.Duration = 1 * time.Hour
+	MatchExpiryOnStart  time.Duration = 15 * time.Minute
 	MatchExpiryOnFinish time.Duration = 10 * time.Minute
 )
 

@@ -14,17 +14,17 @@ import (
 func StartServer(
 	lifecycle fx.Lifecycle,
 	server *Server,
-	realtimeService *realtime.MatchRealtimeService,
+	matchMakerService *realtime.MatchMakerService,
 ) {
 	e := server.Echo
 	
 	lifecycle.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
 			// Realtime Matchmaker 起動
-			realtimeCtx, cancel := context.WithCancel(context.Background())
-			server.RealtimeCancel = cancel
+			matchMakerCtx, cancel := context.WithCancel(context.Background())
+			server.MatchMakerCancel = cancel
 
-			go realtimeService.StartMatchmaker(realtimeCtx, 500*time.Millisecond)
+			matchMakerService.StartMatchmaker(matchMakerCtx, 500*time.Millisecond)
 
 			// Echo サーバー起動（非同期）
 			go func() {
@@ -36,8 +36,8 @@ func StartServer(
 		},
 		OnStop: func(ctx context.Context) error {
 			// Realtime の goroutine 停止
-			if server.RealtimeCancel != nil {
-				server.RealtimeCancel()
+			if server.MatchMakerCancel != nil {
+				server.MatchMakerCancel()
 			}
 
 			shutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
