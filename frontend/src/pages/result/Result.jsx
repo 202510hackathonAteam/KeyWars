@@ -23,9 +23,7 @@ const Result = () => {
   const isDefeat  = result === "defeat";
   const isDraw    = result === "draw";
   const totalRounds = location.state?.round || 20;
-  console.log("🟢 Result received round:", totalRounds);
   const totalMiss = location.state?.totalMiss;
-  console.log("🎯 自分の total miss:", totalMiss);
 
 
   useEffect(() => {

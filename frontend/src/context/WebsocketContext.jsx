@@ -36,14 +36,10 @@ export function WebSocketProvider({ children }) {
   }
 
   const startPolling = () => {
-    if (pollingRef.current) {
-      console.log("🚫 polling already running");
-      return
-    };
+    if (pollingRef.current) return;
 
     const sessionId = sessionIdRef.current;
 
-    console.log("▶️ polling started");
     pollingRef.current = setInterval(async () => {
       await fetchFrontendState(sessionId);
     }, 300);
@@ -54,7 +50,6 @@ export function WebSocketProvider({ children }) {
 
     clearInterval(pollingRef.current);
     pollingRef.current = null;
-    console.log("⏹ polling stopped");
   }
 
   const connect = () => {
@@ -65,10 +60,7 @@ export function WebSocketProvider({ children }) {
     }
 
     // 試合終了クールダウン中は新規接続しない
-    if (endLockRef.current) {
-      console.log("🚫 connect blocked: match end cooldown");
-      return;
-    }
+    if (endLockRef.current) return;
 
     // 既存 WS があれば必ず閉じる
     if (
@@ -77,10 +69,7 @@ export function WebSocketProvider({ children }) {
     ) {
       wsRef.current.close();
       wsRef.current = null;
-      console.log("WS closed before reconnect");
     }
-
-    console.log("WS: creating new socket");
 
     const wsUrl = import.meta.env.VITE_WS_URL;  // MUST include /api/v1/ws
     const socket = new WebSocket(wsUrl);
@@ -88,8 +77,6 @@ export function WebSocketProvider({ children }) {
     wsRef.current = socket;
 
     socket.onopen = () => {
-      console.log("WS: connected");
-
       if (!matchStartedRef.current) {
         socket.send(JSON.stringify({ type: "queue.join" }));
       }
@@ -98,7 +85,6 @@ export function WebSocketProvider({ children }) {
     };
 
     socket.onclose = () => {
-      console.log("WS: disconnected");
       setConnected(false);
 
       // reconnectTimer.current = setTimeout(() => {
@@ -118,7 +104,6 @@ export function WebSocketProvider({ children }) {
             localStorage.setItem("user_id", data.user_id);
             break;
           case "match.start":
-            console.log("[push] 🔥 match.start received:", data);
             const round = data.state.round;
             // すでにこのラウンドを適用済みなら無視
             if (appliedRoundRef.current === round) {
@@ -140,7 +125,6 @@ export function WebSocketProvider({ children }) {
             break;
 
           case "match.end":
-            console.log("[push] 試合終了:", data);
             if (appliedEndRef.current) return;
 
             endLockRef.current = true;
@@ -152,12 +136,8 @@ export function WebSocketProvider({ children }) {
             break;
 
           case "match.restore":
-            console.log("再接続:", data);
 
-            if (endLockRef.current) {
-              console.log("🚫 blocked: match end cooldown");
-              return;
-            }
+            if (endLockRef.current) return;
             setIsRestoring(true);
 
             newSession();
@@ -213,7 +193,6 @@ export function WebSocketProvider({ children }) {
       backoffTimerRef.current = setTimeout(() => {
         if (sessionIdRef.current !== sessionId) return;
         startPolling();
-        console.log("🔁 polling resumed after backoff");
       }, 600); // ← バックオフ時間
 
       return;
@@ -235,8 +214,6 @@ export function WebSocketProvider({ children }) {
           return;
         }
 
-        console.log("[polling] 🔥 match.start received:", data);
-
         appliedRoundRef.current = nextRound;
 
         // context に保存（GamePage がこれを読む）
@@ -251,7 +228,6 @@ export function WebSocketProvider({ children }) {
 
       case "match.end":
         if (appliedEndRef.current) return;
-        console.log("[polling] 試合終了:", data);
 
         endLockRef.current = true;
         appliedEndRef.current = true;
@@ -268,13 +244,11 @@ export function WebSocketProvider({ children }) {
   useEffect(() => {
     if (!connected && !isRestoring) {
       stopPolling();
-      console.log("⏸ polling skipped (WS not connected)");
       return;
     }
 
     if (!appliedEndRef.current) {
       startPolling();
-      console.log("▶️ polling started (WS connected)");
     }
   }, [connected]);
 
@@ -283,7 +257,6 @@ export function WebSocketProvider({ children }) {
   // ===========================
   const leaveQueueFromHome = () => {
     wsRef.current?.send(JSON.stringify({ type: "queue.left" }));
-    console.log("📤 Sent: queue.left (home)");
     window.location.reload();
   };
 
@@ -294,7 +267,6 @@ export function WebSocketProvider({ children }) {
     }
 
     wsRef.current.send(JSON.stringify({ type: "queue.left" }));
-    console.log("📤 Sent: queue.left (battle)");
   };
 
   const disconnect = () => {
@@ -310,7 +282,6 @@ export function WebSocketProvider({ children }) {
   };
 
   const resetMatchState = () => {
-    console.log("🔁 resetMatchState called");
     setMatchStartPayload(null);
     setMatchEndPayload(null);
     setMatchRestorePayload(null);

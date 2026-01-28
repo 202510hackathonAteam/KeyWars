@@ -81,24 +81,15 @@ export default function GamePage() {
   // answer.finish / answer.timeout を1回だけ送る
   // ============================================
   const doFinishOnce = (type) => {
-    if (finishSentRef.current){
-      console.log("🚫 doFinishOnce SKIP (already sent)", type);
-      return;
-    }
-    
+    if (finishSentRef.current) return;
 
-    console.log("✅ doFinishOnce FIRST SEND:", type, {
-    match_id: matchStartPayload?.match_id,
-    miss_count: missCountRef.current,
-    });
-
+    // 二重送信を防ぐ
     finishSentRef.current = true;
 
+    // 自分側のタイマーは即終了
     clearInterval(timerRef.current);
 
-    // ★★★ ここで「相手待ち」状態にする ★★★
-    setIsWaiting(true);
-
+    // 送信データを作る
     const msg = {
       type,
       body: {
@@ -107,17 +98,18 @@ export default function GamePage() {
       },
     };
 
-    console.log("🔥 SEND", msg);
+    // サーバーへ通知
     wsRef.current?.send(JSON.stringify(msg));
+
+    // 相手待ち UI へ
+    setIsWaiting(true);
   };
 
   const sendAnswerFinish = () => {
-  console.log("🔵 sendAnswerFinish called");
-  doFinishOnce("answer.finish");
+    doFinishOnce("answer.finish");
   }
   const sendAnswerTimeout = () => {
-  console.log("🟠 sendAnswerTimeout called");
-  doFinishOnce("answer.timeout");
+    doFinishOnce("answer.timeout");
   }
 
   // ============================================
@@ -153,10 +145,7 @@ export default function GamePage() {
     const round = matchStartPayload.state.round;
 
     // --- 重複ガード ---
-    if (appliedRoundRef.current === round) {
-      console.log("⏭ duplicate round ignored:", round);
-      return;
-    }
+    if (appliedRoundRef.current === round) return;
 
     // 初めて見るラウンドなので適用
     appliedRoundRef.current = round;
@@ -165,8 +154,6 @@ export default function GamePage() {
 
     // ★ 相手待ちモード解除（次のラウンドが始まったので）
     setIsWaiting(false);
-
-    console.log("【🐱 新しいラウンド開始】", matchStartPayload.state.round);
 
     // 🔥 ラウンドID を設定（これで二重ラウンドを防ぐ）
     roundIdRef.current = matchStartPayload.state.round;
@@ -255,7 +242,6 @@ export default function GamePage() {
   if (!matchRestorePayload) return;
 
   const restore = matchRestorePayload;
-  console.log("🔥 RESTORE DATA:", restore);
 
   const myId = localStorage.getItem("user_id");
   const isPlayer1 = matchStartPayload?.player1 === myId;
@@ -322,8 +308,6 @@ export default function GamePage() {
 
   useEffect(() => {
   if (!matchEndPayload) return;
-
-  console.log("🎌 match.end received in GamePage:", matchEndPayload);
 
   const myId = localStorage.getItem("user_id"); // ← 自分のユーザーID
 
