@@ -298,7 +298,6 @@ export function WebSocketProvider({ children }) {
         wsRef,            // ← これが必要！
         connected,
         connect,
-        fetchFrontendState,
         disconnect,
         leaveQueueFromHome,
         leaveQueueFromBattle,
