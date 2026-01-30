@@ -86,11 +86,6 @@ export function WebSocketProvider({ children }) {
 
     socket.onclose = () => {
       setConnected(false);
-
-      // reconnectTimer.current = setTimeout(() => {
-      //   console.log("WS: reconnecting...");
-      //   connect();
-      // }, 3000);
     };
 
     socket.onerror = (e) => {
@@ -100,66 +95,63 @@ export function WebSocketProvider({ children }) {
     socket.onmessage = (event) => {
       const data = JSON.parse(event.data);
       switch (data.type) {
-          case "welcome":
-            localStorage.setItem("user_id", data.user_id);
-            break;
-          case "match.start":
-            const round = data.state.round;
-            // すでにこのラウンドを適用済みなら無視
-            if (appliedRoundRef.current === round) {
-              return;
-            }
+        case "welcome":
+          localStorage.setItem("user_id", data.user_id);
+          break;
+        case "match.start":
+          const round = data.state.round;
+          // すでにこのラウンドを適用済みなら無視
+          if (appliedRoundRef.current === round) {
+            return;
+          }
 
-            appliedRoundRef.current = round;
-            // context に保存（GamePage がこれを読む）
-            setMatchStartPayload(data);
+          appliedRoundRef.current = round;
+          // context に保存（GamePage がこれを読む）
+          setMatchStartPayload(data);
 
-            // round=1 のときだけ battle へ遷移
-            if (
-              data.state?.round === 1 &&
-              !matchStartedRef.current
-            ) {
-              matchStartedRef.current = true; // ← 一度だけ遷移
-              navigate("/battle");
-            }
-            break;
+          // round=1 のときだけ battle へ遷移
+          if (
+            data.state?.round === 1 &&
+            !matchStartedRef.current
+          ) {
+            matchStartedRef.current = true; // ← 一度だけ遷移
+            navigate("/battle");
+          }
+          break;
 
-          case "match.end":
-            if (appliedEndRef.current) return;
+        case "match.end":
+          if (appliedEndRef.current) return;
 
-            endLockRef.current = true;
-            appliedEndRef.current = true;
-            setMatchEndPayload(data);
-            setTimeout(() => {
-              endLockRef.current = false;
-            }, 5000);
-            break;
+          endLockRef.current = true;
+          appliedEndRef.current = true;
+          setMatchEndPayload(data);
+          setTimeout(() => {
+            endLockRef.current = false;
+          }, 5000);
+          break;
 
-          case "match.restore":
+        case "match.restore":
 
-            if (endLockRef.current) return;
-            setIsRestoring(true);
+          if (endLockRef.current) return;
+          setIsRestoring(true);
 
-            newSession();
+          newSession();
 
-            appliedEndRef.current = false;
+          appliedEndRef.current = false;
 
-            // restore は「基準点をジャンプさせる」
-            const restoredRound = data.state.round;
-            appliedRoundRef.current = restoredRound;
+          // restore は「基準点をジャンプさせる」
+          const restoredRound = data.state.round;
+          appliedRoundRef.current = restoredRound;
 
-            // 試合再発見 → battle 画面へ遷移
-            setMatchRestorePayload(data);
-            if (!matchStartedRef.current) {
-              matchStartedRef.current = true;
-              navigate("/battle");
-            }
-            break;
-        }
-      };
-
-    // setWs(socket);
-
+          // 試合再発見 → battle 画面へ遷移
+          setMatchRestorePayload(data);
+          if (!matchStartedRef.current) {
+            matchStartedRef.current = true;
+            navigate("/battle");
+          }
+          break;
+      }
+    };
   };
 
   useEffect(() => {
@@ -293,9 +285,8 @@ export function WebSocketProvider({ children }) {
 
   return (
     <WebSocketContext.Provider
-      // value={{ ws: wsRef.current, connected, connect, disconnect, matchStartPayload, }}
       value={{
-        wsRef,            // ← これが必要！
+        wsRef,
         connected,
         connect,
         disconnect,
@@ -305,7 +296,7 @@ export function WebSocketProvider({ children }) {
         matchEndPayload,
         resetMatchState,
         matchRestorePayload,
-        isRestoring,      // ← これ追加！
+        isRestoring,
         setIsRestoring,
       }}
     >
