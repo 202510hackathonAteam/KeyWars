@@ -25,6 +25,8 @@ export function WebSocketProvider({ children }) {
 
   const getUserId = () => localStorage.getItem("user_name");
 
+  // 新しいセッションを開始するための初期化処理
+  // 進行中の polling / backoff をすべて停止し、古いリクエストを無効化する
   const newSession = () => {
     sessionIdRef.current += 1;
     stopPolling();
@@ -35,6 +37,7 @@ export function WebSocketProvider({ children }) {
     }
   }
 
+  // セッション単位でフロント状態を定期取得する polling を開始
   const startPolling = () => {
     if (pollingRef.current) return;
 
@@ -45,6 +48,7 @@ export function WebSocketProvider({ children }) {
     }, 300);
   }
 
+  // 実行中の polling を停止する
   const stopPolling = () => {
     if (!pollingRef.current) return;
 
@@ -52,6 +56,8 @@ export function WebSocketProvider({ children }) {
     pollingRef.current = null;
   }
 
+  // WebSocket 接続を開始する
+  // ユーザー未認証・試合終了直後など、接続すべきでない状況はここでガードする
   const connect = () => {
     const userId = getUserId();
     if (!userId) {
@@ -131,7 +137,6 @@ export function WebSocketProvider({ children }) {
           break;
 
         case "match.restore":
-
           if (endLockRef.current) return;
           setIsRestoring(true);
 
@@ -154,6 +159,8 @@ export function WebSocketProvider({ children }) {
     };
   };
 
+  // 復帰処理中（isRestoring）の場合、match.start を受信したタイミングで
+  // 復帰状態を解除し、通常のラウンド進行に戻す
   useEffect(() => {
     if (!isRestoring) return;
     if (!matchRestorePayload) return;
@@ -261,6 +268,8 @@ export function WebSocketProvider({ children }) {
     wsRef.current.send(JSON.stringify({ type: "queue.left" }));
   };
 
+  // WebSocket 接続を明示的に切断し、
+  // polling・再接続・セッション関連の状態をすべて停止／初期化する
   const disconnect = () => {
     newSession();
     stopPolling();
@@ -273,6 +282,8 @@ export function WebSocketProvider({ children }) {
     }
   };
 
+  // 試合に関するフロントエンド状態を初期化し、
+  // 次回マッチングや再戦時に影響が残らないようにする
   const resetMatchState = () => {
     setMatchStartPayload(null);
     setMatchEndPayload(null);
