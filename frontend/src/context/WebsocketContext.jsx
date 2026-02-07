@@ -8,7 +8,6 @@ export function WebSocketProvider({ children }) {
   const API_URL = import.meta.env.VITE_API_URL
   const wsRef = useRef(null);
   const [connected, setConnected] = useState(false);
-  const reconnectTimer = useRef(null);
   const navigate = useNavigate();
   const [matchStartPayload, setMatchStartPayload] = useState(null);
   const [matchEndPayload, setMatchEndPayload] = useState(null);
@@ -162,7 +161,6 @@ export function WebSocketProvider({ children }) {
         socket.send(JSON.stringify({ type: "queue.join" }));
       }
       setConnected(true);
-      clearTimeout(reconnectTimer.current);
     };
 
     socket.onclose = () => {
@@ -264,7 +262,6 @@ export function WebSocketProvider({ children }) {
     stopPolling();
     setConnected(false);
     matchStartedRef.current = false;
-    clearTimeout(reconnectTimer.current);
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
