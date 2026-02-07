@@ -21,6 +21,7 @@ export function WebSocketProvider({ children }) {
   const backoffTimerRef = useRef(null);
   const pollingRef = useRef(null);
   const endLockRef = useRef(false);
+  const endLockReleaseDelayMs = 5000;
 
 
   const getUserId = () => localStorage.getItem("user_name");
@@ -42,10 +43,11 @@ export function WebSocketProvider({ children }) {
     if (pollingRef.current) return;
 
     const sessionId = sessionIdRef.current;
+    const pollingIntervalMs = 300;
 
     pollingRef.current = setInterval(async () => {
       await fetchFrontendState(sessionId);
-    }, 300);
+    }, pollingIntervalMs);
   }
 
   // 実行中の polling を停止する
@@ -133,7 +135,7 @@ export function WebSocketProvider({ children }) {
           setMatchEndPayload(data);
           setTimeout(() => {
             endLockRef.current = false;
-          }, 5000);
+          }, endLockReleaseDelayMs);
           break;
 
         case "match.restore":
@@ -188,11 +190,12 @@ export function WebSocketProvider({ children }) {
       }
 
       const sessionId = sessionIdRef.current;
+      const backoffDelayMs = 600;
 
       backoffTimerRef.current = setTimeout(() => {
         if (sessionIdRef.current !== sessionId) return;
         startPolling();
-      }, 600); // ← バックオフ時間
+      }, backoffDelayMs);
 
       return;
     }
@@ -233,7 +236,7 @@ export function WebSocketProvider({ children }) {
         setMatchEndPayload(data);
         setTimeout(() => {
           endLockRef.current = false;
-        }, 5000);
+        }, endLockReleaseDelayMs);
         break;
     }
   };
