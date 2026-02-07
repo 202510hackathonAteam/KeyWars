@@ -21,7 +21,6 @@ export function WebSocketProvider({ children }) {
   const backoffTimerRef = useRef(null);
   const pollingRef = useRef(null);
   const endLockRef = useRef(false);
-  const endLockReleaseDelayMs = 5000;
 
 
   const getUserId = () => localStorage.getItem("user_name");
@@ -57,6 +56,80 @@ export function WebSocketProvider({ children }) {
     clearInterval(pollingRef.current);
     pollingRef.current = null;
   }
+
+  // ユーザー識別用の welcome メッセージを処理する
+  const handleWelcome = (data) => {
+    localStorage.setItem("user_id", data.user_id);
+  };
+
+  // ラウンド開始を処理し、重複・過去ラウンドは無視する
+  const handleMatchStart = (data) => {
+    const nextRound = data?.state?.round;
+    if (
+      appliedRoundRef.current !== null &&
+      nextRound <= appliedRoundRef.current
+    ) return;
+
+    appliedRoundRef.current = nextRound;
+
+    // context に保存（GamePage がこれを読む）
+    setMatchStartPayload(data);
+
+    // round=1 のときだけ battle へ遷移
+    if (nextRound === 1 && !matchStartedRef.current) {
+      matchStartedRef.current = true; // ← 一度だけ遷移
+      navigate("/battle");
+    }
+  };
+
+  // 試合終了を一度だけ適用し、再接続を一時的にロックする
+  const handleMatchEnd = (data) => {
+    if (appliedEndRef.current) return;
+
+    endLockRef.current = true;
+    appliedEndRef.current = true;
+    setMatchEndPayload(data);
+
+    const endLockReleaseDelayMs = 5000;
+    setTimeout(() => {
+      endLockRef.current = false;
+    }, endLockReleaseDelayMs);
+  };
+
+  // 試合復帰を処理し、状態を復元して battle 画面へ遷移する
+  const handleMatchRestore = (data) => {
+    if (endLockRef.current) return;
+    setIsRestoring(true);
+
+    newSession();
+
+    appliedEndRef.current = false;
+
+    // restore は「基準点をジャンプさせる」
+    const restoredRound = data.state.round;
+    appliedRoundRef.current = restoredRound;
+
+    // 試合再発見 → battle 画面へ遷移
+    setMatchRestorePayload(data);
+    if (!matchStartedRef.current) {
+      matchStartedRef.current = true;
+      navigate("/battle");
+    }
+  };
+
+  // WebSocket push メッセージ用の handler 一覧
+  const pushMessageHandlers = {
+    "welcome": handleWelcome,
+    "match.start": handleMatchStart,
+    "match.end": handleMatchEnd,
+    "match.restore": handleMatchRestore,
+  };
+
+  // HTTP polling で適用可能なメッセージ用の handler 一覧
+  const pollingMessageHandlers = {
+    "match.start": handleMatchStart,
+    "match.end": handleMatchEnd,
+  };
 
   // WebSocket 接続を開始する
   // ユーザー未認証・試合終了直後など、接続すべきでない状況はここでガードする
@@ -102,62 +175,7 @@ export function WebSocketProvider({ children }) {
 
     socket.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      switch (data.type) {
-        case "welcome":
-          localStorage.setItem("user_id", data.user_id);
-          break;
-        case "match.start":
-          const round = data.state.round;
-          // すでにこのラウンドを適用済みなら無視
-          if (appliedRoundRef.current === round) {
-            return;
-          }
-
-          appliedRoundRef.current = round;
-          // context に保存（GamePage がこれを読む）
-          setMatchStartPayload(data);
-
-          // round=1 のときだけ battle へ遷移
-          if (
-            data.state?.round === 1 &&
-            !matchStartedRef.current
-          ) {
-            matchStartedRef.current = true; // ← 一度だけ遷移
-            navigate("/battle");
-          }
-          break;
-
-        case "match.end":
-          if (appliedEndRef.current) return;
-
-          endLockRef.current = true;
-          appliedEndRef.current = true;
-          setMatchEndPayload(data);
-          setTimeout(() => {
-            endLockRef.current = false;
-          }, endLockReleaseDelayMs);
-          break;
-
-        case "match.restore":
-          if (endLockRef.current) return;
-          setIsRestoring(true);
-
-          newSession();
-
-          appliedEndRef.current = false;
-
-          // restore は「基準点をジャンプさせる」
-          const restoredRound = data.state.round;
-          appliedRoundRef.current = restoredRound;
-
-          // 試合再発見 → battle 画面へ遷移
-          setMatchRestorePayload(data);
-          if (!matchStartedRef.current) {
-            matchStartedRef.current = true;
-            navigate("/battle");
-          }
-          break;
-      }
+      pushMessageHandlers[data.type]?.(data);
     };
   };
 
@@ -206,39 +224,7 @@ export function WebSocketProvider({ children }) {
     const data = await response.json();
     if (!data) return;
 
-    switch (data.type) {
-      case "match.start":
-        const nextRound = data?.state?.round;
-        if (
-          appliedRoundRef.current !== null &&
-          nextRound <= appliedRoundRef.current
-        ) {
-          return;
-        }
-
-        appliedRoundRef.current = nextRound;
-
-        // context に保存（GamePage がこれを読む）
-        setMatchStartPayload(data);
-
-        // round=1 のときだけ battle へ遷移
-        if (nextRound === 1 && !matchStartedRef.current) {
-          matchStartedRef.current = true; // ← 一度だけ遷移
-          navigate("/battle");
-        }
-        break;
-
-      case "match.end":
-        if (appliedEndRef.current) return;
-
-        endLockRef.current = true;
-        appliedEndRef.current = true;
-        setMatchEndPayload(data);
-        setTimeout(() => {
-          endLockRef.current = false;
-        }, endLockReleaseDelayMs);
-        break;
-    }
+    pollingMessageHandlers[data.type]?.(data);
   };
 
   // WebSocket 接続中のみポーリングを有効化し、
