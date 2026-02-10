@@ -8,7 +8,6 @@ export function WebSocketProvider({ children }) {
   const API_URL = import.meta.env.VITE_API_URL
   const wsRef = useRef(null);
   const [connected, setConnected] = useState(false);
-  const reconnectTimer = useRef(null);
   const navigate = useNavigate();
   const [matchStartPayload, setMatchStartPayload] = useState(null);
   const [matchEndPayload, setMatchEndPayload] = useState(null);
@@ -25,8 +24,7 @@ export function WebSocketProvider({ children }) {
 
   const getUserId = () => localStorage.getItem("user_name");
 
-  // 新しいセッションを開始するための初期化処理
-  // 進行中の polling / backoff をすべて停止し、古いリクエストを無効化する
+  // 新しいセッションを開始し、以降は旧セッション由来の処理を無視する
   const newSession = () => {
     sessionIdRef.current += 1;
     stopPolling();
@@ -42,10 +40,11 @@ export function WebSocketProvider({ children }) {
     if (pollingRef.current) return;
 
     const sessionId = sessionIdRef.current;
+    const pollingIntervalMs = 300;
 
     pollingRef.current = setInterval(async () => {
       await fetchFrontendState(sessionId);
-    }, 300);
+    }, pollingIntervalMs);
   }
 
   // 実行中の polling を停止する
@@ -56,8 +55,81 @@ export function WebSocketProvider({ children }) {
     pollingRef.current = null;
   }
 
+  // 接続時に通知された user_id を永続化する
+  const handleWelcome = (data) => {
+    localStorage.setItem("user_id", data.user_id);
+  };
+
+  // match.start によるラウンド状態遷移を適用する
+  const handleMatchStart = (data) => {
+    const nextRound = data?.state?.round;
+    if (
+      appliedRoundRef.current !== null &&
+      nextRound <= appliedRoundRef.current
+    ) return;
+
+    appliedRoundRef.current = nextRound;
+
+    // context に保存（GamePage がこれを読む）
+    setMatchStartPayload(data);
+
+    // round=1 のときだけ battle へ遷移
+    if (nextRound === 1 && !matchStartedRef.current) {
+      matchStartedRef.current = true; // ← 一度だけ遷移
+      navigate("/battle");
+    }
+  };
+
+  // match.end による試合終了状態を確定させる
+  const handleMatchEnd = (data) => {
+    if (appliedEndRef.current) return;
+
+    endLockRef.current = true;
+    appliedEndRef.current = true;
+    setMatchEndPayload(data);
+
+    const endLockReleaseDelayMs = 5000;
+    setTimeout(() => {
+      endLockRef.current = false;
+    }, endLockReleaseDelayMs);
+  };
+
+  // match.restore による状態復帰を行い、試合進行フェーズへ遷移する
+  const handleMatchRestore = (data) => {
+    if (endLockRef.current) return;
+    setIsRestoring(true);
+
+    newSession();
+
+    appliedEndRef.current = false;
+
+    // restore は「基準点をジャンプさせる」
+    const restoredRound = data.state.round;
+    appliedRoundRef.current = restoredRound;
+
+    // 試合再発見 → battle 画面へ遷移
+    setMatchRestorePayload(data);
+    if (!matchStartedRef.current) {
+      matchStartedRef.current = true;
+      navigate("/battle");
+    }
+  };
+
+  // WebSocket push メッセージ用の handler 一覧
+  const pushMessageHandlers = {
+    "welcome": handleWelcome,
+    "match.start": handleMatchStart,
+    "match.end": handleMatchEnd,
+    "match.restore": handleMatchRestore,
+  };
+
+  // HTTP polling で適用可能なメッセージ用の handler 一覧
+  const pollingMessageHandlers = {
+    "match.start": handleMatchStart,
+    "match.end": handleMatchEnd,
+  };
+
   // WebSocket 接続を開始する
-  // ユーザー未認証・試合終了直後など、接続すべきでない状況はここでガードする
   const connect = () => {
     const userId = getUserId();
     if (!userId) {
@@ -87,7 +159,6 @@ export function WebSocketProvider({ children }) {
         socket.send(JSON.stringify({ type: "queue.join" }));
       }
       setConnected(true);
-      clearTimeout(reconnectTimer.current);
     };
 
     socket.onclose = () => {
@@ -100,67 +171,11 @@ export function WebSocketProvider({ children }) {
 
     socket.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      switch (data.type) {
-        case "welcome":
-          localStorage.setItem("user_id", data.user_id);
-          break;
-        case "match.start":
-          const round = data.state.round;
-          // すでにこのラウンドを適用済みなら無視
-          if (appliedRoundRef.current === round) {
-            return;
-          }
-
-          appliedRoundRef.current = round;
-          // context に保存（GamePage がこれを読む）
-          setMatchStartPayload(data);
-
-          // round=1 のときだけ battle へ遷移
-          if (
-            data.state?.round === 1 &&
-            !matchStartedRef.current
-          ) {
-            matchStartedRef.current = true; // ← 一度だけ遷移
-            navigate("/battle");
-          }
-          break;
-
-        case "match.end":
-          if (appliedEndRef.current) return;
-
-          endLockRef.current = true;
-          appliedEndRef.current = true;
-          setMatchEndPayload(data);
-          setTimeout(() => {
-            endLockRef.current = false;
-          }, 5000);
-          break;
-
-        case "match.restore":
-          if (endLockRef.current) return;
-          setIsRestoring(true);
-
-          newSession();
-
-          appliedEndRef.current = false;
-
-          // restore は「基準点をジャンプさせる」
-          const restoredRound = data.state.round;
-          appliedRoundRef.current = restoredRound;
-
-          // 試合再発見 → battle 画面へ遷移
-          setMatchRestorePayload(data);
-          if (!matchStartedRef.current) {
-            matchStartedRef.current = true;
-            navigate("/battle");
-          }
-          break;
-      }
+      pushMessageHandlers[data.type]?.(data);
     };
   };
 
-  // 復帰処理中（isRestoring）の場合、match.start を受信したタイミングで
-  // 復帰状態を解除し、通常のラウンド進行に戻す
+  // 復帰処理完了を検知し、通常進行フェーズへ遷移させる
   useEffect(() => {
     if (!isRestoring) return;
     if (!matchRestorePayload) return;
@@ -169,8 +184,7 @@ export function WebSocketProvider({ children }) {
     setIsRestoring(false);
   }, [isRestoring, matchStartPayload]);
 
-  // HTTP ポーリングでフロントエンド再構築用の試合状態を取得し、
-  // match.start / match.end を一度だけ適用するための関数
+  // WebSocket 補助として、HTTP polling により状態再同期を行う
   const fetchFrontendState = async (sessionId) => {
     if (sessionIdRef.current !== sessionId) return;
 
@@ -188,11 +202,12 @@ export function WebSocketProvider({ children }) {
       }
 
       const sessionId = sessionIdRef.current;
+      const backoffDelayMs = 600;
 
       backoffTimerRef.current = setTimeout(() => {
         if (sessionIdRef.current !== sessionId) return;
         startPolling();
-      }, 600); // ← バックオフ時間
+      }, backoffDelayMs);
 
       return;
     }
@@ -203,43 +218,10 @@ export function WebSocketProvider({ children }) {
     const data = await response.json();
     if (!data) return;
 
-    switch (data.type) {
-      case "match.start":
-        const nextRound = data?.state?.round;
-        if (
-          appliedRoundRef.current !== null &&
-          nextRound <= appliedRoundRef.current
-        ) {
-          return;
-        }
-
-        appliedRoundRef.current = nextRound;
-
-        // context に保存（GamePage がこれを読む）
-        setMatchStartPayload(data);
-
-        // round=1 のときだけ battle へ遷移
-        if (nextRound === 1 && !matchStartedRef.current) {
-          matchStartedRef.current = true; // ← 一度だけ遷移
-          navigate("/battle");
-        }
-        break;
-
-      case "match.end":
-        if (appliedEndRef.current) return;
-
-        endLockRef.current = true;
-        appliedEndRef.current = true;
-        setMatchEndPayload(data);
-        setTimeout(() => {
-          endLockRef.current = false;
-        }, 5000);
-        break;
-    }
+    pollingMessageHandlers[data.type]?.(data);
   };
 
-  // WebSocket 接続中のみポーリングを有効化し、
-  // 試合終了（match.end）を検知したら自動で停止する
+  // 接続フェーズに応じて polling の有効／無効を制御する
   useEffect(() => {
     if (!connected && !isRestoring) {
       stopPolling();
@@ -268,22 +250,19 @@ export function WebSocketProvider({ children }) {
     wsRef.current.send(JSON.stringify({ type: "queue.left" }));
   };
 
-  // WebSocket 接続を明示的に切断し、
-  // polling・再接続・セッション関連の状態をすべて停止／初期化する
+  // 現在の対戦セッションを終了し、通信・状態を完全にリセットする
   const disconnect = () => {
     newSession();
     stopPolling();
     setConnected(false);
     matchStartedRef.current = false;
-    clearTimeout(reconnectTimer.current);
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
     }
   };
 
-  // 試合に関するフロントエンド状態を初期化し、
-  // 次回マッチングや再戦時に影響が残らないようにする
+  // 次回の対戦に備えて、試合関連の状態を初期化する
   const resetMatchState = () => {
     setMatchStartPayload(null);
     setMatchEndPayload(null);
